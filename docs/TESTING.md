@@ -14,7 +14,7 @@ A release MSVC build verifies the Windows application compiles. `FlashGuard.exe 
 
 ### Synthetic replay
 
-`FLASHGUARD_REPLAY/1` feeds generated frames through the actual D3D11 analysis/safety/render path rather than a simplified CPU model. Current coverage includes:
+`FLASHGUARD_REPLAY/2` feeds generated frames through the actual D3D11 analysis/safety/render path rather than a simplified CPU model. Current coverage includes:
 
 - static gray control
 - 15 Hz full-screen dark/bright flash
@@ -27,9 +27,9 @@ Reported metrics include static MAE, flash modulation reduction, trailing-ghost 
 
 Visual replay is available with `-VisualReplay`; sampled frames are rendered as `SOURCE | FILTERED | 6x AMPLIFIED DIFFERENCE` and indexed by an HTML viewer.
 
-### 5-30 Hz flash sweep
+### 5-30 Hz WCAG-oriented flash sweep
 
-`FLASHGUARD_FLASH_SWEEP/1` runs 24 deterministic two-second cases at 60 FPS.
+`FLASHGUARD_FLASH_SWEEP/2` runs the same 24 deterministic two-second cases at 60 FPS and evaluates them through `WCAG_FLASH/1`.
 
 Frequencies:
 
@@ -45,19 +45,21 @@ red_full
 luminance_quarter
 ```
 
-Each generated square wave uses a 50% phase duty cycle. The harness verifies that the source itself produces more than three completed opposing transition pairs per second before treating the case as a valid flash-regression stimulus.
+Each generated square wave uses a 50% phase duty cycle. The evaluator reduces each measured trace to temporal extrema, forms qualifying opposing transitions, and records the maximum completed flash pairs found in any one-second window. This avoids treating a multi-frame filtered transition as safe merely because no single adjacent-frame step crosses the threshold.
 
-For the screen-mean general-flash counter, a transition must change relative luminance by at least 0.10 and have a darker state below 0.80. The saturated-red counter uses the implemented red-ratio and red-transition metric documented by the test source. These are W3C-style engineering counters; the suite is not a complete WCAG or Harding analyzer.
+General flashes use WCAG 2.2 relative luminance from linearized sRGB: an endpoint-to-endpoint change of at least `0.10` with the darker endpoint below `0.80`. Saturated-red flashes use linear RGB converted through CIE XYZ to CIE 1976 UCS; a transition qualifies when either endpoint has `R/(R+G+B) >= 0.8` and the u-prime/v-prime distance is greater than `0.2`.
+
+The synthetic rectangle's solid angle is calculated from the configured display diagonal and viewing distance. The report records both SC 2.3.1's `0.006` steradian area branch and the stricter SC 2.3.2 result without an area exemption. FlashGuard's regression gate intentionally requires the stricter result for every case.
 
 The current regression pass condition is:
 
 ```text
-source stimulus > 3 completed flashes/s
-filtered general flashes/s <= 3
-filtered red flashes/s <= 3 for red_full
+source stimulus > 3 completed flashes in at least one one-second window
+filtered general flashes <= 3 in every one-second window
+filtered red flashes <= 3 in every one-second window
 ```
 
-The quarter-screen case is intentionally conservative but is not a calibrated steradian/visual-angle measurement.
+This is WCAG-oriented regression evidence, not a complete WCAG conformance analyzer or a Harding FPA/PSE certificate. The synthetic area calculation does not scan arbitrary spatial masks within every possible 10-degree visual field, and the corpus still does not cover every waveform, display, or real game sequence.
 
 ## Reproducibility
 

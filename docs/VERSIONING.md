@@ -23,11 +23,14 @@ Pre-release identifiers such as `-alpha.1` indicate that the software remains ex
 Test schemas have independent stable identifiers, currently:
 
 ```text
-FLASHBENCH/1
-FLASHGUARD_REPLAY/1
-FLASHGUARD_FLASH_SWEEP/1
+FLASHBENCH/2
+FLASHGUARD_REPLAY/2
+FLASHGUARD_FLASH_SWEEP/2
+WCAG_FLASH/1
 NVOF_SMOKE/1
 ```
+
+Historical `/1` protocol documents remain preserved for archived runs that used the earlier measurement semantics.
 
 A material change to stimulus generation, metric definition, pass/fail criteria, or measurement semantics requires a new protocol/schema version. Old results keep their original version.
 

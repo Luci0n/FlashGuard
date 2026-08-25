@@ -17,7 +17,7 @@ $flashSweepPath = Join-Path $OutputDir 'flash-sweep.json'
 $visualDir = Join-Path $OutputDir 'visual'
 
 $summary = [ordered]@{
-    schema = 'FLASHBENCH/1'
+    schema = 'FLASHBENCH/2'
     mode = $Mode
     commit = $env:GITHUB_SHA
     machine = $env:COMPUTERNAME
@@ -36,11 +36,17 @@ $summary = [ordered]@{
     nvidia_driver = $null
     nvof_runtime_present = $false
     replay_status = 'NOT_RUN'
+    replay_protocol = $null
     replay_static_mae = $null
     replay_flash_reduction = $null
     flash_sweep_status = 'NOT_RUN'
+    flash_sweep_protocol = $null
+    flash_sweep_wcag_profile = $null
     flash_sweep_min_reduction = $null
     flash_sweep_max_output_flashes_per_second = $null
+    flash_sweep_max_output_red_flashes_per_second = $null
+    flash_sweep_all_sc_2_3_1_pass = $null
+    flash_sweep_all_sc_2_3_2_pass = $null
     replay_moving_ghost_mae = $null
     replay_moving_inside_mae = $null
     replay_moving_edge_mae = $null
@@ -145,6 +151,7 @@ try {
         $replay = $null
         if (Test-Path $replayReportPath) {
             $replay = Get-Content -Raw $replayReportPath | ConvertFrom-Json
+            $summary.replay_protocol = $replay.schema
             $summary.replay_static_mae = $replay.static_mae
             $summary.replay_flash_reduction = $replay.flash_reduction
             $summary.replay_moving_ghost_mae = $replay.moving_square_ghost_mae
@@ -160,15 +167,25 @@ try {
         if (Test-Path $flashSweepPath) {
             $flashSweep = Get-Content -Raw $flashSweepPath | ConvertFrom-Json
             $summary.flash_sweep_status = $flashSweep.status
+            $summary.flash_sweep_protocol = $flashSweep.schema
+            $summary.flash_sweep_wcag_profile = $flashSweep.wcag_profile
             if ($flashSweep.cases.Count -gt 0) {
                 $summary.flash_sweep_min_reduction =
                     ($flashSweep.cases | Measure-Object -Property reduction -Minimum).Minimum
                 $summary.flash_sweep_max_output_flashes_per_second =
                     ($flashSweep.cases |
                         Measure-Object -Property output_general_flashes_per_second -Maximum).Maximum
+                $summary.flash_sweep_max_output_red_flashes_per_second =
+                    ($flashSweep.cases |
+                        Measure-Object -Property output_red_flashes_per_second -Maximum).Maximum
+                $summary.flash_sweep_all_sc_2_3_1_pass =
+                    @($flashSweep.cases | Where-Object { $_.wcag_sc_2_3_1_pass -ne $true }).Count -eq 0
+                $summary.flash_sweep_all_sc_2_3_2_pass =
+                    @($flashSweep.cases | Where-Object { $_.wcag_sc_2_3_2_pass -ne $true }).Count -eq 0
                 $table = $flashSweep.cases |
                     Select-Object case, frequency_hz, reduction, peak_output_delta,
-                        output_general_flashes_per_second, output_red_flashes_per_second |
+                        output_general_flashes_per_second, output_red_flashes_per_second,
+                        wcag_sc_2_3_1_pass, wcag_sc_2_3_2_pass |
                     Format-Table -AutoSize | Out-String
                 "Flash frequency sweep:`n$table" | Add-Content -Encoding utf8 $logPath
                 Write-Host "Flash frequency sweep:"
