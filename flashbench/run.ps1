@@ -1,7 +1,8 @@
 param(
     [ValidateSet('compile', 'gpu-smoke')]
     [string]$Mode = 'compile',
-    [string]$OutputDir = 'flashbench/results'
+    [string]$OutputDir = 'flashbench/results',
+    [switch]$VisualReplay
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +13,7 @@ $outputPath = Join-Path $OutputDir 'summary.json'
 $logPath = Join-Path $OutputDir 'flashbench.log'
 $smokeReportPath = Join-Path $OutputDir 'nvof-smoke.json'
 $replayReportPath = Join-Path $OutputDir 'synthetic-replay.json'
+$visualDir = Join-Path $OutputDir 'visual'
 
 $summary = [ordered]@{
     schema = 'FLASHBENCH/1'
@@ -36,6 +38,9 @@ $summary = [ordered]@{
     replay_static_mae = $null
     replay_flash_reduction = $null
     replay_moving_ghost_mae = $null
+    replay_moving_inside_mae = $null
+    replay_moving_edge_mae = $null
+    replay_small_moving_ghost_mae = $null
     replay_pan_mae = $null
     replay_nvof_flow_frames = $null
     replay_pan_camera_motion = $null
@@ -122,7 +127,16 @@ try {
         $summary.nvof_runtime_present = $true
 
         Remove-Item $replayReportPath -ErrorAction SilentlyContinue
-        & .\FlashGuard.exe --synthetic-replay $replayReportPath 2>&1 | Tee-Object -FilePath $logPath -Append
+        if ($VisualReplay) {
+            Remove-Item $visualDir -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Force -Path $visualDir | Out-Null
+            & .\FlashGuard.exe --synthetic-replay $replayReportPath `
+                --synthetic-replay-visual $visualDir 2>&1 |
+                Tee-Object -FilePath $logPath -Append
+        } else {
+            & .\FlashGuard.exe --synthetic-replay $replayReportPath 2>&1 |
+                Tee-Object -FilePath $logPath -Append
+        }
         $replayExit = $LASTEXITCODE
         $replay = $null
         if (Test-Path $replayReportPath) {
@@ -130,6 +144,9 @@ try {
             $summary.replay_static_mae = $replay.static_mae
             $summary.replay_flash_reduction = $replay.flash_reduction
             $summary.replay_moving_ghost_mae = $replay.moving_square_ghost_mae
+            $summary.replay_moving_inside_mae = $replay.moving_square_inside_mae
+            $summary.replay_moving_edge_mae = $replay.moving_square_edge_mae
+            $summary.replay_small_moving_ghost_mae = $replay.small_moving_square_ghost_mae
             $summary.replay_pan_mae = $replay.pan_mae
             $summary.replay_nvof_flow_frames = $replay.nvof_flow_frames
             $summary.replay_pan_camera_motion = $replay.pan_camera_motion_mean
@@ -144,6 +161,89 @@ try {
             throw 'synthetic replay did not produce a SUCCESS report'
         }
         $summary.replay_status = 'SUCCESS'
+
+        if ($VisualReplay -and (Test-Path $visualDir)) {
+            $caseMap = [ordered]@{}
+            Get-ChildItem -Path $visualDir -Directory | Sort-Object Name | ForEach-Object {
+                $caseMap[$_.Name] = @(
+                    Get-ChildItem -Path $_.FullName -Filter '*.bmp' |
+                        Sort-Object Name | ForEach-Object { $_.Name }
+                )
+            }
+            $caseJson = $caseMap | ConvertTo-Json -Depth 4 -Compress
+            $viewerPath = Join-Path $visualDir 'index.html'
+            $html = @"
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FlashGuard Visual Replay</title>
+<style>
+body { margin:0; background:#111; color:#eee; font:14px Segoe UI, sans-serif; }
+header { position:sticky; top:0; background:#1b1b1b; padding:12px 16px; z-index:2; }
+.controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+select, button, input { font:inherit; }
+input[type=range] { width:min(520px,60vw); }
+.labels { display:grid; grid-template-columns:repeat(3,1fr); text-align:center; padding:8px 0; font-weight:600; }
+main { padding:0 16px 18px; }
+img { display:block; width:100%; height:auto; border:1px solid #333; background:#000; }
+#meta { opacity:.75; min-width:110px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="controls">
+    <select id="case"></select>
+    <button id="play">Play</button>
+    <input id="frame" type="range" min="0" max="0" value="0">
+    <span id="meta"></span>
+  </div>
+</header>
+<main>
+  <div class="labels"><span>SOURCE</span><span>FILTERED</span><span>6x DIFFERENCE</span></div>
+  <img id="image" alt="FlashGuard replay frame">
+</main>
+<script>
+const framesByCase = $caseJson;
+const caseSelect = document.getElementById('case');
+const slider = document.getElementById('frame');
+const image = document.getElementById('image');
+const meta = document.getElementById('meta');
+const play = document.getElementById('play');
+let timer = null;
+for (const name of Object.keys(framesByCase)) {
+  const option = document.createElement('option');
+  option.value = name; option.textContent = name; caseSelect.appendChild(option);
+}
+function refresh() {
+  const caseName = caseSelect.value;
+  const frames = framesByCase[caseName] || [];
+  slider.max = Math.max(0, frames.length - 1);
+  const index = Math.min(Number(slider.value) || 0, Math.max(0, frames.length - 1));
+  slider.value = index;
+  if (frames.length) image.src = encodeURIComponent(caseName) + '/' + encodeURIComponent(frames[index]);
+  meta.textContent = frames.length ? (String(index + 1) + ' / ' + String(frames.length)) : 'no frames';
+}
+caseSelect.addEventListener('change', () => { slider.value = 0; refresh(); });
+slider.addEventListener('input', refresh);
+play.addEventListener('click', () => {
+  if (timer) { clearInterval(timer); timer = null; play.textContent = 'Play'; return; }
+  play.textContent = 'Pause';
+  timer = setInterval(() => {
+    const max = Number(slider.max) || 0;
+    slider.value = Number(slider.value) >= max ? 0 : Number(slider.value) + 1;
+    refresh();
+  }, 167);
+});
+refresh();
+</script>
+</body>
+</html>
+"@
+            Set-Content -Path $viewerPath -Value $html -Encoding utf8
+            "Visual replay viewer: $viewerPath" | Add-Content -Encoding utf8 $logPath
+            Write-Host "Visual replay viewer: $viewerPath"
+        }
     }
 
     $summary.status = 'SUCCESS'
