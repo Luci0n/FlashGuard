@@ -129,3 +129,13 @@ The next infrastructure milestone is deterministic Windows replay/FlashBench:
 - a Windows worker that notices a new `origin/test` HEAD, builds, replays the corpus on the real NVIDIA GPU, and publishes results for the LLM
 
 Until that exists, CrowBridge removes manual source-file transfer but does not itself provide Windows GPU execution.
+
+## Automation implemented after the original handoff
+
+- `.github/workflows/build.yml` now runs a release MSVC build and embedded-HLSL validation on GitHub-hosted Windows for every `test` push.
+- `.github/workflows/gpu-smoke.yml` targets a self-hosted `[Windows, X64, flashguard-gpu]` runner.
+- `flashbench/run.ps1 -Mode gpu-smoke` builds FlashGuard, validates HLSL, checks the NVIDIA driver/runtime, executes a deterministic D3D11 NVOFA frame pair, and requires a nonzero optical-flow field.
+- `flashbench/setup-runner.ps1` can provision the Windows runner through authenticated GitHub CLI; keep it in the logged-in interactive desktop session rather than installing it as a service.
+- Hosted CI proves compilation/HLSL validity. NVOFA execution is proven only when the self-hosted GPU job completes successfully.
+
+The remaining major milestone is deterministic replay through the full FlashGuard safety/render path so future iterations can compare flash suppression, motion/ghosting, masks, and timing without manual gameplay testing.

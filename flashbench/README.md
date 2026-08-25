@@ -26,15 +26,23 @@ GitHub workflows:
 
 ## One-time GPU runner setup
 
-In GitHub open `Luci0n/FlashGuard` -> Settings -> Actions -> Runners -> New self-hosted runner. Choose Windows x64 and follow GitHub's generated download/configuration commands. During configuration add the custom label `flashguard-gpu`.
+From an authenticated Windows checkout of `test`, the shortest setup is:
 
-For FlashGuard GPU/desktop work, **do not install the runner as a Windows service**. Start it from the logged-in desktop session so later Desktop Duplication/replay tests can use the interactive GPU session:
+```powershell
+git pull origin test
+gh auth login
+powershell -ExecutionPolicy Bypass -File .\flashbench\setup-runner.ps1
+```
+
+`setup-runner.ps1` obtains a time-limited repository runner token through `gh`, downloads the current Windows x64 GitHub Actions runner, configures the custom label `flashguard-gpu`, and starts it. If the runner is already configured, it simply starts the existing installation.
+
+For FlashGuard GPU/desktop work, **do not install the runner as a Windows service**. Keep the runner in the logged-in desktop session so later Desktop Duplication/replay tests can use the interactive GPU session. To start an already configured runner later:
 
 ```powershell
 .\flashbench\start-runner.ps1
 ```
 
-GitHub's registration token is time-limited, so the generated setup commands must come from the repository's Runners page. The workflows do not run on pull requests; keep the self-hosted runner scoped to trusted `test` branch code.
+If automatic token acquisition is unavailable, GitHub's Settings -> Actions -> Runners -> New self-hosted runner page can provide the normal registration commands/token. The workflows do not run on pull requests; keep the self-hosted runner scoped to trusted `test` branch code.
 
 ## Next milestone
 
