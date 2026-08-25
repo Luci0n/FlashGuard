@@ -1056,7 +1056,7 @@ MainOutput PSMain(VSOut i)
                         vacatedCostConfidence = 1.0 - smoothstep(0.28, 0.78, flowCost);
                     }
                     const float vacatedEvidence =
-                        vacatedFb * vacatedMatch *
+)HLSL" R"HLSL(                        vacatedFb * vacatedMatch *
                         smoothstep(0.12, 0.38, movedImprovement) *
                         lerp(0.35, 1.0, vacatedCostConfidence);
 
@@ -1247,7 +1247,7 @@ MainOutput PSMain(VSOut i)
                                             if (sampleMagnitude > 0.50 &&
                                                 directionAgreement > 0.90 &&
                                                 magnitudeRatio > 0.62)
-                                                agreeingVectors++;
+)HLSL" R"HLSL(                                                agreeingVectors++;
                                         }
                                     }
                                 }
@@ -1504,7 +1504,7 @@ MainOutput PSMain(VSOut i)
                                             rawSourceColor, previousMoved);
                                         if (error < bestObliqueError)
                                         {
-                                            bestObliqueError = error;
+)HLSL" R"HLSL(                                            bestObliqueError = error;
                                             bestObliqueOffset = offset;
                                         }
                                     }
@@ -2095,7 +2095,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
     if (patternRisk) currentEventStrength = max(currentEventStrength, 0.80);
     if (globalFlash) currentEventStrength = max(currentEventStrength, 1.0);
     const float signedCurrentState = motionSuppressed ? -1.0 : currentEventStrength;
-    output.safety = float4(curL, signedCurrentState, saturate(riskStrength),
+)HLSL" R"HLSL(    output.safety = float4(curL, signedCurrentState, saturate(riskStrength),
         redTransition && !translatedMotion ? 1.0 : 0.0);
     output.temporal = float4(anchorL, saturate(riskEnergy),
         meaningfulMotion ? direction : previousDirection, transitionAge);
