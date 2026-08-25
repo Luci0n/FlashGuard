@@ -1204,6 +1204,84 @@ MainOutput PSMain(VSOut i)
                         }
                     }
                 }
+
+                // Arbitrary shallow/steep slopes are common for projectiles,
+                // particles and model edges. Cardinal + 45-degree searches can
+                // miss a 3:1 or 3:2 translation even when the raw source clearly
+                // proves motion. Only pay for these extra candidates after the
+                // cheaper searches were inconclusive.
+                if (localMotionGate < 0.45 && samePatchError > 0.012)
+                {
+                    float bestObliqueError = sourceDelta;
+                    float2 bestObliqueOffset = float2(0.0, 0.0);
+                    [unroll]
+                    for (int major = 2; major <= 3; ++major)
+                    {
+                        [unroll]
+                        for (int minor = 1; minor < major; ++minor)
+                        {
+                            [unroll]
+                            for (int swapAxes = 0; swapAxes < 2; ++swapAxes)
+                            {
+                                [unroll]
+                                for (int sy = -1; sy <= 1; sy += 2)
+                                {
+                                    [unroll]
+                                    for (int sx = -1; sx <= 1; sx += 2)
+                                    {
+                                        const float2 offsetPixels = swapAxes == 0 ?
+                                            float2((float)(sx * major), (float)(sy * minor)) :
+                                            float2((float)(sx * minor), (float)(sy * major));
+                                        const float2 offset = offsetPixels * outputTexel;
+                                        const float3 previousMoved = PreviousSource.SampleLevel(
+                                            LinearClamp, i.uv + offset, 0.0).rgb;
+                                        const float error = SourceMatchError(
+                                            rawSourceColor, previousMoved);
+                                        if (error < bestObliqueError)
+                                        {
+                                            bestObliqueError = error;
+                                            bestObliqueOffset = offset;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (dot(bestObliqueOffset, bestObliqueOffset) > 0.0 &&
+                        bestObliqueError < sourceDelta * 0.82)
+                    {
+                        float shiftedPatchError = 0.0;
+                        [unroll]
+                        for (int py = -1; py <= 1; ++py)
+                        {
+                            [unroll]
+                            for (int px = -1; px <= 1; ++px)
+                            {
+                                if (abs(px) + abs(py) <= 1)
+                                {
+                                    const float2 patchOffset = float2((float)px, (float)py) *
+                                        outputTexel * verifyRadius;
+                                    const float3 currentPatch = CurrentFrame.SampleLevel(
+                                        LinearClamp, i.uv + patchOffset, 0.0).rgb;
+                                    const float3 previousShiftPatch = PreviousSource.SampleLevel(
+                                        LinearClamp, i.uv + patchOffset + bestObliqueOffset, 0.0).rgb;
+                                    shiftedPatchError += SourceMatchError(
+                                        currentPatch, previousShiftPatch);
+                                }
+                            }
+                        }
+
+                        const float patchImprovement = saturate(
+                            1.0 - shiftedPatchError / samePatchError);
+                        const float absoluteMatch = 1.0 - smoothstep(
+                            0.040, 0.145, shiftedPatchError / 5.0);
+                        const float obliqueGate = smoothstep(
+                            0.28, 0.62, patchImprovement) * absoluteMatch;
+                        localMotionGate = max(localMotionGate,
+                            obliqueGate > 0.56 ? 1.0 : obliqueGate);
+                    }
+                }
             }
         })HLSL" R"HLSL(
 
