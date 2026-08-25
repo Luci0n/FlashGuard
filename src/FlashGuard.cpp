@@ -1839,6 +1839,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 double outputMean = 0.0;
                 double mae = 0.0;
                 double outsideMae = 0.0;
+                double insideMae = 0.0;
+                double edgeMae = 0.0;
             };
 
             uint64_t flowFrames = 0;
@@ -1857,6 +1859,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 FrameSample sample{};
                 uint64_t count = 0;
                 uint64_t outsideCount = 0;
+                uint64_t insideCount = 0;
+                uint64_t edgeCount = 0;
                 constexpr UINT stride = 4;
                 for (UINT y = 0; y < height; y += stride)
                 {
@@ -1892,6 +1896,22 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                             sample.outsideMae += error;
                             ++outsideCount;
                         }
+                        else
+                        {
+                            sample.insideMae += error;
+                            ++insideCount;
+                            constexpr LONG edgeBand = 8;
+                            const bool edge =
+                                static_cast<LONG>(x) < activeRect->left + edgeBand ||
+                                static_cast<LONG>(x) >= activeRect->right - edgeBand ||
+                                static_cast<LONG>(y) < activeRect->top + edgeBand ||
+                                static_cast<LONG>(y) >= activeRect->bottom - edgeBand;
+                            if (edge)
+                            {
+                                sample.edgeMae += error;
+                                ++edgeCount;
+                            }
+                        }
                     }
                 }
                 m_context->Unmap(m_replayReadback.get(), 0);
@@ -1903,6 +1923,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 }
                 if (outsideCount)
                     sample.outsideMae /= static_cast<double>(outsideCount);
+                if (insideCount)
+                    sample.insideMae /= static_cast<double>(insideCount);
+                if (edgeCount)
+                    sample.edgeMae /= static_cast<double>(edgeCount);
                 return sample;
             };
 
@@ -1947,6 +1971,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             fillGray(24);
             for (int i = 0; i < 20; ++i) renderAndSample(nullptr);
             double movingGhostMae = 0.0;
+            double movingInsideMae = 0.0;
+            double movingEdgeMae = 0.0;
             constexpr int squareSize = 64;
             constexpr int movingFrames = 90;
             for (int i = 0; i < movingFrames; ++i)
@@ -1960,9 +1986,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     for (int x = std::max(x0, 0); x < x1; ++x)
                         pixels[static_cast<size_t>(y) * width + x] = grayPixel(235);
                 const RECT square{ x0, y0, x1, y1 };
-                movingGhostMae += renderAndSample(&square).outsideMae;
+                const FrameSample sample = renderAndSample(&square);
+                movingGhostMae += sample.outsideMae;
+                movingInsideMae += sample.insideMae;
+                movingEdgeMae += sample.edgeMae;
             }
             movingGhostMae /= static_cast<double>(movingFrames);
+            movingInsideMae /= static_cast<double>(movingFrames);
+            movingEdgeMae /= static_cast<double>(movingFrames);
             const uint64_t movingFlowFrames = flowFrames - movingFlowStart;
 
             // Quake-like local-motion regression: a small, medium-contrast object
@@ -2049,6 +2080,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
             const bool metricsFinite = std::isfinite(staticMae) &&
                 std::isfinite(flashReduction) && std::isfinite(movingGhostMae) &&
+                std::isfinite(movingInsideMae) && std::isfinite(movingEdgeMae) &&
                 std::isfinite(smallMovingGhostMae) && std::isfinite(panMae) &&
                 std::isfinite(fastPanMae) && std::isfinite(extremePanMae);
             const bool pass = metricsFinite && staticMae < 0.005 &&
@@ -2072,6 +2104,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "  \"flash_output_variation\": %.8f,\n"
                 "  \"flash_reduction\": %.8f,\n"
                 "  \"moving_square_ghost_mae\": %.8f,\n"
+                "  \"moving_square_inside_mae\": %.8f,\n"
+                "  \"moving_square_edge_mae\": %.8f,\n"
                 "  \"small_moving_square_ghost_mae\": %.8f,\n"
                 "  \"pan_mae\": %.8f,\n"
                 "  \"fast_pan_mae\": %.8f,\n"
@@ -2093,7 +2127,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "}\n",
                 pass ? "SUCCESS" : "FAILED", width, height,
                 staticMae, rawVariation, outputVariation, flashReduction,
-                movingGhostMae, smallMovingGhostMae,
+                movingGhostMae, movingInsideMae, movingEdgeMae,
+                smallMovingGhostMae,
                 panMae, fastPanMae, extremePanMae,
                 panCameraMotion, panCameraMotionMax,
                 panAffectedArea, panCoherence, panFlashEnergy,
