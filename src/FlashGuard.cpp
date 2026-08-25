@@ -1005,6 +1005,7 @@ MainOutput PSMain(VSOut i)
             // anchor-updated (or unavailable), keep the portable local matcher as
             // a safety net for small moving content that the coarse scheduler misses.
             if ((!hardwareFlowAvailable || !hardwareFlowValid) &&
+                P6.y < max(0.10, P5.x * 0.75) &&
                 sourceDelta > 0.010 && coarseMotion < 0.30 &&
                 max(coarseEvent, coarseRisk) > 0.010)
             {

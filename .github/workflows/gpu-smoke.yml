@@ -5,6 +5,10 @@ on:
     branches: [test]
   workflow_dispatch:
 
+concurrency:
+  group: flashguard-gpu-test
+  cancel-in-progress: true
+
 permissions:
   contents: read
   statuses: write
