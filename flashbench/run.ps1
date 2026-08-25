@@ -11,6 +11,7 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $outputPath = Join-Path $OutputDir 'summary.json'
 $logPath = Join-Path $OutputDir 'flashbench.log'
 $smokeReportPath = Join-Path $OutputDir 'nvof-smoke.json'
+$replayReportPath = Join-Path $OutputDir 'synthetic-replay.json'
 
 $summary = [ordered]@{
     schema = 'FLASHBENCH/1'
@@ -31,6 +32,12 @@ $summary = [ordered]@{
     gpu = $null
     nvidia_driver = $null
     nvof_runtime_present = $false
+    replay_status = 'NOT_RUN'
+    replay_static_mae = $null
+    replay_flash_reduction = $null
+    replay_moving_ghost_mae = $null
+    replay_pan_mae = $null
+    replay_nvof_flow_frames = $null
     status = 'FAILED'
     error = $null
 }
@@ -110,6 +117,27 @@ try {
         }
         $summary.nvof_execute_status = 'SUCCESS'
         $summary.nvof_runtime_present = $true
+
+        Remove-Item $replayReportPath -ErrorAction SilentlyContinue
+        & .\FlashGuard.exe --synthetic-replay $replayReportPath 2>&1 | Tee-Object -FilePath $logPath -Append
+        $replayExit = $LASTEXITCODE
+        $replay = $null
+        if (Test-Path $replayReportPath) {
+            $replay = Get-Content -Raw $replayReportPath | ConvertFrom-Json
+            $summary.replay_static_mae = $replay.static_mae
+            $summary.replay_flash_reduction = $replay.flash_reduction
+            $summary.replay_moving_ghost_mae = $replay.moving_square_ghost_mae
+            $summary.replay_pan_mae = $replay.pan_mae
+            $summary.replay_nvof_flow_frames = $replay.nvof_flow_frames
+        }
+        if ($replayExit -ne 0) {
+            $replayStage = if ($replay) { $replay.status } else { 'no-report' }
+            throw "synthetic replay failed ($replayStage) with exit code $replayExit"
+        }
+        if (-not $replay -or $replay.status -ne 'SUCCESS') {
+            throw 'synthetic replay did not produce a SUCCESS report'
+        }
+        $summary.replay_status = 'SUCCESS'
     }
 
     $summary.status = 'SUCCESS'

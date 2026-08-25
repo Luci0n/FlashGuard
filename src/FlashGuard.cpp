@@ -25,6 +25,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <cwctype>
 #include <deque>
@@ -1710,6 +1711,288 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
             m_lastFrameMs.store(NowMs(), std::memory_order_release);
             m_captureThread = std::thread([this] { CaptureLoop(); });
+        }
+
+        void InitializeReplay(HWND output, HMONITOR monitor)
+        {
+            m_output = output;
+            m_monitor = monitor;
+            m_replayMode = true;
+            m_debugEnabled.store(false, std::memory_order_release);
+            FindOutputAndCreateDevice();
+
+            winrtlessEnableMultithreadProtection();
+            CreateSwapChain();
+            CreatePipeline();
+            CreateAnalysisResources();
+            RecreateOutputResources();
+            CreateShieldTexture();
+            CreateDebugResources();
+            CreateHintResources();
+            m_hintUntilMs = 0;
+            ClearAllToBlack();
+
+            D3D11_TEXTURE2D_DESC staging{};
+            m_outputHistoryTextures[0]->GetDesc(&staging);
+            staging.Usage = D3D11_USAGE_STAGING;
+            staging.BindFlags = 0;
+            staging.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            staging.MiscFlags = 0;
+            ThrowIfFailed(m_device->CreateTexture2D(
+                &staging, nullptr, m_replayReadback.put()));
+        }
+
+        bool RunSyntheticReplay(const std::wstring& reportPath)
+        {
+            if (!m_replayMode || !m_device || !m_context || !m_replayReadback ||
+                m_outputWidth == 0 || m_outputHeight == 0)
+                return false;
+
+            constexpr float dt = 1.0f / 60.0f;
+            const UINT width = m_outputWidth;
+            const UINT height = m_outputHeight;
+            std::vector<uint32_t> pixels(static_cast<size_t>(width) * height);
+
+            D3D11_TEXTURE2D_DESC sourceDesc{};
+            sourceDesc.Width = width;
+            sourceDesc.Height = height;
+            sourceDesc.MipLevels = 1;
+            sourceDesc.ArraySize = 1;
+            sourceDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            sourceDesc.SampleDesc.Count = 1;
+            sourceDesc.Usage = D3D11_USAGE_DEFAULT;
+            winrt::com_ptr<ID3D11Texture2D> source;
+            ThrowIfFailed(m_device->CreateTexture2D(
+                &sourceDesc, nullptr, source.put()));
+
+            const auto grayPixel = [](uint8_t value) {
+                const uint32_t v = value;
+                return v | (v << 8) | (v << 16) | 0xFF000000u;
+            };
+            const auto fillGray = [&](uint8_t value) {
+                std::fill(pixels.begin(), pixels.end(), grayPixel(value));
+            };
+            const auto fillPanPattern = [&](int offset) {
+                for (UINT y = 0; y < height; ++y)
+                {
+                    for (UINT x = 0; x < width; ++x)
+                    {
+                        const UINT sx = (x + static_cast<UINT>(offset)) % width;
+                        uint8_t value = (((sx / 16u) ^ (y / 16u)) & 1u) ? 210u : 42u;
+                        if (((sx / 7u) + (y / 11u)) % 9u == 0u) value = 126u;
+                        pixels[static_cast<size_t>(y) * width + x] = grayPixel(value);
+                    }
+                }
+            };
+            const auto halfToFloat = [](uint16_t h) {
+                const uint32_t sign = static_cast<uint32_t>(h & 0x8000u) << 16;
+                const uint32_t exponent = (h >> 10) & 0x1Fu;
+                uint32_t mantissa = h & 0x03FFu;
+                uint32_t bits = 0;
+                if (exponent == 0)
+                {
+                    if (mantissa == 0)
+                    {
+                        bits = sign;
+                    }
+                    else
+                    {
+                        int e = -14;
+                        while ((mantissa & 0x0400u) == 0)
+                        {
+                            mantissa <<= 1;
+                            --e;
+                        }
+                        mantissa &= 0x03FFu;
+                        bits = sign |
+                            (static_cast<uint32_t>(e + 127) << 23) |
+                            (mantissa << 13);
+                    }
+                }
+                else if (exponent == 31)
+                {
+                    bits = sign | 0x7F800000u | (mantissa << 13);
+                }
+                else
+                {
+                    bits = sign | ((exponent + 112u) << 23) | (mantissa << 13);
+                }
+                float value = 0.0f;
+                memcpy(&value, &bits, sizeof(value));
+                return value;
+            };
+
+            struct FrameSample
+            {
+                double sourceMean = 0.0;
+                double outputMean = 0.0;
+                double mae = 0.0;
+                double outsideMae = 0.0;
+            };
+
+            uint64_t flowFrames = 0;
+            const auto renderAndSample = [&](const RECT* activeRect) {
+                m_context->UpdateSubresource(source.get(), 0, nullptr,
+                    pixels.data(), width * 4u, 0);
+                QueueCapturedFrame(source.get(), dt);
+                if (m_nvofFlowValid) ++flowFrames;
+
+                m_context->CopyResource(m_replayReadback.get(),
+                    m_outputHistoryTextures[m_outputHistoryIndex].get());
+                D3D11_MAPPED_SUBRESOURCE mapped{};
+                ThrowIfFailed(m_context->Map(
+                    m_replayReadback.get(), 0, D3D11_MAP_READ, 0, &mapped));
+
+                FrameSample sample{};
+                uint64_t count = 0;
+                uint64_t outsideCount = 0;
+                constexpr UINT stride = 4;
+                for (UINT y = 0; y < height; y += stride)
+                {
+                    const auto* row = reinterpret_cast<const uint16_t*>(
+                        static_cast<const uint8_t*>(mapped.pData) +
+                        static_cast<size_t>(y) * mapped.RowPitch);
+                    for (UINT x = 0; x < width; x += stride)
+                    {
+                        const float r = std::clamp(halfToFloat(row[x * 4 + 0]), 0.0f, 1.0f);
+                        const float g = std::clamp(halfToFloat(row[x * 4 + 1]), 0.0f, 1.0f);
+                        const float b = std::clamp(halfToFloat(row[x * 4 + 2]), 0.0f, 1.0f);
+                        const double outputLuma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+                        const uint32_t packed = pixels[static_cast<size_t>(y) * width + x];
+                        const float sb = static_cast<float>(packed & 0xFFu) / 255.0f;
+                        const float sg = static_cast<float>((packed >> 8) & 0xFFu) / 255.0f;
+                        const float sr = static_cast<float>((packed >> 16) & 0xFFu) / 255.0f;
+                        const double sourceLuma = 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
+                        const double error = std::fabs(outputLuma - sourceLuma);
+
+                        sample.sourceMean += sourceLuma;
+                        sample.outputMean += outputLuma;
+                        sample.mae += error;
+                        ++count;
+
+                        const bool inside = activeRect &&
+                            static_cast<LONG>(x) >= activeRect->left &&
+                            static_cast<LONG>(x) < activeRect->right &&
+                            static_cast<LONG>(y) >= activeRect->top &&
+                            static_cast<LONG>(y) < activeRect->bottom;
+                        if (!inside)
+                        {
+                            sample.outsideMae += error;
+                            ++outsideCount;
+                        }
+                    }
+                }
+                m_context->Unmap(m_replayReadback.get(), 0);
+                if (count)
+                {
+                    sample.sourceMean /= static_cast<double>(count);
+                    sample.outputMean /= static_cast<double>(count);
+                    sample.mae /= static_cast<double>(count);
+                }
+                if (outsideCount)
+                    sample.outsideMae /= static_cast<double>(outsideCount);
+                return sample;
+            };
+
+            const auto resetCase = [&]() {
+                ResetDelayedPipeline();
+                m_timelineSeconds = 0.0f;
+                m_lastHazardTime = -100.0f;
+                m_lastGlobalHazardTime = -100.0f;
+                m_nextSequence = 0;
+                ClearAllToBlack();
+            };
+
+            resetCase();
+            fillGray(96);
+            for (int i = 0; i < 20; ++i) renderAndSample(nullptr);
+            double staticMae = 0.0;
+            for (int i = 0; i < 40; ++i)
+                staticMae += renderAndSample(nullptr).mae;
+            staticMae /= 40.0;
+
+            resetCase();
+            fillGray(20);
+            FrameSample previous = renderAndSample(nullptr);
+            for (int i = 0; i < 19; ++i) previous = renderAndSample(nullptr);
+            double rawVariation = 0.0;
+            double outputVariation = 0.0;
+            for (int i = 0; i < 120; ++i)
+            {
+                fillGray(((i / 2) & 1) ? 235 : 20);
+                const FrameSample current = renderAndSample(nullptr);
+                rawVariation += std::fabs(current.sourceMean - previous.sourceMean);
+                outputVariation += std::fabs(current.outputMean - previous.outputMean);
+                previous = current;
+            }
+            const double flashReduction = rawVariation > 1e-9 ?
+                1.0 - outputVariation / rawVariation : 0.0;
+
+            resetCase();
+            fillGray(24);
+            for (int i = 0; i < 20; ++i) renderAndSample(nullptr);
+            double movingGhostMae = 0.0;
+            constexpr int squareSize = 64;
+            constexpr int movingFrames = 90;
+            for (int i = 0; i < movingFrames; ++i)
+            {
+                fillGray(24);
+                const int x0 = 20 + i * 4;
+                const int y0 = static_cast<int>(height) / 2 - squareSize / 2;
+                const int x1 = std::min(x0 + squareSize, static_cast<int>(width));
+                const int y1 = std::min(y0 + squareSize, static_cast<int>(height));
+                for (int y = std::max(y0, 0); y < y1; ++y)
+                    for (int x = std::max(x0, 0); x < x1; ++x)
+                        pixels[static_cast<size_t>(y) * width + x] = grayPixel(235);
+                const RECT square{ x0, y0, x1, y1 };
+                movingGhostMae += renderAndSample(&square).outsideMae;
+            }
+            movingGhostMae /= static_cast<double>(movingFrames);
+
+            resetCase();
+            fillPanPattern(0);
+            for (int i = 0; i < 12; ++i) renderAndSample(nullptr);
+            double panMae = 0.0;
+            constexpr int panFrames = 90;
+            for (int i = 0; i < panFrames; ++i)
+            {
+                fillPanPattern((i + 1) * 3);
+                panMae += renderAndSample(nullptr).mae;
+            }
+            panMae /= static_cast<double>(panFrames);
+
+            const bool metricsFinite = std::isfinite(staticMae) &&
+                std::isfinite(flashReduction) && std::isfinite(movingGhostMae) &&
+                std::isfinite(panMae);
+            const bool pass = metricsFinite && staticMae < 0.03 &&
+                rawVariation > 0.10 && flashReduction > 0.10 && flowFrames > 0;
+
+            FILE* report = nullptr;
+            if (_wfopen_s(&report, reportPath.c_str(), L"wb") != 0 || !report)
+                return false;
+            std::fprintf(report,
+                "{\n"
+                "  \"schema\": \"FLASHGUARD_REPLAY/1\",\n"
+                "  \"status\": \"%s\",\n"
+                "  \"width\": %u,\n"
+                "  \"height\": %u,\n"
+                "  \"fps\": 60,\n"
+                "  \"static_mae\": %.8f,\n"
+                "  \"flash_raw_variation\": %.8f,\n"
+                "  \"flash_output_variation\": %.8f,\n"
+                "  \"flash_reduction\": %.8f,\n"
+                "  \"moving_square_ghost_mae\": %.8f,\n"
+                "  \"pan_mae\": %.8f,\n"
+                "  \"nvof_grid\": %u,\n"
+                "  \"nvof_flow_frames\": %llu\n"
+                "}\n",
+                pass ? "SUCCESS" : "FAILED", width, height,
+                staticMae, rawVariation, outputVariation, flashReduction,
+                movingGhostMae, panMae, static_cast<unsigned>(m_nvofGridSize),
+                static_cast<unsigned long long>(flowFrames));
+            std::fclose(report);
+            return pass;
         }
 
         void Stop()
@@ -4185,7 +4468,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             ++m_bufferedFrameCount;
             m_bufferedDuration += dt;
 
-            ResolveAnalysisResults(0, false);
+            if (m_replayMode)
+                ResolveAnalysisResults(incoming.sequence, true);
+            else
+                ResolveAnalysisResults(0, false);
             if (m_safety.lookaheadMs == 0)
             {
                 DrawInstantSafetyMap(dt);
@@ -4354,6 +4640,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         std::array<winrt::com_ptr<ID3D11ShaderResourceView>, 2> m_outputHistorySRVs;
         size_t m_outputHistoryIndex = 0;
         bool m_outputHistoryValid = false;
+        bool m_replayMode = false;
+        winrt::com_ptr<ID3D11Texture2D> m_replayReadback;
         std::array<winrt::com_ptr<ID3D11Texture2D>, 2> m_sourceHistoryTextures;
         std::array<winrt::com_ptr<ID3D11RenderTargetView>, 2> m_sourceHistoryRTVs;
         std::array<winrt::com_ptr<ID3D11ShaderResourceView>, 2> m_sourceHistorySRVs;
@@ -5451,6 +5739,24 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         }
     }
 
+    std::wstring ParseArgumentValue(const wchar_t* flag)
+    {
+        std::wstring result;
+        int argc = 0;
+        LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        if (!argv) return result;
+        for (int i = 1; i + 1 < argc; ++i)
+        {
+            if (_wcsicmp(argv[i], flag) == 0)
+            {
+                result = argv[i + 1];
+                break;
+            }
+        }
+        LocalFree(argv);
+        return result;
+    }
+
     std::wstring ParseTitleArgument()
     {
         std::wstring result;
@@ -5512,6 +5818,25 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
         return hwnd;
     }
+
+    HWND CreateReplayWindow(HINSTANCE instance, HMONITOR mon)
+    {
+        WNDCLASSEXW wc{};
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = WndProc;
+        wc.hInstance = instance;
+        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wc.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+        wc.lpszClassName = kWindowClass;
+        RegisterClassExW(&wc);
+
+        MONITORINFO mi{ sizeof(mi) };
+        if (!GetMonitorInfoW(mon, &mi)) return nullptr;
+        return CreateWindowExW(WS_EX_TOOLWINDOW, kWindowClass,
+            L"FlashGuard Synthetic Replay", WS_POPUP,
+            mi.rcMonitor.left, mi.rcMonitor.top, 640, 360,
+            nullptr, nullptr, instance, nullptr);
+    }
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
@@ -5523,6 +5848,35 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         InitCommonControlsEx(&controls);
         if (HasCommandLineFlag(L"--validate-shaders"))
             return ValidateShaderSource() ? 0 : 2;
+
+        const std::wstring replayReport = ParseArgumentValue(L"--synthetic-replay");
+        if (!replayReport.empty())
+        {
+            POINT origin{ 0, 0 };
+            HMONITOR monitor = MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY);
+            HWND replayWindow = CreateReplayWindow(instance, monitor);
+            if (!replayWindow) return 6;
+            try
+            {
+                FlashGuardApp app;
+                RuntimeOptions replayOptions{};
+                replayOptions.profilePreset = 1;
+                replayOptions.contrastReduction = 0.0f;
+                replayOptions.latencyMs = 0;
+                replayOptions.debugOverlay = false;
+                app.ApplyRuntimeOptions(replayOptions);
+                app.InitializeReplay(replayWindow, monitor);
+                const bool passed = app.RunSyntheticReplay(replayReport);
+                app.Stop();
+                DestroyWindow(replayWindow);
+                return passed ? 0 : 7;
+            }
+            catch (...)
+            {
+                DestroyWindow(replayWindow);
+                return 8;
+            }
+        }
 
         HANDLE mutexHandle = CreateMutexW(nullptr, FALSE,
             L"Local\\OutlastFlashGuard.SingleInstance");
