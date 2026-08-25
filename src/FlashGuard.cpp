@@ -1421,13 +1421,24 @@ MainOutput PSMain(VSOut i)
 
         const float eventMask = eventGate * eventDeltaGate;
         const float holdMask = holdGate * holdContentGate * holdDeltaGate;
-        float temporalMask = max(eventMask, holdMask) * (1.0 - motionGate);
+        // A verified CURRENT hazard must be allowed to beat motion classification
+        // on the pixels that are actually changing. Without this arbitration,
+        // the interior of a flashing shape is filtered while its translated or
+        // edge-like boundary is classified as motion and bypasses protection.
+        // Ordinary motion remains unaffected because eventMask is zero when no
+        // current hazard is present. Amplify moderate event confidence so an
+        // analyzer-cell boundary cannot leave a thin flickering outline.
+        const float currentHazardMotionOverride =
+            smoothstep(0.05, 0.35, eventMask);
+        const float effectiveMotionGate =
+            motionGate * (1.0 - currentHazardMotionOverride);
+        float temporalMask = max(eventMask, holdMask) * (1.0 - effectiveMotionGate);
 
         // Only a CURRENT strong detector event can force full temporal authority.
         // Stale memory can remain strong on a static protected surface, but it can
         // never turn newly moving content into a 100% history blend.
         if (eventSeed >= 0.12 && displayedDelta >= 0.018)
-            temporalMask = max(temporalMask, 1.0 - motionGate);
+            temporalMask = max(temporalMask, 1.0 - effectiveMotionGate);
 
         if (temporalMask > 0.001)
         {
