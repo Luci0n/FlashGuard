@@ -1208,9 +1208,9 @@ MainOutput PSMain(VSOut i)
                 // Arbitrary shallow/steep slopes are common for projectiles,
                 // particles and model edges. Cardinal + 45-degree searches can
                 // miss a 3:1 or 3:2 translation even when the raw source clearly
-                // proves motion. Only pay for these extra candidates after the
-                // cheaper searches were inconclusive.
-                if (localMotionGate < 0.45 && samePatchError > 0.012)
+                // proves motion. Refine any non-decisive cheaper match: a partial
+                // cardinal gate must not prevent a better exact oblique candidate.
+                if (localMotionGate < 0.90 && samePatchError > 0.012)
                 {
                     float bestObliqueError = sourceDelta;
                     float2 bestObliqueOffset = float2(0.0, 0.0);
