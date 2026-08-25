@@ -38,6 +38,9 @@ $summary = [ordered]@{
     replay_moving_ghost_mae = $null
     replay_pan_mae = $null
     replay_nvof_flow_frames = $null
+    replay_pan_camera_motion = $null
+    replay_pan_affected_area = $null
+    replay_pan_flow_frames = $null
     status = 'FAILED'
     error = $null
 }
@@ -129,6 +132,9 @@ try {
             $summary.replay_moving_ghost_mae = $replay.moving_square_ghost_mae
             $summary.replay_pan_mae = $replay.pan_mae
             $summary.replay_nvof_flow_frames = $replay.nvof_flow_frames
+            $summary.replay_pan_camera_motion = $replay.pan_camera_motion_mean
+            $summary.replay_pan_affected_area = $replay.pan_affected_area_mean
+            $summary.replay_pan_flow_frames = $replay.pan_flow_frames
         }
         if ($replayExit -ne 0) {
             $replayStage = if ($replay) { $replay.status } else { 'no-report' }

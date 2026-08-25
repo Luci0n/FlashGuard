@@ -1911,6 +1911,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             for (int i = 0; i < 40; ++i)
                 staticMae += renderAndSample(nullptr).mae;
             staticMae /= 40.0;
+            const uint64_t staticFlowFrames = flowFrames;
 
             resetCase();
             fillGray(20);
@@ -1928,6 +1929,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             }
             const double flashReduction = rawVariation > 1e-9 ?
                 1.0 - outputVariation / rawVariation : 0.0;
+            const uint64_t flashFlowFrames = flowFrames - staticFlowFrames;
+            const uint64_t movingFlowStart = flowFrames;
 
             resetCase();
             fillGray(24);
@@ -1949,18 +1952,36 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 movingGhostMae += renderAndSample(&square).outsideMae;
             }
             movingGhostMae /= static_cast<double>(movingFrames);
+            const uint64_t movingFlowFrames = flowFrames - movingFlowStart;
+            const uint64_t panFlowStart = flowFrames;
 
             resetCase();
             fillPanPattern(0);
             for (int i = 0; i < 12; ++i) renderAndSample(nullptr);
             double panMae = 0.0;
+            double panCameraMotion = 0.0;
+            double panAffectedArea = 0.0;
+            double panCoherence = 0.0;
+            double panFlashEnergy = 0.0;
+            float panCameraMotionMax = 0.0f;
             constexpr int panFrames = 90;
             for (int i = 0; i < panFrames; ++i)
             {
                 fillPanPattern((i + 1) * 3);
                 panMae += renderAndSample(nullptr).mae;
+                panCameraMotion += m_latestStats.cameraMotionScore;
+                panAffectedArea += m_latestStats.affectedArea;
+                panCoherence += m_latestStats.directionalCoherence;
+                panFlashEnergy += m_latestStats.flashEnergy;
+                panCameraMotionMax = std::max(
+                    panCameraMotionMax, m_latestStats.cameraMotionScore);
             }
             panMae /= static_cast<double>(panFrames);
+            panCameraMotion /= static_cast<double>(panFrames);
+            panAffectedArea /= static_cast<double>(panFrames);
+            panCoherence /= static_cast<double>(panFrames);
+            panFlashEnergy /= static_cast<double>(panFrames);
+            const uint64_t panFlowFrames = flowFrames - panFlowStart;
 
             const bool metricsFinite = std::isfinite(staticMae) &&
                 std::isfinite(flashReduction) && std::isfinite(movingGhostMae) &&
@@ -1984,12 +2005,27 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "  \"flash_reduction\": %.8f,\n"
                 "  \"moving_square_ghost_mae\": %.8f,\n"
                 "  \"pan_mae\": %.8f,\n"
+                "  \"pan_camera_motion_mean\": %.8f,\n"
+                "  \"pan_camera_motion_max\": %.8f,\n"
+                "  \"pan_affected_area_mean\": %.8f,\n"
+                "  \"pan_coherence_mean\": %.8f,\n"
+                "  \"pan_flash_energy_mean\": %.8f,\n"
                 "  \"nvof_grid\": %u,\n"
+                "  \"static_flow_frames\": %llu,\n"
+                "  \"flash_flow_frames\": %llu,\n"
+                "  \"moving_flow_frames\": %llu,\n"
+                "  \"pan_flow_frames\": %llu,\n"
                 "  \"nvof_flow_frames\": %llu\n"
                 "}\n",
                 pass ? "SUCCESS" : "FAILED", width, height,
                 staticMae, rawVariation, outputVariation, flashReduction,
-                movingGhostMae, panMae, static_cast<unsigned>(m_nvofGridSize),
+                movingGhostMae, panMae, panCameraMotion, panCameraMotionMax,
+                panAffectedArea, panCoherence, panFlashEnergy,
+                static_cast<unsigned>(m_nvofGridSize),
+                static_cast<unsigned long long>(staticFlowFrames),
+                static_cast<unsigned long long>(flashFlowFrames),
+                static_cast<unsigned long long>(movingFlowFrames),
+                static_cast<unsigned long long>(panFlowFrames),
                 static_cast<unsigned long long>(flowFrames));
             std::fclose(report);
             return pass;
