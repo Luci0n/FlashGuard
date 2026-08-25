@@ -1,0 +1,47 @@
+# Visual Studio / MSVC
+.vs/
+*.suo
+*.user
+*.VC.db
+*.VC.opendb
+*.pdb
+*.idb
+*.ilk
+*.obj
+*.iobj
+*.ipdb
+*.tlog/
+*.lastbuildstate
+
+# Build products and distributables
+build/
+bin/
+out/
+Debug/
+Release/
+x64/
+x86/
+*.exe
+*.dll
+*.lib
+*.exp
+
+# Logs, temporary diagnostics, benchmarks, and generated artifacts
+*.log
+*.tmp
+*.bak
+*.cache
+*.dmp
+*.etl
+*-qa.png
+flashbench/results/
+flashbench/artifacts/
+tests/replay-corpus/generated/
+tests/replay-corpus/*.mp4
+tests/replay-corpus/*.avi
+tests/replay-corpus/*.mov
+
+# OS/editor files
+Thumbs.db
+Desktop.ini
+.vscode/
