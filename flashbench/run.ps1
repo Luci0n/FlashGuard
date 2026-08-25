@@ -13,6 +13,7 @@ $outputPath = Join-Path $OutputDir 'summary.json'
 $logPath = Join-Path $OutputDir 'flashbench.log'
 $smokeReportPath = Join-Path $OutputDir 'nvof-smoke.json'
 $replayReportPath = Join-Path $OutputDir 'synthetic-replay.json'
+$flashSweepPath = Join-Path $OutputDir 'flash-sweep.json'
 $visualDir = Join-Path $OutputDir 'visual'
 
 $summary = [ordered]@{
@@ -37,6 +38,9 @@ $summary = [ordered]@{
     replay_status = 'NOT_RUN'
     replay_static_mae = $null
     replay_flash_reduction = $null
+    flash_sweep_status = 'NOT_RUN'
+    flash_sweep_min_reduction = $null
+    flash_sweep_max_output_flashes_per_second = $null
     replay_moving_ghost_mae = $null
     replay_moving_inside_mae = $null
     replay_moving_edge_mae = $null
@@ -153,12 +157,33 @@ try {
             $summary.replay_pan_affected_area = $replay.pan_affected_area_mean
             $summary.replay_pan_flow_frames = $replay.pan_flow_frames
         }
+        if (Test-Path $flashSweepPath) {
+            $flashSweep = Get-Content -Raw $flashSweepPath | ConvertFrom-Json
+            $summary.flash_sweep_status = $flashSweep.status
+            if ($flashSweep.cases.Count -gt 0) {
+                $summary.flash_sweep_min_reduction =
+                    ($flashSweep.cases | Measure-Object -Property reduction -Minimum).Minimum
+                $summary.flash_sweep_max_output_flashes_per_second =
+                    ($flashSweep.cases |
+                        Measure-Object -Property output_general_flashes_per_second -Maximum).Maximum
+                $table = $flashSweep.cases |
+                    Select-Object case, frequency_hz, reduction, peak_output_delta,
+                        output_general_flashes_per_second, output_red_flashes_per_second |
+                    Format-Table -AutoSize | Out-String
+                "Flash frequency sweep:`n$table" | Add-Content -Encoding utf8 $logPath
+                Write-Host "Flash frequency sweep:"
+                Write-Host $table
+            }
+        }
         if ($replayExit -ne 0) {
             $replayStage = if ($replay) { $replay.status } else { 'no-report' }
             throw "synthetic replay failed ($replayStage) with exit code $replayExit"
         }
         if (-not $replay -or $replay.status -ne 'SUCCESS') {
             throw 'synthetic replay did not produce a SUCCESS report'
+        }
+        if (-not (Test-Path $flashSweepPath) -or $summary.flash_sweep_status -ne 'SUCCESS') {
+            throw '5-30 Hz flash sweep did not produce a SUCCESS report'
         }
         $summary.replay_status = 'SUCCESS'
 

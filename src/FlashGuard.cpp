@@ -1941,6 +1941,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 const uint32_t v = value;
                 return v | (v << 8) | (v << 16) | 0xFF000000u;
             };
+            const auto rgbPixel = [](uint8_t r, uint8_t g, uint8_t b) {
+                return static_cast<uint32_t>(b) |
+                    (static_cast<uint32_t>(g) << 8) |
+                    (static_cast<uint32_t>(r) << 16) | 0xFF000000u;
+            };
             const auto fillGray = [&](uint8_t value) {
                 std::fill(pixels.begin(), pixels.end(), grayPixel(value));
             };
@@ -2067,6 +2072,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             {
                 double sourceMean = 0.0;
                 double outputMean = 0.0;
+                double sourceRed = 0.0;
+                double sourceGreen = 0.0;
+                double sourceBlue = 0.0;
+                double outputRed = 0.0;
+                double outputGreen = 0.0;
+                double outputBlue = 0.0;
                 double mae = 0.0;
                 double outsideMae = 0.0;
                 double insideMae = 0.0;
@@ -2115,6 +2126,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
                         sample.sourceMean += sourceLuma;
                         sample.outputMean += outputLuma;
+                        sample.sourceRed += sr;
+                        sample.sourceGreen += sg;
+                        sample.sourceBlue += sb;
+                        sample.outputRed += r;
+                        sample.outputGreen += g;
+                        sample.outputBlue += b;
                         sample.mae += error;
                         ++count;
 
@@ -2152,6 +2169,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 {
                     sample.sourceMean /= static_cast<double>(count);
                     sample.outputMean /= static_cast<double>(count);
+                    sample.sourceRed /= static_cast<double>(count);
+                    sample.sourceGreen /= static_cast<double>(count);
+                    sample.sourceBlue /= static_cast<double>(count);
+                    sample.outputRed /= static_cast<double>(count);
+                    sample.outputGreen /= static_cast<double>(count);
+                    sample.outputBlue /= static_cast<double>(count);
                     sample.mae /= static_cast<double>(count);
                 }
                 if (outsideCount)
@@ -2200,6 +2223,225 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const double flashReduction = rawVariation > 1e-9 ?
                 1.0 - outputVariation / rawVariation : 0.0;
             const uint64_t flashFlowFrames = flowFrames - staticFlowFrames;
+
+            // Standards-oriented flash sweep. W3C defines a flash as two
+            // opposing transitions. For the general-flash rate below, a
+            // transition must change relative luminance by at least 0.10 and
+            // have a darker state below 0.80. The saturated-red counter follows
+            // the WCAG working definition using R/(R+G+B) >= 0.8 and a
+            // (R-G-B)*320 transition magnitude above 20. The quarter-screen case
+            // is deliberately conservative but is not a formal visual-angle
+            // compliance measurement.
+            struct FlashSweepResult
+            {
+                std::string caseName;
+                double frequencyHz = 0.0;
+                double rawVariation = 0.0;
+                double outputVariation = 0.0;
+                double reduction = 0.0;
+                double peakOutputDelta = 0.0;
+                double rawGeneralFlashesPerSecond = 0.0;
+                double outputGeneralFlashesPerSecond = 0.0;
+                double rawRedFlashesPerSecond = 0.0;
+                double outputRedFlashesPerSecond = 0.0;
+            };
+            std::vector<FlashSweepResult> flashSweep;
+            constexpr std::array<double, 8> sweepFrequencies{
+                5.0, 7.5, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0
+            };
+            struct SweepCase
+            {
+                const char* name;
+                int kind; // 0=full luminance, 1=full saturated red, 2=quarter luminance
+            };
+            constexpr std::array<SweepCase, 3> sweepCases{{
+                { "luminance_full", 0 },
+                { "red_full", 1 },
+                { "luminance_quarter", 2 }
+            }};
+            const auto countGeneralTransition = [](
+                double previousValue, double currentValue, int& rises, int& falls) {
+                const double delta = currentValue - previousValue;
+                if (std::fabs(delta) >= 0.10 &&
+                    std::min(previousValue, currentValue) < 0.80)
+                {
+                    if (delta > 0.0) ++rises;
+                    else ++falls;
+                }
+            };
+            const auto countRedTransition = [](
+                const FrameSample& previousSample, const FrameSample& currentSample,
+                bool output, int& rises, int& falls) {
+                const double pr = output ? previousSample.outputRed : previousSample.sourceRed;
+                const double pg = output ? previousSample.outputGreen : previousSample.sourceGreen;
+                const double pb = output ? previousSample.outputBlue : previousSample.sourceBlue;
+                const double cr = output ? currentSample.outputRed : currentSample.sourceRed;
+                const double cg = output ? currentSample.outputGreen : currentSample.sourceGreen;
+                const double cb = output ? currentSample.outputBlue : currentSample.sourceBlue;
+                const double previousSum = pr + pg + pb;
+                const double currentSum = cr + cg + cb;
+                const bool saturated =
+                    (previousSum > 1e-9 && pr / previousSum >= 0.80) ||
+                    (currentSum > 1e-9 && cr / currentSum >= 0.80);
+                const double previousMetric = std::max(0.0, pr - pg - pb) * 320.0;
+                const double currentMetric = std::max(0.0, cr - cg - cb) * 320.0;
+                const double delta = currentMetric - previousMetric;
+                if (saturated && std::fabs(delta) > 20.0)
+                {
+                    if (delta > 0.0) ++rises;
+                    else ++falls;
+                }
+            };
+            constexpr int sweepFrames = 120; // two seconds at 60 FPS
+            constexpr double sweepSeconds = static_cast<double>(sweepFrames) / 60.0;
+            bool flashSweepPass = true;
+            for (const SweepCase& sweepCase : sweepCases)
+            {
+                for (double frequencyHz : sweepFrequencies)
+                {
+                    resetCase();
+                    if (sweepCase.kind == 1)
+                        std::fill(pixels.begin(), pixels.end(), rgbPixel(8, 8, 8));
+                    else
+                        fillGray(20);
+                    FrameSample previousSweep = renderAndSample(nullptr);
+                    for (int i = 0; i < 19; ++i)
+                        previousSweep = renderAndSample(nullptr);
+
+                    FlashSweepResult result{};
+                    result.caseName = sweepCase.name;
+                    result.frequencyHz = frequencyHz;
+                    double rawRedVariation = 0.0;
+                    double outputRedVariation = 0.0;
+                    int rawGeneralRises = 0;
+                    int rawGeneralFalls = 0;
+                    int outputGeneralRises = 0;
+                    int outputGeneralFalls = 0;
+                    int rawRedRises = 0;
+                    int rawRedFalls = 0;
+                    int outputRedRises = 0;
+                    int outputRedFalls = 0;
+
+                    for (int i = 0; i < sweepFrames; ++i)
+                    {
+                        const double phase = std::fmod(
+                            (static_cast<double>(i) + 0.5) * frequencyHz / 60.0, 1.0);
+                        const bool high = phase < 0.5;
+                        if (sweepCase.kind == 0)
+                        {
+                            fillGray(high ? 235 : 20);
+                        }
+                        else if (sweepCase.kind == 1)
+                        {
+                            const uint32_t value = high ?
+                                rgbPixel(235, 0, 0) : rgbPixel(8, 8, 8);
+                            std::fill(pixels.begin(), pixels.end(), value);
+                        }
+                        else
+                        {
+                            fillGray(20);
+                            if (high)
+                            {
+                                const int x0 = static_cast<int>(width) / 4;
+                                const int y0 = static_cast<int>(height) / 4;
+                                const int x1 = x0 + static_cast<int>(width) / 2;
+                                const int y1 = y0 + static_cast<int>(height) / 2;
+                                for (int y = y0; y < y1; ++y)
+                                    for (int x = x0; x < x1; ++x)
+                                        pixels[static_cast<size_t>(y) * width + x] =
+                                            grayPixel(235);
+                            }
+                        }
+
+                        const FrameSample currentSweep = renderAndSample(nullptr);
+                        const double rawDelta =
+                            std::fabs(currentSweep.sourceMean - previousSweep.sourceMean);
+                        const double outputDelta =
+                            std::fabs(currentSweep.outputMean - previousSweep.outputMean);
+                        result.rawVariation += rawDelta;
+                        result.outputVariation += outputDelta;
+                        result.peakOutputDelta = std::max(
+                            result.peakOutputDelta, outputDelta);
+                        rawRedVariation += std::fabs(
+                            currentSweep.sourceRed - previousSweep.sourceRed);
+                        outputRedVariation += std::fabs(
+                            currentSweep.outputRed - previousSweep.outputRed);
+                        countGeneralTransition(previousSweep.sourceMean,
+                            currentSweep.sourceMean, rawGeneralRises, rawGeneralFalls);
+                        countGeneralTransition(previousSweep.outputMean,
+                            currentSweep.outputMean, outputGeneralRises, outputGeneralFalls);
+                        countRedTransition(previousSweep, currentSweep, false,
+                            rawRedRises, rawRedFalls);
+                        countRedTransition(previousSweep, currentSweep, true,
+                            outputRedRises, outputRedFalls);
+                        previousSweep = currentSweep;
+                    }
+
+                    result.reduction = result.rawVariation > 1e-9 ?
+                        1.0 - result.outputVariation / result.rawVariation : 0.0;
+                    result.rawGeneralFlashesPerSecond =
+                        static_cast<double>(std::min(rawGeneralRises, rawGeneralFalls)) /
+                        sweepSeconds;
+                    result.outputGeneralFlashesPerSecond =
+                        static_cast<double>(std::min(
+                            outputGeneralRises, outputGeneralFalls)) / sweepSeconds;
+                    result.rawRedFlashesPerSecond =
+                        static_cast<double>(std::min(rawRedRises, rawRedFalls)) /
+                        sweepSeconds;
+                    result.outputRedFlashesPerSecond =
+                        static_cast<double>(std::min(outputRedRises, outputRedFalls)) /
+                        sweepSeconds;
+
+                    const bool stimulusValid =
+                        result.rawGeneralFlashesPerSecond > 3.0 ||
+                        (sweepCase.kind == 1 && result.rawRedFlashesPerSecond > 3.0);
+                    const bool outputBelowThree =
+                        result.outputGeneralFlashesPerSecond <= 3.0 &&
+                        (sweepCase.kind != 1 ||
+                         result.outputRedFlashesPerSecond <= 3.0);
+                    flashSweepPass = flashSweepPass && stimulusValid && outputBelowThree;
+                    flashSweep.push_back(result);
+                }
+            }
+
+            const auto flashSweepPath =
+                std::filesystem::path(reportPath).parent_path() / L"flash-sweep.json";
+            FILE* flashSweepReport = nullptr;
+            if (_wfopen_s(&flashSweepReport, flashSweepPath.c_str(), L"wb") != 0 ||
+                !flashSweepReport)
+                return false;
+            std::fprintf(flashSweepReport,
+                "{\n"
+                "  \"schema\": \"FLASHGUARD_FLASH_SWEEP/1\",\n"
+                "  \"status\": \"%s\",\n"
+                "  \"fps\": 60,\n"
+                "  \"duration_seconds_per_case\": %.2f,\n"
+                "  \"note\": \"Screen-mean W3C-style regression; quarter-screen area is not a formal visual-angle certification.\",\n"
+                "  \"cases\": [\n",
+                flashSweepPass ? "SUCCESS" : "FAILED", sweepSeconds);
+            for (size_t i = 0; i < flashSweep.size(); ++i)
+            {
+                const FlashSweepResult& result = flashSweep[i];
+                std::fprintf(flashSweepReport,
+                    "    {\"case\":\"%s\",\"frequency_hz\":%.2f,"
+                    "\"raw_variation\":%.8f,\"output_variation\":%.8f,"
+                    "\"reduction\":%.8f,\"peak_output_delta\":%.8f,"
+                    "\"raw_general_flashes_per_second\":%.3f,"
+                    "\"output_general_flashes_per_second\":%.3f,"
+                    "\"raw_red_flashes_per_second\":%.3f,"
+                    "\"output_red_flashes_per_second\":%.3f}%s\n",
+                    result.caseName.c_str(), result.frequencyHz,
+                    result.rawVariation, result.outputVariation, result.reduction,
+                    result.peakOutputDelta,
+                    result.rawGeneralFlashesPerSecond,
+                    result.outputGeneralFlashesPerSecond,
+                    result.rawRedFlashesPerSecond,
+                    result.outputRedFlashesPerSecond,
+                    (i + 1 < flashSweep.size()) ? "," : "");
+            }
+            std::fputs("  ]\n}\n", flashSweepReport);
+            std::fclose(flashSweepReport);
+
             const uint64_t movingFlowStart = flowFrames;
 
             resetCase();
@@ -2383,6 +2625,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 std::isfinite(fastPanMae) && std::isfinite(extremePanMae);
             const bool pass = metricsFinite && staticMae < 0.005 &&
                 rawVariation > 0.10 && flashReduction > 0.90 &&
+                flashSweepPass &&
                 movingGhostMae < 0.005 && smallMovingGhostMae < 0.003 &&
                 panMae < 0.010 && fastPanMae < 0.020 &&
                 extremePanMae < 0.030 && flowFrames > 0;
