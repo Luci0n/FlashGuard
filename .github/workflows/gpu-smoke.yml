@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 jobs:
   gpu-smoke:
@@ -15,6 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build and inspect GPU runtime
+        id: gpu
+        continue-on-error: true
         shell: powershell
         run: .\flashbench\run.ps1 -Mode gpu-smoke -OutputDir flashbench/results
       - name: Upload GPU smoke report
@@ -25,3 +28,26 @@ jobs:
           path: flashbench/results/
           if-no-files-found: warn
           retention-days: 14
+      - name: Publish GPU smoke status
+        if: always()
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GPU_OUTCOME: ${{ steps.gpu.outcome }}
+        run: |
+          $state = if ($env:GPU_OUTCOME -eq 'success') { 'success' } else { 'failure' }
+          $description = if ($state -eq 'success') { 'FlashBench GPU smoke passed' } else { 'FlashBench GPU smoke failed' }
+          $body = @{
+            state = $state
+            context = 'flashbench/gpu-smoke'
+            description = $description
+            target_url = 'https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          } | ConvertTo-Json
+          Invoke-RestMethod -Method Post `
+            -Uri 'https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }}' `
+            -Headers @{ Authorization = "Bearer $env:GH_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28'; 'User-Agent' = 'FlashBench' } `
+            -ContentType 'application/json' -Body $body | Out-Null
+      - name: Fail workflow when GPU smoke failed
+        if: steps.gpu.outcome != 'success'
+        shell: powershell
+        run: exit 1
