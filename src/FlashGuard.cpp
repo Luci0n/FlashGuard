@@ -801,7 +801,16 @@ MainOutput PSMain(VSOut i)
     float gray = Luma(cur);
     float isolatedRed = saturate((cur.r - max(cur.g, cur.b) - redThreshold) /
                                  max(1.0 - redThreshold, 0.01));
-    cur = lerp(cur, gray.xxx, isolatedRed * redDesat * max(redGate, localRedGate));
+    // A red flash event must remain desaturated through the hazard-memory
+    // window. Event-only desaturation lets a 5-10 Hz high half-cycle become
+    // saturated red again before the opposing transition, which still forms a
+    // WCAG red-flash pair even when luminance is already temporally limited.
+    // coarseRisk is persistent flash memory; isolatedRed ensures unrelated
+    // non-red content is unaffected by this hold.
+    const float redEventGate = max(redGate, localRedGate);
+    const float redMemoryGate = smoothstep(0.10, 0.50, coarseRisk);
+    const float redMitigationGate = max(redEventGate, redMemoryGate);
+    cur = lerp(cur, gray.xxx, isolatedRed * redDesat * redMitigationGate);
 
     // Preserve the RAW source before temporal feedback. This history is used for
     // local motion transport and release discrimination. Keeping it raw means a
