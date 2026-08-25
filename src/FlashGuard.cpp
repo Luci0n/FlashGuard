@@ -1001,10 +1001,10 @@ MainOutput PSMain(VSOut i)
                 }
             }
 
-            // Fresh NVOFA stays authoritative. If the NVIDIA session is only
-            // anchor-updated (or unavailable), keep the portable local matcher as
-            // a safety net for small moving content that the coarse scheduler misses.
-            if ((!hardwareFlowAvailable || !hardwareFlowValid) &&
+            // Fresh NVOFA gets first chance, but bright/flat surfaces can leave
+            // weak edge/disocclusion evidence. Let the raw-image matcher verify
+            // low-confidence pixels instead of accepting a partial motion gate.
+            if ((!hardwareFlowValid || localMotionGate < 0.80) &&
                 P6.y < max(0.10, P5.x * 0.75) &&
                 sourceDelta > 0.010 && coarseMotion < 0.30 &&
                 max(coarseEvent, coarseRisk) > 0.010)
@@ -1116,8 +1116,10 @@ MainOutput PSMain(VSOut i)
                         1.0 - bestPatchError / samePatchError);
                     const float absoluteMatch = 1.0 - smoothstep(0.040, 0.145,
                         bestPatchError / 5.0);
-                    localMotionGate = smoothstep(0.32, 0.68, patchImprovement) *
-                        absoluteMatch;
+                    const float portableGate =
+                        smoothstep(0.32, 0.68, patchImprovement) * absoluteMatch;
+                    localMotionGate = max(localMotionGate,
+                        portableGate > 0.60 ? 1.0 : portableGate);
                 }
 
                 // Diagonal fallback only when cardinal transport was inconclusive.
@@ -1197,7 +1199,7 @@ MainOutput PSMain(VSOut i)
                             patchImprovement) * absoluteMatch;
                         if (diagonalGate > localMotionGate)
                         {
-                            localMotionGate = diagonalGate;
+                            localMotionGate = diagonalGate > 0.60 ? 1.0 : diagonalGate;
                         }
                     }
                 }
