@@ -250,6 +250,7 @@ namespace
         nvof5::NV_OF_D3D11_API_FUNCTION_LIST api{};
         nvof5::NvOFHandle handle = nullptr;
         std::array<nvof5::NvOFGPUBufferHandle, 4> buffers{};
+        std::array<ComPtr<ID3D11Resource>, 4> resources{};
 
         ~NvofSession()
         {
@@ -430,6 +431,11 @@ int wmain(int argc, wchar_t** argv)
     const UINT clearValue[4] = { 0, 0, 0, 0 };
     context->ClearUnorderedAccessViewUint(forwardUav.Get(), clearValue);
     context->ClearUnorderedAccessViewUint(backwardUav.Get(), clearValue);
+
+    // Keep registered D3D resources alive until NvofSession unregisters their
+    // handles. Local texture ComPtrs are destroyed before the earlier-declared
+    // session object during function teardown.
+    session.resources = { currentTex, previousTex, forwardTex, backwardTex };
 
     if (!session.api.nvOFRegisterResourceD3D11 ||
         session.api.nvOFRegisterResourceD3D11(session.handle, currentTex.Get(), &session.buffers[0]) != nvof5::NV_OF_SUCCESS ||
