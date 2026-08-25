@@ -810,7 +810,15 @@ MainOutput PSMain(VSOut i)
     const float redEventGate = max(redGate, localRedGate);
     const float redMemoryGate = smoothstep(0.10, 0.50, coarseRisk);
     const float redMitigationGate = max(redEventGate, redMemoryGate);
-    cur = lerp(cur, gray.xxx, isolatedRed * redDesat * redMitigationGate);
+    // The normal profile desaturation is intentionally moderate, but once a red
+    // transition is part of an accumulated flash sequence the residual chroma
+    // itself can keep forming WCAG saturated-red pairs. Ramp only the hazardous
+    // red component toward full desaturation as flash memory becomes confident.
+    const float repeatedRedDesat = smoothstep(0.18, 0.58, redMitigationGate);
+    const float effectiveRedDesat =
+        saturate(lerp(redDesat, 1.0, repeatedRedDesat));
+    cur = lerp(cur, gray.xxx,
+        isolatedRed * effectiveRedDesat * redMitigationGate);
 
     // Preserve the RAW source before temporal feedback. This history is used for
     // local motion transport and release discrimination. Keeping it raw means a
@@ -1421,15 +1429,19 @@ MainOutput PSMain(VSOut i)
 
         const float eventMask = eventGate * eventDeltaGate;
         const float holdMask = holdGate * holdContentGate * holdDeltaGate;
-        // A verified CURRENT hazard must be allowed to beat motion classification
-        // on the pixels that are actually changing. Without this arbitration,
-        // the interior of a flashing shape is filtered while its translated or
-        // edge-like boundary is classified as motion and bypasses protection.
-        // Ordinary motion remains unaffected because eventMask is zero when no
-        // current hazard is present. Amplify moderate event confidence so an
-        // analyzer-cell boundary cannot leave a thin flickering outline.
+        // NVIDIA/verified translation wins for an isolated moving edge. A flash is
+        // allowed to override that bypass only after the instant temporal state
+        // has accumulated repeated-transition evidence. PSInstantSafety clears
+        // this memory when coherent translation explains the change, so ordinary
+        // scrolling and object motion cannot turn one appearance/disappearance
+        // pair into a long history blend.
+        const float4 repeatedState = PreviousTemporal.SampleLevel(
+            LinearClamp, i.uv, 0.0);
+        const float repeatedRisk = P7.x > 0.5 ? saturate(repeatedState.g) : 0.0;
+        const float repeatedEventGate =
+            smoothstep(0.16, 0.50, repeatedRisk) * eventGate;
         const float currentHazardMotionOverride =
-            smoothstep(0.05, 0.35, eventMask);
+            smoothstep(0.08, 0.36, eventMask) * repeatedEventGate;
         const float effectiveMotionGate =
             motionGate * (1.0 - currentHazardMotionOverride);
         float temporalMask = max(eventMask, holdMask) * (1.0 - effectiveMotionGate);
@@ -1437,7 +1449,8 @@ MainOutput PSMain(VSOut i)
         // Only a CURRENT strong detector event can force full temporal authority.
         // Stale memory can remain strong on a static protected surface, but it can
         // never turn newly moving content into a 100% history blend.
-        if (eventSeed >= 0.12 && displayedDelta >= 0.018)
+        if (eventSeed >= 0.12 && displayedDelta >= 0.018 &&
+            (motionGate < 0.55 || repeatedEventGate > 0.45))
             temporalMask = max(temporalMask, 1.0 - effectiveMotionGate);
 
         if (temporalMask > 0.001)
@@ -1459,6 +1472,15 @@ MainOutput PSMain(VSOut i)
             const float3 candidateLinear = SrgbToLinear(cur);
             float3 temporallyFiltered = LinearToSrgb(
                 lerp(previousLinear, candidateLinear, alpha));
+            // Once several hazardous reversals have accumulated, amplitude-only
+            // smoothing still produces an opposing output change every half-cycle.
+            // Hold the already-filtered pixel through the repeated event instead.
+            // Motion cannot reach this state unless the flash detector continued
+            // to see genuine reversals despite the translation evidence above.
+            const float repeatedHoldGate =
+                smoothstep(0.46, 0.72, repeatedRisk) * eventGate;
+            if (repeatedHoldGate > 0.72)
+                temporallyFiltered = previousDisplayed;
             float limitedL = Luma(temporallyFiltered);
 
             // During a CURRENT hazardous transition, keep the hard symmetric
@@ -1470,6 +1492,8 @@ MainOutput PSMain(VSOut i)
             float maxStep = currentEvent ? min(profileStep, standardsStep) :
                 max(standardsStep, 2.60 * dt);
             maxStep *= currentEvent ? lerp(1.0, 0.72, severe) : 1.0;
+            if (repeatedHoldGate > 0.72)
+                maxStep = 0.0;
             const float slewLimitedL = clamp(limitedL,
                 previousDisplayedL - maxStep,
                 previousDisplayedL + maxStep);
@@ -1919,13 +1943,22 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         }
 
         bool RunSyntheticReplay(const std::wstring& reportPath,
-                                const std::wstring& visualDir = L"")
+                                const std::wstring& visualDir = L"",
+                                int replayFps = 60,
+                                float motionScale = 1.0f)
         {
             if (!m_replayMode || !m_device || !m_context || !m_replayReadback ||
                 m_outputWidth == 0 || m_outputHeight == 0)
                 return false;
 
-            constexpr float dt = 1.0f / 60.0f;
+            replayFps = std::clamp(replayFps, 30, 240);
+            motionScale = std::clamp(motionScale, 0.25f, 4.0f);
+            const float dt = 1.0f / static_cast<float>(replayFps);
+            const double motionFrameScale =
+                60.0 / static_cast<double>(replayFps) *
+                static_cast<double>(motionScale);
+            const int warmupFrames = std::max(8, replayFps / 3);
+            const int settleFrames = std::max(12, replayFps / 2);
             const UINT width = m_outputWidth;
             const UINT height = m_outputHeight;
             std::vector<uint32_t> pixels(static_cast<size_t>(width) * height);
@@ -1940,7 +1973,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     visualReadme)
                 {
                     std::fputs("Each BMP is SOURCE | FILTERED | 6x RGB DIFFERENCE.\r\n"
-                        "Frames are sampled every 10 synthetic frames at 60 FPS.\r\n", visualReadme);
+                        "Sampling cadence follows the selected synthetic replay FPS.\r\n",
+                        visualReadme);
                     std::fclose(visualReadme);
                 }
             }
@@ -2256,24 +2290,31 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
             resetCase();
             fillGray(96);
-            for (int i = 0; i < 20; ++i) renderAndSample(nullptr);
+            for (int i = 0; i < warmupFrames; ++i) renderAndSample(nullptr);
             double staticMae = 0.0;
-            for (int i = 0; i < 40; ++i)
+            const int staticFrames = std::max(20, replayFps * 2 / 3);
+            for (int i = 0; i < staticFrames; ++i)
                 staticMae += renderAndSample(nullptr).mae;
-            staticMae /= 40.0;
+            staticMae /= static_cast<double>(staticFrames);
             const uint64_t staticFlowFrames = flowFrames;
 
             resetCase();
             fillGray(20);
             FrameSample previous = renderAndSample(nullptr);
-            for (int i = 0; i < 19; ++i) previous = renderAndSample(nullptr);
+            for (int i = 1; i < warmupFrames; ++i)
+                previous = renderAndSample(nullptr);
             double rawVariation = 0.0;
             double outputVariation = 0.0;
-            for (int i = 0; i < 120; ++i)
+            const int flashFrames = replayFps * 2;
+            for (int i = 0; i < flashFrames; ++i)
             {
-                fillGray(((i / 2) & 1) ? 235 : 20);
+                const double phase = std::fmod(
+                    (static_cast<double>(i) + 0.5) * 15.0 /
+                    static_cast<double>(replayFps), 1.0);
+                fillGray(phase < 0.5 ? 235 : 20);
                 const FrameSample current = renderAndSample(nullptr,
-                    (writeVisuals && i % 10 == 0) ? L"flash_15hz" : nullptr,
+                    (writeVisuals && i % std::max(1, replayFps / 6) == 0) ?
+                        L"flash_15hz" : nullptr,
                     i);
                 rawVariation += std::fabs(current.sourceMean - previous.sourceMean);
                 outputVariation += std::fabs(current.outputMean - previous.outputMean);
@@ -2328,9 +2369,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 { "red_full", 1 },
                 { "luminance_quarter", 2 }
             }};
-            constexpr int sweepFps = 60;
-            constexpr int sweepFrames = 120; // two seconds at 60 FPS
-            constexpr double sweepSeconds =
+            const int sweepFps = replayFps;
+            const int sweepFrames = sweepFps * 2;
+            const double sweepSeconds =
                 static_cast<double>(sweepFrames) / static_cast<double>(sweepFps);
 
             struct WcagChromaticity
@@ -2518,13 +2559,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             {
                 for (double frequencyHz : sweepFrequencies)
                 {
+                    if (frequencyHz > static_cast<double>(sweepFps) * 0.5)
+                        continue; // not representable at this synthetic frame rate
                     resetCase();
                     if (sweepCase.kind == 1)
                         std::fill(pixels.begin(), pixels.end(), rgbPixel(8, 8, 8));
                     else
                         fillGray(20);
                     FrameSample previousSweep = renderAndSample(nullptr);
-                    for (int i = 0; i < 19; ++i)
+                    for (int i = 1; i < warmupFrames; ++i)
                         previousSweep = renderAndSample(nullptr);
 
                     FlashSweepResult result{};
@@ -2539,7 +2582,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     for (int i = 0; i < sweepFrames; ++i)
                     {
                         const double phase = std::fmod(
-                            (static_cast<double>(i) + 0.5) * frequencyHz / 60.0, 1.0);
+                            (static_cast<double>(i) + 0.5) * frequencyHz /
+                            static_cast<double>(sweepFps), 1.0);
                         const bool high = phase < 0.5;
                         if (sweepCase.kind == 0)
                         {
@@ -2695,10 +2739,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             double movingInsideMae = 0.0;
             double movingEdgeMae = 0.0;
             constexpr int squareSize = 64;
-            constexpr int movingFrames = 90;
+            const int movingFrames = std::max(45, replayFps * 3 / 2);
             const int settledX0 = 20;
             const int settledY0 = static_cast<int>(height) / 2 - squareSize / 2;
-            for (int i = 0; i < 30; ++i)
+            for (int i = 0; i < settleFrames; ++i)
             {
                 fillGray(24);
                 const int x1 = std::min(settledX0 + squareSize, static_cast<int>(width));
@@ -2711,7 +2755,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             for (int i = 0; i < movingFrames; ++i)
             {
                 fillGray(24);
-                const int x0 = settledX0 + (i + 1) * 4;
+                const int x0 = settledX0 + static_cast<int>(std::lround(
+                    static_cast<double>(i + 1) * 4.0 * motionFrameScale));
                 const int y0 = static_cast<int>(height) / 2 - squareSize / 2;
                 const int x1 = std::min(x0 + squareSize, static_cast<int>(width));
                 const int y1 = std::min(y0 + squareSize, static_cast<int>(height));
@@ -2737,10 +2782,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const uint64_t obliqueFlowStart = flowFrames;
             resetCase();
             constexpr int obliqueSize = 32;
-            constexpr int obliqueFrames = 80;
+            const int obliqueFrames = std::max(40, replayFps * 4 / 3);
             const int obliqueStartX = 80;
             const int obliqueStartY = 80;
-            for (int i = 0; i < 30; ++i)
+            for (int i = 0; i < settleFrames; ++i)
             {
                 fillGray(24);
                 for (int y = obliqueStartY; y < obliqueStartY + obliqueSize; ++y)
@@ -2754,8 +2799,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             for (int i = 0; i < obliqueFrames; ++i)
             {
                 fillGray(24);
-                const int x0 = obliqueStartX + (i + 1) * 3;
-                const int y0 = obliqueStartY + (i + 1);
+                const int x0 = obliqueStartX + static_cast<int>(std::lround(
+                    static_cast<double>(i + 1) * 3.0 * motionFrameScale));
+                const int y0 = obliqueStartY + static_cast<int>(std::lround(
+                    static_cast<double>(i + 1) * 1.0 * motionFrameScale));
                 const int x1 = x0 + obliqueSize;
                 const int y1 = y0 + obliqueSize;
                 for (int y = y0; y < y1; ++y)
@@ -2780,14 +2827,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const uint64_t smallMovingFlowStart = flowFrames;
             resetCase();
             fillGray(72);
-            for (int i = 0; i < 20; ++i) renderAndSample(nullptr);
+            for (int i = 0; i < warmupFrames; ++i) renderAndSample(nullptr);
             double smallMovingGhostMae = 0.0;
             constexpr int smallSquareSize = 24;
-            constexpr int smallMovingFrames = 90;
+            const int smallMovingFrames = std::max(45, replayFps * 3 / 2);
             for (int i = 0; i < smallMovingFrames; ++i)
             {
                 fillGray(72);
-                const int x0 = 40 + i * 2;
+                const int x0 = 40 + static_cast<int>(std::lround(
+                    static_cast<double>(i) * 2.0 * motionFrameScale));
                 const int y0 = static_cast<int>(height) / 3 - smallSquareSize / 2;
                 const int x1 = std::min(x0 + smallSquareSize, static_cast<int>(width));
                 const int y1 = std::min(y0 + smallSquareSize, static_cast<int>(height));
@@ -2806,17 +2854,19 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
             resetCase();
             fillPanPattern(0);
-            for (int i = 0; i < 12; ++i) renderAndSample(nullptr);
+            const int panWarmupFrames = std::max(6, replayFps / 5);
+            for (int i = 0; i < panWarmupFrames; ++i) renderAndSample(nullptr);
             double panMae = 0.0;
             double panCameraMotion = 0.0;
             double panAffectedArea = 0.0;
             double panCoherence = 0.0;
             double panFlashEnergy = 0.0;
             float panCameraMotionMax = 0.0f;
-            constexpr int panFrames = 90;
+            const int panFrames = std::max(45, replayFps * 3 / 2);
             for (int i = 0; i < panFrames; ++i)
             {
-                fillPanPattern((i + 1) * 3);
+                fillPanPattern(static_cast<int>(std::lround(
+                    static_cast<double>(i + 1) * 3.0 * motionFrameScale)));
                 panMae += renderAndSample(nullptr,
                     (writeVisuals && i % 10 == 0) ? L"pan" : nullptr,
                     i).mae;
@@ -2837,11 +2887,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const uint64_t fastPanFlowStart = flowFrames;
             resetCase();
             fillPanPattern(0);
-            for (int i = 0; i < 12; ++i) renderAndSample(nullptr);
+            for (int i = 0; i < panWarmupFrames; ++i) renderAndSample(nullptr);
             double fastPanMae = 0.0;
             for (int i = 0; i < panFrames; ++i)
             {
-                fillPanPattern((i + 1) * 8);
+                fillPanPattern(static_cast<int>(std::lround(
+                    static_cast<double>(i + 1) * 8.0 * motionFrameScale)));
                 fastPanMae += renderAndSample(nullptr).mae;
             }
             fastPanMae /= static_cast<double>(panFrames);
@@ -2850,11 +2901,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const uint64_t extremePanFlowStart = flowFrames;
             resetCase();
             fillPanPattern(0);
-            for (int i = 0; i < 12; ++i) renderAndSample(nullptr);
+            for (int i = 0; i < panWarmupFrames; ++i) renderAndSample(nullptr);
             double extremePanMae = 0.0;
             for (int i = 0; i < panFrames; ++i)
             {
-                fillPanPattern((i + 1) * 16);
+                fillPanPattern(static_cast<int>(std::lround(
+                    static_cast<double>(i + 1) * 16.0 * motionFrameScale)));
                 extremePanMae += renderAndSample(nullptr).mae;
             }
             extremePanMae /= static_cast<double>(panFrames);
@@ -2883,7 +2935,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "  \"status\": \"%s\",\n"
                 "  \"width\": %u,\n"
                 "  \"height\": %u,\n"
-                "  \"fps\": 60,\n"
+                "  \"fps\": %d,\n"
+                "  \"motion_scale\": %.3f,\n"
                 "  \"static_mae\": %.8f,\n"
                 "  \"flash_raw_variation\": %.8f,\n"
                 "  \"flash_output_variation\": %.8f,\n"
@@ -2915,6 +2968,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "  \"nvof_flow_frames\": %llu\n"
                 "}\n",
                 pass ? "SUCCESS" : "FAILED", width, height,
+                replayFps, motionScale,
                 staticMae, rawVariation, outputVariation, flashReduction,
                 movingGhostMae, movingInsideMae, movingEdgeMae,
                 obliqueGhostMae, obliqueInsideMae, obliqueEdgeMae,
@@ -6863,8 +6917,22 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         const std::wstring replayReport = ParseArgumentValue(L"--synthetic-replay");
         const std::wstring replayVisualDir =
             ParseArgumentValue(L"--synthetic-replay-visual");
+        const std::wstring replayFpsArg = ParseArgumentValue(L"--replay-fps");
+        const std::wstring replayMotionScaleArg =
+            ParseArgumentValue(L"--replay-motion-scale");
+        const std::wstring replayProfileArg =
+            ParseArgumentValue(L"--replay-profile");
+        const std::wstring replayFullSensitivityArg =
+            ParseArgumentValue(L"--replay-full-sensitivity");
+        const std::wstring replaySmallSensitivityArg =
+            ParseArgumentValue(L"--replay-small-sensitivity");
         if (!replayReport.empty())
         {
+            const int replayFps = replayFpsArg.empty() ? 60 :
+                std::clamp(_wtoi(replayFpsArg.c_str()), 30, 240);
+            const float replayMotionScale = replayMotionScaleArg.empty() ? 1.0f :
+                std::clamp(static_cast<float>(_wtof(replayMotionScaleArg.c_str())),
+                    0.25f, 4.0f);
             POINT origin{ 0, 0 };
             HMONITOR monitor = MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY);
             HWND replayWindow = CreateReplayWindow(instance, monitor);
@@ -6873,13 +6941,21 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             {
                 FlashGuardApp app;
                 RuntimeOptions replayOptions{};
-                replayOptions.profilePreset = 1;
+                replayOptions.profilePreset = replayProfileArg.empty() ? 1 :
+                    std::clamp(_wtoi(replayProfileArg.c_str()), 0, 2);
+                replayOptions.fullScreenSensitivity =
+                    replayFullSensitivityArg.empty() ? 1 :
+                    std::clamp(_wtoi(replayFullSensitivityArg.c_str()), 0, 2);
+                replayOptions.smallSourceSensitivity =
+                    replaySmallSensitivityArg.empty() ? 1 :
+                    std::clamp(_wtoi(replaySmallSensitivityArg.c_str()), 0, 2);
                 replayOptions.contrastReduction = 0.0f;
                 replayOptions.latencyMs = 0;
                 replayOptions.debugOverlay = false;
                 app.ApplyRuntimeOptions(replayOptions);
                 app.InitializeReplay(replayWindow, monitor);
-                const bool passed = app.RunSyntheticReplay(replayReport, replayVisualDir);
+                const bool passed = app.RunSyntheticReplay(
+                    replayReport, replayVisualDir, replayFps, replayMotionScale);
                 app.Stop();
                 DestroyWindow(replayWindow);
                 return passed ? 0 : 7;

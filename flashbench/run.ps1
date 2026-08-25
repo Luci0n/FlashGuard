@@ -2,7 +2,8 @@ param(
     [ValidateSet('compile', 'gpu-smoke')]
     [string]$Mode = 'compile',
     [string]$OutputDir = 'flashbench/results',
-    [switch]$VisualReplay
+    [switch]$VisualReplay,
+    [switch]$TuneMatrix
 )
 
 $ErrorActionPreference = 'Stop'
@@ -192,17 +193,33 @@ try {
                 Write-Host $table
             }
         }
+        if ($TuneMatrix) {
+            $matrixDir = Join-Path $OutputDir 'matrix'
+            & (Join-Path $PSScriptRoot 'matrix.ps1') `
+                -Executable (Join-Path $root 'FlashGuard.exe') `
+                -OutputDir $matrixDir
+            $matrixExit = $LASTEXITCODE
+            if ($matrixExit -ne 0) {
+                "WARN: tuning matrix failed with exit code $matrixExit" |
+                    Add-Content -Encoding utf8 $logPath
+            } else {
+                "Tuning matrix: $matrixDir" | Add-Content -Encoding utf8 $logPath
+            }
+        }
+
+        $replayFailure = $null
         if ($replayExit -ne 0) {
             $replayStage = if ($replay) { $replay.status } else { 'no-report' }
-            throw "synthetic replay failed ($replayStage) with exit code $replayExit"
+            $replayFailure =
+                "synthetic replay failed ($replayStage) with exit code $replayExit"
+        } elseif (-not $replay -or $replay.status -ne 'SUCCESS') {
+            $replayFailure = 'synthetic replay did not produce a SUCCESS report'
+        } elseif (-not (Test-Path $flashSweepPath) -or
+                  $summary.flash_sweep_status -ne 'SUCCESS') {
+            $replayFailure = '5-30 Hz flash sweep did not produce a SUCCESS report'
+        } else {
+            $summary.replay_status = 'SUCCESS'
         }
-        if (-not $replay -or $replay.status -ne 'SUCCESS') {
-            throw 'synthetic replay did not produce a SUCCESS report'
-        }
-        if (-not (Test-Path $flashSweepPath) -or $summary.flash_sweep_status -ne 'SUCCESS') {
-            throw '5-30 Hz flash sweep did not produce a SUCCESS report'
-        }
-        $summary.replay_status = 'SUCCESS'
 
         if ($VisualReplay -and (Test-Path $visualDir)) {
             $caseMap = [ordered]@{}
@@ -285,6 +302,10 @@ refresh();
             Set-Content -Path $viewerPath -Value $html -Encoding utf8
             "Visual replay viewer: $viewerPath" | Add-Content -Encoding utf8 $logPath
             Write-Host "Visual replay viewer: $viewerPath"
+        }
+
+        if ($replayFailure) {
+            throw $replayFailure
         }
     }
 
