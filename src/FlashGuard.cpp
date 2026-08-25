@@ -1990,11 +1990,40 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             panFlashEnergy /= static_cast<double>(panFrames);
             const uint64_t panFlowFrames = flowFrames - panFlowStart;
 
+            const uint64_t fastPanFlowStart = flowFrames;
+            resetCase();
+            fillPanPattern(0);
+            for (int i = 0; i < 12; ++i) renderAndSample(nullptr);
+            double fastPanMae = 0.0;
+            for (int i = 0; i < panFrames; ++i)
+            {
+                fillPanPattern((i + 1) * 8);
+                fastPanMae += renderAndSample(nullptr).mae;
+            }
+            fastPanMae /= static_cast<double>(panFrames);
+            const uint64_t fastPanFlowFrames = flowFrames - fastPanFlowStart;
+
+            const uint64_t extremePanFlowStart = flowFrames;
+            resetCase();
+            fillPanPattern(0);
+            for (int i = 0; i < 12; ++i) renderAndSample(nullptr);
+            double extremePanMae = 0.0;
+            for (int i = 0; i < panFrames; ++i)
+            {
+                fillPanPattern((i + 1) * 16);
+                extremePanMae += renderAndSample(nullptr).mae;
+            }
+            extremePanMae /= static_cast<double>(panFrames);
+            const uint64_t extremePanFlowFrames = flowFrames - extremePanFlowStart;
+
             const bool metricsFinite = std::isfinite(staticMae) &&
                 std::isfinite(flashReduction) && std::isfinite(movingGhostMae) &&
-                std::isfinite(panMae);
-            const bool pass = metricsFinite && staticMae < 0.03 &&
-                rawVariation > 0.10 && flashReduction > 0.10 && flowFrames > 0;
+                std::isfinite(panMae) && std::isfinite(fastPanMae) &&
+                std::isfinite(extremePanMae);
+            const bool pass = metricsFinite && staticMae < 0.005 &&
+                rawVariation > 0.10 && flashReduction > 0.90 &&
+                movingGhostMae < 0.005 && panMae < 0.010 &&
+                fastPanMae < 0.020 && extremePanMae < 0.030 && flowFrames > 0;
 
             FILE* report = nullptr;
             if (_wfopen_s(&report, reportPath.c_str(), L"wb") != 0 || !report)
@@ -2012,6 +2041,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "  \"flash_reduction\": %.8f,\n"
                 "  \"moving_square_ghost_mae\": %.8f,\n"
                 "  \"pan_mae\": %.8f,\n"
+                "  \"fast_pan_mae\": %.8f,\n"
+                "  \"extreme_pan_mae\": %.8f,\n"
                 "  \"pan_camera_motion_mean\": %.8f,\n"
                 "  \"pan_camera_motion_max\": %.8f,\n"
                 "  \"pan_affected_area_mean\": %.8f,\n"
@@ -2022,17 +2053,22 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "  \"flash_flow_frames\": %llu,\n"
                 "  \"moving_flow_frames\": %llu,\n"
                 "  \"pan_flow_frames\": %llu,\n"
+                "  \"fast_pan_flow_frames\": %llu,\n"
+                "  \"extreme_pan_flow_frames\": %llu,\n"
                 "  \"nvof_flow_frames\": %llu\n"
                 "}\n",
                 pass ? "SUCCESS" : "FAILED", width, height,
                 staticMae, rawVariation, outputVariation, flashReduction,
-                movingGhostMae, panMae, panCameraMotion, panCameraMotionMax,
+                movingGhostMae, panMae, fastPanMae, extremePanMae,
+                panCameraMotion, panCameraMotionMax,
                 panAffectedArea, panCoherence, panFlashEnergy,
                 static_cast<unsigned>(m_nvofGridSize),
                 static_cast<unsigned long long>(staticFlowFrames),
                 static_cast<unsigned long long>(flashFlowFrames),
                 static_cast<unsigned long long>(movingFlowFrames),
                 static_cast<unsigned long long>(panFlowFrames),
+                static_cast<unsigned long long>(fastPanFlowFrames),
+                static_cast<unsigned long long>(extremePanFlowFrames),
                 static_cast<unsigned long long>(flowFrames));
             std::fclose(report);
             return pass;
