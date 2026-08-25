@@ -701,6 +701,14 @@ R"HLSL(
             (P9.x > 0.5 || protectionGate > 0.5 || overloadGate > 0.5) ? 0.0 :
             cpuMotionWeight * smoothstep(
                 max(0.10, P5.x * 0.85), max(0.18, P5.x * 1.35), P6.y);
+        // Normalize the deliberately down-weighted CPU prior before using it as
+        // scene-level corroboration. A real fast translation can accumulate
+        // flash-like per-pixel reversals, but it also produces coherent coarse or
+        // whole-frame motion. A stationary regional flash produces neither.
+        const float cpuMotionCorroboration = saturate(
+            cpuCameraMotionGate / max(cpuMotionWeight, 0.001));
+        const float corroboratedMotionGate = max(
+            coarseMotionGate, cpuMotionCorroboration);
         const float motionGate = max(max(coarseMotionGate, localMotionGate),
             cpuCameraMotionGate);
 
@@ -741,10 +749,23 @@ R"HLSL(
         // that bypass unless the SAME pixel has accumulated very strong reversal
         // memory; this is what keeps pans and translated bright edges from dragging.
         const float verifiedFlashOverride = currentHazardMotionOverride *
-            smoothstep(0.70, 0.92, repeatedRisk);
-        const float effectiveMotionGate = max(
+            smoothstep(0.70, 0.92, repeatedRisk) *
+            (1.0 - corroboratedMotionGate);
+        const float rawEffectiveMotionGate = max(
             motionGate * (1.0 - currentHazardMotionOverride),
             hardwareMotionGate * (1.0 - verifiedFlashOverride));
+
+        // A stationary repeated flash can create plausible local patch matches
+        // and even a small erroneous optical-flow field inside a uniform flashing
+        // region. Once reversal memory is established, reject those local-only
+        // motion claims when both independent scene-level motion priors remain
+        // absent. Genuine fast motion retains authority through the corroborated
+        // coarse/CPU gate above.
+        const float stationaryRepeatedFlashGate =
+            smoothstep(0.50, 0.70, repeatedRisk) * eventGate *
+            (1.0 - smoothstep(0.02, 0.12, corroboratedMotionGate));
+        const float effectiveMotionGate = rawEffectiveMotionGate *
+            (1.0 - stationaryRepeatedFlashGate);
 
         // Once a pixel has accumulated repeated-flash memory, keep the output
         // truly stationary between opposing transitions. Merely shrinking each
