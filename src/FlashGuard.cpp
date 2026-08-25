@@ -839,6 +839,7 @@ MainOutput PSMain(VSOut i)
         // is unchanged; using that delta directly is what produced v7's trails.
         float sourceDelta = 0.0;
         float localMotionGate = 0.0;
+        float hardwareMotionGate = 0.0;
         // P8.x encodes NVOFA state: 0=fallback/unavailable, 0.5=anchor-only, 1=fresh flow.
         // A skipped execute still keeps the immediate previous frame as the next anchor,
         // but must NOT trigger the expensive portable matcher.
@@ -858,11 +859,14 @@ MainOutput PSMain(VSOut i)
             //
             // v9 only handled (1). A bright object therefore left its filtered
             // luminance behind on trailing edges even with valid grid-2 flow.
-            const float localHazardNeed = max(max(coarseEvent, coarseRisk),
-                max(max(protectionGate, overloadGate), P6.x > 0.5 ? 1.0 : 0.0));
-            const bool coarseMotionAlreadyExplains = coarseMotion >= 0.58;
+            const float cameraMotionNeed =
+                smoothstep(max(0.10, P5.x * 0.85), max(0.18, P5.x * 1.35), P6.y);
+            const float localHazardNeed = max(
+                max(max(coarseEvent, coarseRisk),
+                    max(max(protectionGate, overloadGate), P6.x > 0.5 ? 1.0 : 0.0)),
+                cameraMotionNeed);
             if (hardwareFlowValid && sourceDelta > 0.004 &&
-                localHazardNeed > 0.018 && !coarseMotionAlreadyExplains)
+                localHazardNeed > 0.018)
             {
                 const float2 outputSize = max(float2(P2.z, P2.w), float2(1.0, 1.0));
                 const float2 outputTexel = 1.0 / outputSize;
@@ -948,6 +952,7 @@ MainOutput PSMain(VSOut i)
                         transportEvidence > 0.34 ? 1.0 :
                         smoothstep(0.18, 0.34, transportEvidence);
 
+                    hardwareMotionGate = max(hardwareMotionGate, transportGate);
                     if (transportGate > localMotionGate)
                     {
                         // Flow is classification evidence only. Never spatially warp
@@ -1015,6 +1020,7 @@ MainOutput PSMain(VSOut i)
                     // Do NOT transport history for a vacated pixel: the previous
                     // history here belongs to the object that left. We only need the
                     // motion bypass so the freshly revealed background appears now.
+                    hardwareMotionGate = max(hardwareMotionGate, vacatedGate);
                     localMotionGate = max(localMotionGate, vacatedGate);
                 }
             }
@@ -1442,8 +1448,15 @@ MainOutput PSMain(VSOut i)
             smoothstep(0.16, 0.50, repeatedRisk) * eventGate;
         const float currentHazardMotionOverride =
             smoothstep(0.08, 0.36, eventMask) * repeatedEventGate;
-        const float effectiveMotionGate =
-            motionGate * (1.0 - currentHazardMotionOverride);
+        // A flow field that passed forward/backward and raw-patch verification is
+        // stronger evidence than an analyzer-cell flash classification. Preserve
+        // that bypass unless the SAME pixel has accumulated very strong reversal
+        // memory; this is what keeps pans and translated bright edges from dragging.
+        const float verifiedFlashOverride = currentHazardMotionOverride *
+            smoothstep(0.70, 0.92, repeatedRisk);
+        const float effectiveMotionGate = max(
+            motionGate * (1.0 - currentHazardMotionOverride),
+            hardwareMotionGate * (1.0 - verifiedFlashOverride));
         float temporalMask = max(eventMask, holdMask) * (1.0 - effectiveMotionGate);
 
         // Only a CURRENT strong detector event can force full temporal authority.
@@ -5401,8 +5414,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 const bool coarseCameraMotion = m_latestStats.validDelta &&
                     m_latestStats.cameraMotionScore >=
                         m_safety.cameraMotionSuppression * 0.85f;
-                const bool executeFlow = filterActive ||
-                    (detectorChange && !coarseCameraMotion);
+                // Camera motion is exactly where high-quality transport evidence is
+                // most valuable. Keep refreshing the anchor on quiet frames, but
+                // force a real NVOFA solve for detector changes OR recognized pans.
+                const bool executeFlow =
+                    filterActive || detectorChange || coarseCameraMotion;
                 UpdateOpticalFlow(source, executeFlow);
             }
             else

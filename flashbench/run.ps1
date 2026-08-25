@@ -195,7 +195,7 @@ try {
         }
         if ($TuneMatrix) {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v2.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE
