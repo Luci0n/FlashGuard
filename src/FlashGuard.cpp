@@ -1961,6 +1961,33 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             }
             movingGhostMae /= static_cast<double>(movingFrames);
             const uint64_t movingFlowFrames = flowFrames - movingFlowStart;
+
+            // Quake-like local-motion regression: a small, medium-contrast object
+            // is intentionally below the coarse NVOFA scheduling thresholds. It
+            // exercises the anchor-only portable motion classifier.
+            const uint64_t smallMovingFlowStart = flowFrames;
+            resetCase();
+            fillGray(72);
+            for (int i = 0; i < 20; ++i) renderAndSample(nullptr);
+            double smallMovingGhostMae = 0.0;
+            constexpr int smallSquareSize = 24;
+            constexpr int smallMovingFrames = 90;
+            for (int i = 0; i < smallMovingFrames; ++i)
+            {
+                fillGray(72);
+                const int x0 = 40 + i * 2;
+                const int y0 = static_cast<int>(height) / 3 - smallSquareSize / 2;
+                const int x1 = std::min(x0 + smallSquareSize, static_cast<int>(width));
+                const int y1 = std::min(y0 + smallSquareSize, static_cast<int>(height));
+                for (int y = std::max(y0, 0); y < y1; ++y)
+                    for (int x = std::max(x0, 0); x < x1; ++x)
+                        pixels[static_cast<size_t>(y) * width + x] = grayPixel(150);
+                const RECT square{ x0, y0, x1, y1 };
+                smallMovingGhostMae += renderAndSample(&square).outsideMae;
+            }
+            smallMovingGhostMae /= static_cast<double>(smallMovingFrames);
+            const uint64_t smallMovingFlowFrames =
+                flowFrames - smallMovingFlowStart;
             const uint64_t panFlowStart = flowFrames;
 
             resetCase();
@@ -2019,12 +2046,13 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
             const bool metricsFinite = std::isfinite(staticMae) &&
                 std::isfinite(flashReduction) && std::isfinite(movingGhostMae) &&
-                std::isfinite(panMae) && std::isfinite(fastPanMae) &&
-                std::isfinite(extremePanMae);
+                std::isfinite(smallMovingGhostMae) && std::isfinite(panMae) &&
+                std::isfinite(fastPanMae) && std::isfinite(extremePanMae);
             const bool pass = metricsFinite && staticMae < 0.005 &&
                 rawVariation > 0.10 && flashReduction > 0.90 &&
-                movingGhostMae < 0.005 && panMae < 0.010 &&
-                fastPanMae < 0.020 && extremePanMae < 0.030 && flowFrames > 0;
+                movingGhostMae < 0.005 && smallMovingGhostMae < 0.003 &&
+                panMae < 0.010 && fastPanMae < 0.020 &&
+                extremePanMae < 0.030 && flowFrames > 0;
 
             FILE* report = nullptr;
             if (_wfopen_s(&report, reportPath.c_str(), L"wb") != 0 || !report)
@@ -2041,6 +2069,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "  \"flash_output_variation\": %.8f,\n"
                 "  \"flash_reduction\": %.8f,\n"
                 "  \"moving_square_ghost_mae\": %.8f,\n"
+                "  \"small_moving_square_ghost_mae\": %.8f,\n"
                 "  \"pan_mae\": %.8f,\n"
                 "  \"fast_pan_mae\": %.8f,\n"
                 "  \"extreme_pan_mae\": %.8f,\n"
@@ -2053,6 +2082,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "  \"static_flow_frames\": %llu,\n"
                 "  \"flash_flow_frames\": %llu,\n"
                 "  \"moving_flow_frames\": %llu,\n"
+                "  \"small_moving_flow_frames\": %llu,\n"
                 "  \"pan_flow_frames\": %llu,\n"
                 "  \"fast_pan_flow_frames\": %llu,\n"
                 "  \"extreme_pan_flow_frames\": %llu,\n"
@@ -2060,13 +2090,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "}\n",
                 pass ? "SUCCESS" : "FAILED", width, height,
                 staticMae, rawVariation, outputVariation, flashReduction,
-                movingGhostMae, panMae, fastPanMae, extremePanMae,
+                movingGhostMae, smallMovingGhostMae,
+                panMae, fastPanMae, extremePanMae,
                 panCameraMotion, panCameraMotionMax,
                 panAffectedArea, panCoherence, panFlashEnergy,
                 static_cast<unsigned>(m_nvofGridSize),
                 static_cast<unsigned long long>(staticFlowFrames),
                 static_cast<unsigned long long>(flashFlowFrames),
                 static_cast<unsigned long long>(movingFlowFrames),
+                static_cast<unsigned long long>(smallMovingFlowFrames),
                 static_cast<unsigned long long>(panFlowFrames),
                 static_cast<unsigned long long>(fastPanFlowFrames),
                 static_cast<unsigned long long>(extremePanFlowFrames),
