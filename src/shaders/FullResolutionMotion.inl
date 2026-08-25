@@ -4,6 +4,11 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
         float sourceDelta = 0.0;
         float localMotionGate = 0.0;
         float hardwareMotionGate = 0.0;
+        float diagGlobalFlowGate = 0.0;
+        float diagCurrentSurfaceGate = 0.0;
+        float diagVacatedGate = 0.0;
+        float diagInfillGate = 0.0;
+        float diagPortableGate = 0.0;
         // P8.x encodes NVOFA state: 0=fallback/unavailable, 0.5=anchor-only, 1=fresh flow.
         // A skipped execute still keeps the immediate previous frame as the next anchor,
         // but must NOT trigger the expensive portable matcher.
@@ -58,6 +63,7 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                             smoothstep(0.18, 0.55, globalImprovement);
                         globalMotionGate = globalEvidence > 0.48 ? 1.0 :
                             smoothstep(0.26, 0.48, globalEvidence);
+                        diagGlobalFlowGate = max(diagGlobalFlowGate, globalMotionGate);
                         hardwareMotionGate = max(
                             hardwareMotionGate, globalMotionGate);
                         localMotionGate = max(localMotionGate, globalMotionGate);
@@ -144,6 +150,8 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                     const float transportGate =
                         transportEvidence > 0.34 ? 1.0 :
                         smoothstep(0.18, 0.34, transportEvidence);
+                    diagCurrentSurfaceGate = max(
+                        diagCurrentSurfaceGate, transportGate);
 
                     hardwareMotionGate = max(hardwareMotionGate, transportGate);
                     if (transportGate > localMotionGate)
@@ -209,6 +217,7 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                     const float vacatedGate =
                         vacatedEvidence > 0.34 ? 1.0 :
                         smoothstep(0.18, 0.34, vacatedEvidence);
+                    diagVacatedGate = max(diagVacatedGate, vacatedGate);
 
                     // Do NOT transport history for a vacated pixel: the previous
                     // history here belongs to the object that left. We only need the
@@ -405,6 +414,7 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                         const float infillGate = supportGate *
                             smoothstep(0.48, 0.72,
                                 bestInfillEvidence);
+                        diagInfillGate = max(diagInfillGate, infillGate);
                         hardwareMotionGate = max(
                             hardwareMotionGate, infillGate);
                         localMotionGate = max(
@@ -530,6 +540,8 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                         bestPatchError / 5.0);
                     const float portableGate =
                         smoothstep(0.32, 0.68, patchImprovement) * absoluteMatch;
+                    diagPortableGate = max(diagPortableGate,
+                        portableGate > 0.60 ? 1.0 : portableGate);
                     localMotionGate = max(localMotionGate,
                         portableGate > 0.60 ? 1.0 : portableGate);
                 }
@@ -609,6 +621,8 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                             bestPatchError / 5.0);
                         const float diagonalGate = smoothstep(0.32, 0.68,
                             patchImprovement) * absoluteMatch;
+                        diagPortableGate = max(diagPortableGate,
+                            diagonalGate > 0.60 ? 1.0 : diagonalGate);
                         if (diagonalGate > localMotionGate)
                         {
                             localMotionGate = diagonalGate > 0.60 ? 1.0 : diagonalGate;
@@ -689,6 +703,8 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                             0.040, 0.145, shiftedPatchError / 5.0);
                         const float obliqueGate = smoothstep(
                             0.28, 0.62, patchImprovement) * absoluteMatch;
+                        diagPortableGate = max(diagPortableGate,
+                            obliqueGate > 0.56 ? 1.0 : obliqueGate);
                         localMotionGate = max(localMotionGate,
                             obliqueGate > 0.56 ? 1.0 : obliqueGate);
                     }
@@ -748,6 +764,7 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                     const float denseMeanError = bestDensePatchError / 5.0;
                     if (denseImprovement > 0.24 && denseMeanError < 0.085)
                     {
+                        diagPortableGate = 1.0;
                         localMotionGate = 1.0;
                     }
                     else
@@ -756,6 +773,7 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                             0.035, 0.120, denseMeanError);
                         const float denseGate = smoothstep(
                             0.24, 0.60, denseImprovement) * denseAbsoluteMatch;
+                        diagPortableGate = max(diagPortableGate, denseGate);
                         localMotionGate = max(localMotionGate, denseGate);
                     }
                 }

@@ -519,11 +519,13 @@ struct MainOutput
     float4 color : SV_TARGET0;
     float4 historyColor : SV_TARGET1;
     float4 sourceHistoryColor : SV_TARGET2;
+    float4 motionDiagnostics : SV_TARGET3;
 };
 
 MainOutput PSMain(VSOut i)
 {
     MainOutput output;
+    output.motionDiagnostics = float4(0.0, 0.0, 0.0, 0.0);
     float3 cur = CurrentFrame.Sample(LinearClamp, i.uv).rgb;
     // Keep a raw, unfiltered source history specifically for motion matching.
     // Candidate/output histories may intentionally lag during protection, so
@@ -763,6 +765,23 @@ R"HLSL(
         if (eventSeed >= 0.12 && displayedDelta >= 0.018 &&
             (motionGate < 0.55 || repeatedEventGate > 0.45))
             temporalMask = max(temporalMask, 1.0 - effectiveMotionGate);
+
+        // Synthetic replay binds SV_TARGET3 and decodes these interleaved groups.
+        // Production rendering leaves the target unbound, so diagnostics cannot
+        // affect the displayed image or either temporal history.
+        const uint motionDiagnosticGroup = ((uint)i.pos.x) % 3u;
+        if (motionDiagnosticGroup == 0u)
+            output.motionDiagnostics = float4(
+                diagGlobalFlowGate, diagCurrentSurfaceGate,
+                diagVacatedGate, diagInfillGate);
+        else if (motionDiagnosticGroup == 1u)
+            output.motionDiagnostics = float4(
+                diagPortableGate, hardwareMotionGate,
+                effectiveMotionGate, repeatedRisk);
+        else
+            output.motionDiagnostics = float4(
+                verifiedFlashOverride, coarseMotionGate,
+                cpuCameraMotionGate, temporalMask);
 
         if (temporalMask > 0.001)
         {
@@ -1249,6 +1268,25 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             staging.MiscFlags = 0;
             ThrowIfFailed(m_device->CreateTexture2D(
                 &staging, nullptr, m_replayReadback.put()));
+
+            // One replay-only MRT carries motion-decision evidence. Three metric
+            // groups are interleaved by pixel X in the shader, avoiding three
+            // additional full-resolution render targets/readbacks.
+            D3D11_TEXTURE2D_DESC diagnostic{};
+            m_outputHistoryTextures[0]->GetDesc(&diagnostic);
+            diagnostic.Usage = D3D11_USAGE_DEFAULT;
+            diagnostic.BindFlags = D3D11_BIND_RENDER_TARGET;
+            diagnostic.CPUAccessFlags = 0;
+            diagnostic.MiscFlags = 0;
+            ThrowIfFailed(m_device->CreateTexture2D(
+                &diagnostic, nullptr, m_motionDiagnosticTexture.put()));
+            ThrowIfFailed(m_device->CreateRenderTargetView(
+                m_motionDiagnosticTexture.get(), nullptr, m_motionDiagnosticRTV.put()));
+            diagnostic.Usage = D3D11_USAGE_STAGING;
+            diagnostic.BindFlags = 0;
+            diagnostic.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            ThrowIfFailed(m_device->CreateTexture2D(
+                &diagnostic, nullptr, m_motionDiagnosticReadback.put()));
         }
 
         bool RunSyntheticReplay(const std::wstring& reportPath,
@@ -1257,6 +1295,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                                 float motionScale = 1.0f)
         {
             if (!m_replayMode || !m_device || !m_context || !m_replayReadback ||
+                !m_motionDiagnosticTexture || !m_motionDiagnosticReadback ||
                 m_outputWidth == 0 || m_outputHeight == 0)
                 return false;
 
@@ -1446,6 +1485,78 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 std::fclose(file);
             };
 
+            struct MotionDiagnosticAggregate
+            {
+                std::array<double, 12> sum{};
+                std::array<double, 12> maximum{};
+                std::array<uint64_t, 12> active{};
+                std::array<uint64_t, 12> count{};
+                std::array<double, 12> insideSum{};
+                std::array<double, 12> insideMaximum{};
+                std::array<uint64_t, 12> insideActive{};
+                std::array<uint64_t, 12> insideCount{};
+                std::array<double, 12> outsideSum{};
+                std::array<double, 12> outsideMaximum{};
+                std::array<uint64_t, 12> outsideActive{};
+                std::array<uint64_t, 12> outsideCount{};
+            };
+
+            const auto collectMotionDiagnostics =
+                [&](MotionDiagnosticAggregate& aggregate, const RECT* activeRect)
+            {
+                m_context->CopyResource(
+                    m_motionDiagnosticReadback.get(), m_motionDiagnosticTexture.get());
+                D3D11_MAPPED_SUBRESOURCE mapped{};
+                ThrowIfFailed(m_context->Map(
+                    m_motionDiagnosticReadback.get(), 0, D3D11_MAP_READ, 0, &mapped));
+                constexpr UINT stride = 4;
+                for (UINT y = 0; y < height; y += stride)
+                {
+                    const auto* row = reinterpret_cast<const uint16_t*>(
+                        static_cast<const uint8_t*>(mapped.pData) +
+                        static_cast<size_t>(y) * mapped.RowPitch);
+                    for (UINT x = 0; x < width; x += stride)
+                    {
+                        const size_t group = static_cast<size_t>(x % 3u);
+                        const bool inside = activeRect &&
+                            static_cast<LONG>(x) >= activeRect->left &&
+                            static_cast<LONG>(x) < activeRect->right &&
+                            static_cast<LONG>(y) >= activeRect->top &&
+                            static_cast<LONG>(y) < activeRect->bottom;
+                        for (size_t channel = 0; channel < 4; ++channel)
+                        {
+                            const size_t metric = group * 4 + channel;
+                            const double value = std::clamp(
+                                static_cast<double>(halfToFloat(
+                                    row[static_cast<size_t>(x) * 4 + channel])),
+                                0.0, 1.0);
+                            aggregate.sum[metric] += value;
+                            aggregate.maximum[metric] =
+                                std::max(aggregate.maximum[metric], value);
+                            aggregate.active[metric] += value > 0.5 ? 1u : 0u;
+                            ++aggregate.count[metric];
+                            if (inside)
+                            {
+                                aggregate.insideSum[metric] += value;
+                                aggregate.insideMaximum[metric] =
+                                    std::max(aggregate.insideMaximum[metric], value);
+                                aggregate.insideActive[metric] += value > 0.5 ? 1u : 0u;
+                                ++aggregate.insideCount[metric];
+                            }
+                            else
+                            {
+                                aggregate.outsideSum[metric] += value;
+                                aggregate.outsideMaximum[metric] =
+                                    std::max(aggregate.outsideMaximum[metric], value);
+                                aggregate.outsideActive[metric] += value > 0.5 ? 1u : 0u;
+                                ++aggregate.outsideCount[metric];
+                            }
+                        }
+                    }
+                }
+                m_context->Unmap(m_motionDiagnosticReadback.get(), 0);
+            };
+
             struct FrameSample
             {
                 double sourceMean = 0.0;
@@ -1473,7 +1584,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             uint64_t flowFrames = 0;
             const auto renderAndSample = [&](const RECT* activeRect,
                                              const wchar_t* visualCase = nullptr,
-                                             int visualFrame = -1) {
+                                             int visualFrame = -1,
+                                             MotionDiagnosticAggregate* motionDiagnostics = nullptr) {
                 m_context->UpdateSubresource(source.get(), 0, nullptr,
                     pixels.data(), width * 4u, 0);
                 QueueCapturedFrame(source.get(), dt);
@@ -1569,6 +1681,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 }
                 writeVisualBmp(visualCase, visualFrame, mapped);
                 m_context->Unmap(m_replayReadback.get(), 0);
+                if (motionDiagnostics)
+                    collectMotionDiagnostics(*motionDiagnostics, activeRect);
                 if (count)
                 {
                     sample.sourceMean /= static_cast<double>(count);
@@ -1675,6 +1789,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 bool wcagSc232Pass = false;
             };
             std::vector<FlashSweepResult> flashSweep;
+            MotionDiagnosticAggregate quarterFlashDiagnostics{};
+            MotionDiagnosticAggregate movingDiagnostics{};
+            MotionDiagnosticAggregate obliqueDiagnostics{};
+            MotionDiagnosticAggregate smallMovingDiagnostics{};
             constexpr std::array<double, 8> sweepFrequencies{
                 5.0, 7.5, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0
             };
@@ -1930,7 +2048,19 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                             }
                         }
 
-                        const FrameSample currentSweep = renderAndSample(nullptr);
+                        const LONG quarterX = static_cast<LONG>(width / 4u);
+                        const LONG quarterY = static_cast<LONG>(height / 4u);
+                        const RECT quarterRect{
+                            quarterX, quarterY,
+                            quarterX + static_cast<LONG>(width / 2u),
+                            quarterY + static_cast<LONG>(height / 2u)
+                        };
+                        MotionDiagnosticAggregate* sweepDiagnostics =
+                            sweepCase.kind == 2 && std::fabs(frequencyHz - 15.0) < 0.001 ?
+                            &quarterFlashDiagnostics : nullptr;
+                        const FrameSample currentSweep = renderAndSample(
+                            sweepDiagnostics ? &quarterRect : nullptr,
+                            nullptr, -1, sweepDiagnostics);
                         const double rawDelta =
                             std::fabs(currentSweep.sourceMean - previousSweep.sourceMean);
                         const double outputDelta =
@@ -2087,7 +2217,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 const RECT square{ x0, y0, x1, y1 };
                 const FrameSample sample = renderAndSample(&square,
                     (writeVisuals && i % 10 == 0) ? L"bright_motion" : nullptr,
-                    i);
+                    i, &movingDiagnostics);
                 movingGhostMae += sample.outsideMae;
                 movingInsideMae += sample.insideMae;
                 movingEdgeMae += sample.edgeMae;
@@ -2136,7 +2266,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 const RECT square{ x0, y0, x1, y1 };
                 const FrameSample sample = renderAndSample(&square,
                     (writeVisuals && i % 10 == 0) ? L"bright_oblique" : nullptr,
-                    i);
+                    i, &obliqueDiagnostics);
                 obliqueGhostMae += sample.outsideMae;
                 obliqueInsideMae += sample.insideMae;
                 obliqueEdgeMae += sample.edgeMae;
@@ -2172,7 +2302,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 const RECT square{ x0, y0, x1, y1 };
                 smallMovingGhostMae += renderAndSample(&square,
                     (writeVisuals && i % 10 == 0) ? L"small_motion" : nullptr,
-                    i).outsideMae;
+                    i, &smallMovingDiagnostics).outsideMae;
             }
             smallMovingGhostMae /= static_cast<double>(smallMovingFrames);
             const uint64_t smallMovingFlowFrames =
@@ -2252,6 +2382,76 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 movingGhostMae < 0.005 && smallMovingGhostMae < 0.003 &&
                 panMae < 0.010 && fastPanMae < 0.020 &&
                 extremePanMae < 0.030 && flowFrames > 0;
+
+            constexpr const char* motionDiagnosticNames[12] = {
+                "global_flow", "current_surface", "vacated_surface",
+                "disocclusion_infill", "portable_matcher", "hardware_combined",
+                "effective_motion", "repeated_risk", "verified_flash_override",
+                "coarse_gpu_motion", "cpu_motion_prior", "temporal_mask"
+            };
+            const auto diagnosticPath =
+                std::filesystem::path(reportPath).parent_path() /
+                L"motion-diagnostics.json";
+            FILE* diagnosticReport = nullptr;
+            if (_wfopen_s(&diagnosticReport, diagnosticPath.c_str(), L"wb") != 0 ||
+                !diagnosticReport)
+                return false;
+            std::fprintf(diagnosticReport,
+                "{\n"
+                "  \"schema\": \"MOTION_DIAGNOSTICS/1\",\n"
+                "  \"fps\": %d,\n"
+                "  \"motion_scale\": %.3f,\n"
+                "  \"activation_threshold\": 0.5,\n"
+                "  \"sampling_stride\": 4,\n"
+                "  \"cases\": {\n",
+                replayFps, motionScale);
+            const auto writeMotionDiagnosticCase =
+                [&](const char* caseName,
+                    const MotionDiagnosticAggregate& aggregate, bool trailingComma)
+            {
+                const auto mean = [](double sum, uint64_t count) {
+                    return count ? sum / static_cast<double>(count) : 0.0;
+                };
+                const auto fraction = [](uint64_t active, uint64_t count) {
+                    return count ? static_cast<double>(active) /
+                        static_cast<double>(count) : 0.0;
+                };
+                std::fprintf(diagnosticReport, "    \"%s\": {\n", caseName);
+                for (size_t metric = 0; metric < 12; ++metric)
+                {
+                    std::fprintf(diagnosticReport,
+                        "      \"%s\":{\"mean\":%.8f,\"max\":%.8f,"
+                        "\"active_fraction\":%.8f,\"inside_mean\":%.8f,"
+                        "\"inside_max\":%.8f,\"inside_active_fraction\":%.8f,"
+                        "\"outside_mean\":%.8f,\"outside_max\":%.8f,"
+                        "\"outside_active_fraction\":%.8f}%s\n",
+                        motionDiagnosticNames[metric],
+                        mean(aggregate.sum[metric], aggregate.count[metric]),
+                        aggregate.maximum[metric],
+                        fraction(aggregate.active[metric], aggregate.count[metric]),
+                        mean(aggregate.insideSum[metric], aggregate.insideCount[metric]),
+                        aggregate.insideMaximum[metric],
+                        fraction(aggregate.insideActive[metric],
+                            aggregate.insideCount[metric]),
+                        mean(aggregate.outsideSum[metric], aggregate.outsideCount[metric]),
+                        aggregate.outsideMaximum[metric],
+                        fraction(aggregate.outsideActive[metric],
+                            aggregate.outsideCount[metric]),
+                        metric + 1 < 12 ? "," : "");
+                }
+                std::fprintf(diagnosticReport, "    }%s\n",
+                    trailingComma ? "," : "");
+            };
+            writeMotionDiagnosticCase(
+                "quarter_flash_15hz", quarterFlashDiagnostics, true);
+            writeMotionDiagnosticCase(
+                "moving_square", movingDiagnostics, true);
+            writeMotionDiagnosticCase(
+                "bright_oblique", obliqueDiagnostics, true);
+            writeMotionDiagnosticCase(
+                "small_moving_square", smallMovingDiagnostics, false);
+            std::fputs("  }\n}\n", diagnosticReport);
+            std::fclose(diagnosticReport);
 
             FILE* report = nullptr;
             if (_wfopen_s(&report, reportPath.c_str(), L"wb") != 0 || !report)
@@ -4310,9 +4510,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             ID3D11RenderTargetView* rtvs[] = {
                 m_backBufferRTV.get(),
                 m_outputHistoryRTVs[historyWriteIndex].get(),
-                m_sourceHistoryRTVs[sourceHistoryWriteIndex].get()
+                m_sourceHistoryRTVs[sourceHistoryWriteIndex].get(),
+                m_motionDiagnosticRTV.get()
             };
-            m_context->OMSetRenderTargets(3, rtvs, nullptr);
+            const UINT rtvCount = m_motionDiagnosticRTV ? 4u : 3u;
+            m_context->OMSetRenderTargets(rtvCount, rtvs, nullptr);
             m_context->IASetInputLayout(nullptr);
             m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             m_context->VSSetShader(m_vs.get(), nullptr, 0);
@@ -4373,8 +4575,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             m_context->PSSetShaderResources(12, 2, nullCostSRVs);
             ID3D11ShaderResourceView* nullGlobalFlowSRV = nullptr;
             m_context->PSSetShaderResources(14, 1, &nullGlobalFlowSRV);
-            ID3D11RenderTargetView* nullRTVs[3] = { nullptr, nullptr, nullptr };
-            m_context->OMSetRenderTargets(3, nullRTVs, nullptr);
+            ID3D11RenderTargetView* nullRTVs[4] = { nullptr, nullptr, nullptr, nullptr };
+            m_context->OMSetRenderTargets(rtvCount, nullRTVs, nullptr);
             m_outputHistoryIndex = historyWriteIndex;
             m_outputHistoryValid = true;
             m_sourceHistoryIndex = sourceHistoryWriteIndex;
@@ -4524,6 +4726,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 if (rtv) m_context->ClearRenderTargetView(rtv.get(), historyBlack);
             for (auto& rtv : m_sourceHistoryRTVs)
                 if (rtv) m_context->ClearRenderTargetView(rtv.get(), historyBlack);
+            if (m_motionDiagnosticRTV)
+                m_context->ClearRenderTargetView(m_motionDiagnosticRTV.get(), historyBlack);
             m_outputHistoryValid = false;
             m_sourceHistoryValid = false;
             if (m_swapChain) m_swapChain->Present(1, 0);
@@ -4600,6 +4804,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         bool m_outputHistoryValid = false;
         bool m_replayMode = false;
         winrt::com_ptr<ID3D11Texture2D> m_replayReadback;
+        winrt::com_ptr<ID3D11Texture2D> m_motionDiagnosticTexture;
+        winrt::com_ptr<ID3D11RenderTargetView> m_motionDiagnosticRTV;
+        winrt::com_ptr<ID3D11Texture2D> m_motionDiagnosticReadback;
         std::array<winrt::com_ptr<ID3D11Texture2D>, 2> m_sourceHistoryTextures;
         std::array<winrt::com_ptr<ID3D11RenderTargetView>, 2> m_sourceHistoryRTVs;
         std::array<winrt::com_ptr<ID3D11ShaderResourceView>, 2> m_sourceHistorySRVs;

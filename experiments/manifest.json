@@ -9,7 +9,8 @@
     "FLASHGUARD_REPLAY/2",
     "FLASHGUARD_FLASH_SWEEP/2",
     "WCAG_FLASH/1",
-    "NVOF_SMOKE/1"
+    "NVOF_SMOKE/1",
+    "MOTION_DIAGNOSTICS/1"
   ],
   "runs": [
     {
