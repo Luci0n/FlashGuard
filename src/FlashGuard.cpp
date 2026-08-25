@@ -1233,7 +1233,14 @@ MainOutput PSMain(VSOut i)
         // is especially important for small bright moving objects that occupy too
         // little of a 128x72 analysis patch to register as camera motion.
         const float coarseMotionGate = smoothstep(0.20, 0.68, coarseMotion);
-        const float motionGate = max(coarseMotionGate, localMotionGate);
+        // The CPU analyzer already has a robust whole-frame translation score.
+        // RenderSource uses it to avoid unnecessary NVOFA solves, so PSMain must
+        // honor the same decision or camera pans can still blend stale history.
+        const float cpuCameraMotionGate =
+            (P9.x > 0.5 || protectionGate > 0.5 || overloadGate > 0.5) ? 0.0 :
+            smoothstep(max(0.10, P5.x * 0.85), max(0.18, P5.x * 1.35), P6.y);
+        const float motionGate = max(max(coarseMotionGate, localMotionGate),
+            cpuCameraMotionGate);
 
         // Small ordinary changes should not drag filtered history around. A
         // CURRENT hazard gets a sensitive localization gate; MEMORY-only release
@@ -4337,6 +4344,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             c.p5[1] = m_safety.redDeltaThreshold;
             c.p5[2] = m_instantHistoryValid ? 1.0f : 0.0f;
             c.p5[3] = m_instantFrameDt;
+            c.p6[1] = m_latestStats.validDelta ? m_latestStats.cameraMotionScore : 0.0f;
             c.p6[2] = 1.0f / static_cast<float>(kAnalysisWidth);
             c.p6[3] = 1.0f / static_cast<float>(kAnalysisHeight);
             c.p6[0] = broadLocalTransition ? 1.0f : 0.0f;
