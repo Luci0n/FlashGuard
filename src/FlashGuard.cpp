@@ -1955,6 +1955,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     (static_cast<uint32_t>(g) << 8) |
                     (static_cast<uint32_t>(r) << 16) | 0xFF000000u;
             };
+            const auto srgbToLinear = [](double value) {
+                value = std::clamp(value, 0.0, 1.0);
+                return value <= 0.04045 ? value / 12.92 :
+                    std::pow((value + 0.055) / 1.055, 2.4);
+            };
             const auto fillGray = [&](uint8_t value) {
                 std::fill(pixels.begin(), pixels.end(), grayPixel(value));
             };
@@ -2087,6 +2092,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 double outputRed = 0.0;
                 double outputGreen = 0.0;
                 double outputBlue = 0.0;
+                double sourceLinearRed = 0.0;
+                double sourceLinearGreen = 0.0;
+                double sourceLinearBlue = 0.0;
+                double outputLinearRed = 0.0;
+                double outputLinearGreen = 0.0;
+                double outputLinearBlue = 0.0;
+                double sourceWcagLuma = 0.0;
+                double outputWcagLuma = 0.0;
                 double mae = 0.0;
                 double outsideMae = 0.0;
                 double insideMae = 0.0;
@@ -2125,12 +2138,22 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         const float g = std::clamp(halfToFloat(row[x * 4 + 1]), 0.0f, 1.0f);
                         const float b = std::clamp(halfToFloat(row[x * 4 + 2]), 0.0f, 1.0f);
                         const double outputLuma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                        const double outputLinearR = srgbToLinear(r);
+                        const double outputLinearG = srgbToLinear(g);
+                        const double outputLinearB = srgbToLinear(b);
+                        const double outputWcagLuma = 0.2126 * outputLinearR +
+                            0.7152 * outputLinearG + 0.0722 * outputLinearB;
 
                         const uint32_t packed = pixels[static_cast<size_t>(y) * width + x];
                         const float sb = static_cast<float>(packed & 0xFFu) / 255.0f;
                         const float sg = static_cast<float>((packed >> 8) & 0xFFu) / 255.0f;
                         const float sr = static_cast<float>((packed >> 16) & 0xFFu) / 255.0f;
                         const double sourceLuma = 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
+                        const double sourceLinearR = srgbToLinear(sr);
+                        const double sourceLinearG = srgbToLinear(sg);
+                        const double sourceLinearB = srgbToLinear(sb);
+                        const double sourceWcagLuma = 0.2126 * sourceLinearR +
+                            0.7152 * sourceLinearG + 0.0722 * sourceLinearB;
                         const double error = std::fabs(outputLuma - sourceLuma);
 
                         sample.sourceMean += sourceLuma;
@@ -2141,6 +2164,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         sample.outputRed += r;
                         sample.outputGreen += g;
                         sample.outputBlue += b;
+                        sample.sourceLinearRed += sourceLinearR;
+                        sample.sourceLinearGreen += sourceLinearG;
+                        sample.sourceLinearBlue += sourceLinearB;
+                        sample.outputLinearRed += outputLinearR;
+                        sample.outputLinearGreen += outputLinearG;
+                        sample.outputLinearBlue += outputLinearB;
+                        sample.sourceWcagLuma += sourceWcagLuma;
+                        sample.outputWcagLuma += outputWcagLuma;
                         sample.mae += error;
                         ++count;
 
@@ -2184,6 +2215,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     sample.outputRed /= static_cast<double>(count);
                     sample.outputGreen /= static_cast<double>(count);
                     sample.outputBlue /= static_cast<double>(count);
+                    sample.sourceLinearRed /= static_cast<double>(count);
+                    sample.sourceLinearGreen /= static_cast<double>(count);
+                    sample.sourceLinearBlue /= static_cast<double>(count);
+                    sample.outputLinearRed /= static_cast<double>(count);
+                    sample.outputLinearGreen /= static_cast<double>(count);
+                    sample.outputLinearBlue /= static_cast<double>(count);
+                    sample.sourceWcagLuma /= static_cast<double>(count);
+                    sample.outputWcagLuma /= static_cast<double>(count);
                     sample.mae /= static_cast<double>(count);
                 }
                 if (outsideCount)
