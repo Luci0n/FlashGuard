@@ -808,7 +808,13 @@ MainOutput PSMain(VSOut i)
     // coarseRisk is persistent flash memory; isolatedRed ensures unrelated
     // non-red content is unaffected by this hold.
     const float redEventGate = max(redGate, localRedGate);
-    const float redMemoryGate = smoothstep(0.10, 0.50, coarseRisk);
+    float temporalRisk = 0.0;
+    if (P7.x > 0.5)
+        temporalRisk = saturate(PreviousTemporal.SampleLevel(
+            LinearClamp, i.uv, 0.0).g);
+    const float redMemoryGate = max(
+        smoothstep(0.06, 0.42, coarseRisk),
+        smoothstep(0.06, 0.42, temporalRisk));
     const float redMitigationGate = max(redEventGate, redMemoryGate);
     // The normal profile desaturation is intentionally moderate, but once a red
     // transition is part of an accumulated flash sequence the residual chroma
@@ -1405,12 +1411,14 @@ MainOutput PSMain(VSOut i)
         // is especially important for small bright moving objects that occupy too
         // little of a 128x72 analysis patch to register as camera motion.
         const float coarseMotionGate = smoothstep(0.20, 0.68, coarseMotion);
-        // The CPU analyzer already has a robust whole-frame translation score.
-        // RenderSource uses it to avoid unnecessary NVOFA solves, so PSMain must
-        // honor the same decision or camera pans can still blend stale history.
+        // CPU readback is advisory only. When fresh NVIDIA flow exists, retain a
+        // small CPU whole-frame prior but never let a delayed readback overrule
+        // verified current-frame GPU transport.
+        const float cpuMotionWeight = hardwareFlowValid ? 0.25 : 1.0;
         const float cpuCameraMotionGate =
             (P9.x > 0.5 || protectionGate > 0.5 || overloadGate > 0.5) ? 0.0 :
-            smoothstep(max(0.10, P5.x * 0.85), max(0.18, P5.x * 1.35), P6.y);
+            cpuMotionWeight * smoothstep(
+                max(0.10, P5.x * 0.85), max(0.18, P5.x * 1.35), P6.y);
         const float motionGate = max(max(coarseMotionGate, localMotionGate),
             cpuCameraMotionGate);
 
@@ -1441,9 +1449,7 @@ MainOutput PSMain(VSOut i)
         // this memory when coherent translation explains the change, so ordinary
         // scrolling and object motion cannot turn one appearance/disappearance
         // pair into a long history blend.
-        const float4 repeatedState = PreviousTemporal.SampleLevel(
-            LinearClamp, i.uv, 0.0);
-        const float repeatedRisk = P7.x > 0.5 ? saturate(repeatedState.g) : 0.0;
+        const float repeatedRisk = temporalRisk;
         const float repeatedEventGate =
             smoothstep(0.16, 0.50, repeatedRisk) * eventGate;
         const float currentHazardMotionOverride =
@@ -1457,7 +1463,19 @@ MainOutput PSMain(VSOut i)
         const float effectiveMotionGate = max(
             motionGate * (1.0 - currentHazardMotionOverride),
             hardwareMotionGate * (1.0 - verifiedFlashOverride));
-        float temporalMask = max(eventMask, holdMask) * (1.0 - effectiveMotionGate);
+
+        // Once a pixel has accumulated repeated-flash memory, keep the output
+        // truly stationary between opposing transitions. Merely shrinking each
+        // excursion leaves tiny reversals that still count in a strict one-second
+        // transition test. Verified motion still cancels this hold immediately.
+        const float repeatedMemoryGate = smoothstep(0.34, 0.62, repeatedRisk);
+        const float repeatedHoldAuthorization =
+            repeatedMemoryGate * max(eventGate, holdGate * stableSourceGate);
+        const float repeatedHoldMask =
+            repeatedHoldAuthorization * (1.0 - effectiveMotionGate);
+        float temporalMask = max(
+            max(eventMask, holdMask) * (1.0 - effectiveMotionGate),
+            repeatedHoldMask);
 
         // Only a CURRENT strong detector event can force full temporal authority.
         // Stale memory can remain strong on a static protected surface, but it can
@@ -1487,11 +1505,9 @@ MainOutput PSMain(VSOut i)
                 lerp(previousLinear, candidateLinear, alpha));
             // Once several hazardous reversals have accumulated, amplitude-only
             // smoothing still produces an opposing output change every half-cycle.
-            // Hold the already-filtered pixel through the repeated event instead.
-            // Motion cannot reach this state unless the flash detector continued
-            // to see genuine reversals despite the translation evidence above.
-            const float repeatedHoldGate =
-                smoothstep(0.46, 0.72, repeatedRisk) * eventGate;
+            // Hold the already-filtered pixel through the complete repeated-flash
+            // memory window, not only on the exact event frame.
+            const float repeatedHoldGate = repeatedHoldAuthorization;
             if (repeatedHoldGate > 0.72)
                 temporallyFiltered = previousDisplayed;
             float limitedL = Luma(temporallyFiltered);
@@ -1765,10 +1781,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
     // comparing adjacent frames.
     float anchorL = temporalHistory.r;
     // Flash memory bridges real repetitive reversals, but current-event/source
-    // separation below prevents that memory from ghosting unrelated motion. A
-    // moderate decay preserves low-frequency repetition better than v7's first
-    // aggressive draft while still clearing a lone event much faster than v6.
-    float riskEnergy = max(0.0, temporalHistory.g - dt * 1.20);
+    // separation below prevents that memory from ghosting unrelated motion.
+    // Exponential decay makes the memory lifetime invariant from 30 through
+    // 240 FPS instead of accumulating small linear-step differences.
+    float riskEnergy = saturate(temporalHistory.g * exp(-dt / 0.55));
     const float previousDirection = temporalHistory.b;
     float transitionAge = temporalHistory.a + dt;
     const bool meaningfulMotion = absDelta >= 0.002;
@@ -2020,6 +2036,16 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             };
             const auto fillGray = [&](uint8_t value) {
                 std::fill(pixels.begin(), pixels.end(), grayPixel(value));
+            };
+            const auto pingPongCoordinate = [](int origin, double travel,
+                                               int maxPosition) {
+                maxPosition = std::max(maxPosition, origin);
+                const double span = static_cast<double>(maxPosition - origin);
+                if (span <= 0.0) return origin;
+                const double period = span * 2.0;
+                double phase = std::fmod(std::max(travel, 0.0), period);
+                if (phase > span) phase = period - phase;
+                return origin + static_cast<int>(std::lround(phase));
             };
             const auto fillPanPattern = [&](int offset) {
                 for (UINT y = 0; y < height; ++y)
@@ -2768,8 +2794,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             for (int i = 0; i < movingFrames; ++i)
             {
                 fillGray(24);
-                const int x0 = settledX0 + static_cast<int>(std::lround(
-                    static_cast<double>(i + 1) * 4.0 * motionFrameScale));
+                const int x0 = pingPongCoordinate(
+                    settledX0,
+                    static_cast<double>(i + 1) * 4.0 * motionFrameScale,
+                    static_cast<int>(width) - squareSize);
                 const int y0 = static_cast<int>(height) / 2 - squareSize / 2;
                 const int x1 = std::min(x0 + squareSize, static_cast<int>(width));
                 const int y1 = std::min(y0 + squareSize, static_cast<int>(height));
@@ -2812,10 +2840,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             for (int i = 0; i < obliqueFrames; ++i)
             {
                 fillGray(24);
-                const int x0 = obliqueStartX + static_cast<int>(std::lround(
-                    static_cast<double>(i + 1) * 3.0 * motionFrameScale));
-                const int y0 = obliqueStartY + static_cast<int>(std::lround(
-                    static_cast<double>(i + 1) * 1.0 * motionFrameScale));
+                const int x0 = pingPongCoordinate(
+                    obliqueStartX,
+                    static_cast<double>(i + 1) * 3.0 * motionFrameScale,
+                    static_cast<int>(width) - obliqueSize);
+                const int y0 = pingPongCoordinate(
+                    obliqueStartY,
+                    static_cast<double>(i + 1) * 1.0 * motionFrameScale,
+                    static_cast<int>(height) - obliqueSize);
                 const int x1 = x0 + obliqueSize;
                 const int y1 = y0 + obliqueSize;
                 for (int y = y0; y < y1; ++y)
@@ -2847,8 +2879,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             for (int i = 0; i < smallMovingFrames; ++i)
             {
                 fillGray(72);
-                const int x0 = 40 + static_cast<int>(std::lround(
-                    static_cast<double>(i) * 2.0 * motionFrameScale));
+                const int x0 = pingPongCoordinate(
+                    40,
+                    static_cast<double>(i) * 2.0 * motionFrameScale,
+                    static_cast<int>(width) - smallSquareSize);
                 const int y0 = static_cast<int>(height) / 3 - smallSquareSize / 2;
                 const int x1 = std::min(x0 + smallSquareSize, static_cast<int>(width));
                 const int y1 = std::min(y0 + smallSquareSize, static_cast<int>(height));
@@ -3162,8 +3196,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             constexpr float distances[] = { 50.0f, 70.0f, 100.0f, 140.0f };
             m_safety.viewingDistanceCm = distances[m_viewingDistancePreset];
 
-            const int latencyMs = options.latencyMs == 0 ? 0 :
-                std::clamp(options.latencyMs, 25, 100);
+            // Production protection is GPU-instant only. CPU/readback analysis is
+            // advisory and must never queue the image before the current-frame GPU
+            // detector has a chance to protect it.
+            const int latencyMs = 0;
             if (m_safety.lookaheadMs != latencyMs)
             {
                 m_safety.lookaheadMs = latencyMs;
@@ -5401,25 +5437,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         {
             if (useOpticalFlow)
             {
-                // Always refresh the half-resolution NVOFA anchor, but avoid paying
-                // for a full flow solve on ordinary frames. Sharp high-FPS games
-                // (notably Quake 3) otherwise run the optical-flow engine on nearly
-                // every desktop update even when temporal protection is inactive.
-                const bool detectorChange = m_latestStats.validDelta &&
-                    (m_latestStats.affectedArea >= 0.010f ||
-                     m_latestStats.strongAffectedArea >= 0.003f ||
-                     m_latestStats.flashEnergy >= 0.003f);
-                const bool filterActive = std::fabs(protectionGate) > 0.001f ||
-                    redGate > 0.001f || overloadFallback || broadLocalTransition;
-                const bool coarseCameraMotion = m_latestStats.validDelta &&
-                    m_latestStats.cameraMotionScore >=
-                        m_safety.cameraMotionSuppression * 0.85f;
-                // Camera motion is exactly where high-quality transport evidence is
-                // most valuable. Keep refreshing the anchor on quiet frames, but
-                // force a real NVOFA solve for detector changes OR recognized pans.
-                const bool executeFlow =
-                    filterActive || detectorChange || coarseCameraMotion;
-                UpdateOpticalFlow(source, executeFlow);
+                // NVOFA runs on its dedicated hardware engine and is current-frame
+                // evidence. Execute it for every new captured source frame instead
+                // of asking delayed CPU readback whether motion is worth measuring.
+                // Idle-release/shield renders pass useOpticalFlow=false and do not
+                // spend an optical-flow solve.
+                UpdateOpticalFlow(source, true);
             }
             else
                 m_nvofFlowValid = false;
@@ -6274,15 +6297,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             245, 82, 285, 150, kControlProfile);
         const wchar_t* profileItems[] = {
             L"Performance - instant / original", L"Balanced - instant / low contrast",
-            L"Maximum - 50 ms predictive"
+            L"Maximum - instant / strongest"
         };
         for (const auto* item : profileItems)
             SendMessageW(profile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item));
         SendMessageW(profile, CB_SETCURSEL, options.profilePreset, 0);
         AddSettingsTooltip(profile,
-            L"Loads a coordinated starting point. Performance changes the least; Balanced uses instant GPU protection with reduced contrast; Maximum adds 50 ms prediction for stronger protection. Click Apply to save.");
+            L"All profiles use current-frame GPU protection. Performance changes the least; Balanced adds reduced contrast; Maximum uses the strongest protection curves. Click Apply to save.");
         AddSettingsTooltip(profileLabel,
-            L"Loads a coordinated starting point. Performance changes the least; Balanced uses instant GPU protection with reduced contrast; Maximum adds 50 ms prediction for stronger protection. Click Apply to save.");
+            L"All profiles use current-frame GPU protection. Performance changes the least; Balanced adds reduced contrast; Maximum uses the strongest protection curves. Click Apply to save.");
 
         wchar_t contrastText[64]{};
         swprintf_s(contrastText, L"Contrast reduction: %.3f", options.contrastReduction);
@@ -6331,26 +6354,19 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         AddSettingsTooltip(smallSensitivityLabel,
             L"Controls protection for small intense flashing objects. Higher sensitivity protects smaller sources and expands their softened area, with a greater chance of affecting moving highlights.");
 
-        HWND latencyLabel = AddSettingsControl(hwnd, 0, L"STATIC", L"Maximum look-ahead", WS_CHILD | WS_VISIBLE | SS_NOTIFY,
+        HWND latencyLabel = AddSettingsControl(hwnd, 0, L"STATIC", L"Protection timing", WS_CHILD | WS_VISIBLE | SS_NOTIFY,
             28, 240, 200, 20, 0);
         HWND latency = AddSettingsControl(hwnd, 0, L"COMBOBOX", L"",
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+            WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
             245, 234, 285, 170, kControlLatency);
-        const wchar_t* latencyItems[] = {
-            L"Instant GPU (recommended)",
-            L"25 ms - lowest automatic latency", L"33 ms", L"50 ms - balanced",
-            L"67 ms", L"100 ms - strongest prediction"
-        };
-        for (const auto* item : latencyItems)
-            SendMessageW(latency, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item));
-        constexpr int latencyValues[] = { 0, 25, 33, 50, 67, 100 };
-        int latencySelection = 3;
-        for (int i = 0; i < 6; ++i) if (options.latencyMs == latencyValues[i]) latencySelection = i;
-        SendMessageW(latency, CB_SETCURSEL, latencySelection, 0);
+        SendMessageW(latency, CB_ADDSTRING, 0,
+            reinterpret_cast<LPARAM>(L"Instant GPU (required)"));
+        SendMessageW(latency, CB_SETCURSEL, 0, 0);
+        EnableWindow(latency, FALSE);
         AddSettingsTooltip(latency,
-            L"Instant GPU compares the current and previous analysis frames with no intentional queue. Look-ahead modes delay the image by the selected time so future reversals can confirm ambiguous flashes.");
+            L"Protection always uses the current GPU frame. CPU analysis remains advisory and never intentionally delays the displayed image.");
         AddSettingsTooltip(latencyLabel,
-            L"Instant GPU compares the current and previous analysis frames with no intentional queue. Look-ahead modes delay the image by the selected time so future reversals can confirm ambiguous flashes.");
+            L"Protection always uses the current GPU frame. CPU analysis remains advisory and never intentionally delays the displayed image.");
 
         HWND displayLabel = AddSettingsControl(hwnd, 0, L"STATIC", L"Display diagonal", WS_CHILD | WS_VISIBLE | SS_NOTIFY,
             28, 278, 200, 20, 0);
@@ -6455,7 +6471,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             SendDlgItemMessageW(hwnd, kControlContrast, TBM_SETPOS, TRUE, 667);
             SendDlgItemMessageW(hwnd, kControlSensitivity, CB_SETCURSEL, 2, 0);
             SendDlgItemMessageW(hwnd, kControlSmallSensitivity, CB_SETCURSEL, 2, 0);
-            SendDlgItemMessageW(hwnd, kControlLatency, CB_SETCURSEL, 3, 0);
+            SendDlgItemMessageW(hwnd, kControlLatency, CB_SETCURSEL, 0, 0);
         }
         SetDlgItemTextW(hwnd, kControlStatus,
             L"Preset loaded. Choose Apply to save it.");
@@ -6478,10 +6494,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             hwnd, kControlSensitivity, CB_GETCURSEL, 0, 0));
         options.smallSourceSensitivity = static_cast<int>(SendDlgItemMessageW(
             hwnd, kControlSmallSensitivity, CB_GETCURSEL, 0, 0));
-        constexpr int latencyValues[] = { 0, 25, 33, 50, 67, 100 };
-        const int latencyIndex = std::clamp(static_cast<int>(SendDlgItemMessageW(
-            hwnd, kControlLatency, CB_GETCURSEL, 0, 0)), 0, 5);
-        options.latencyMs = latencyValues[latencyIndex];
+        options.latencyMs = 0;
         options.displaySizePreset = static_cast<int>(SendDlgItemMessageW(
             hwnd, kControlDisplaySize, CB_GETCURSEL, 0, 0));
         options.viewingDistancePreset = static_cast<int>(SendDlgItemMessageW(
