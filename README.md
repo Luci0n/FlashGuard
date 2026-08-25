@@ -4,6 +4,16 @@ FlashGuard is a Windows D3D11 overlay that captures the desktop, detects potenti
 
 It is **not medically validated, clinically epilepsy-safe, or Harding FPA/PSE certified**. Passing FlashBench is an engineering regression result, not a medical guarantee or formal accessibility certification.
 
+Current experimental version: **0.1.0-alpha.1**.
+
+Public technical documentation:
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - capture, detection, temporal filtering, and motion handling
+- [`docs/TESTING.md`](docs/TESTING.md) - regression methodology, 5-30 Hz sweep, reproducibility, and limitations
+- [`docs/VERSIONING.md`](docs/VERSIONING.md) - software/protocol/run versioning and immutability rules
+- [`experiments/`](experiments/) - immutable raw experiment records, including failed runs
+- [`CHANGELOG.md`](CHANGELOG.md) - public version history
+
 ## Current processing pipeline
 
 ```text
@@ -265,21 +275,16 @@ On pushes to `test`:
 
 - `.github/workflows/build.yml` runs a hosted Windows release build and HLSL validation.
 - `.github/workflows/gpu-smoke.yml` runs on the interactive self-hosted Windows runner labeled `flashguard-gpu`.
-- A successful GPU run stages the exact tested executable outside the volatile Actions workspace:
-
-```text
-C:\FlashGuard-Tested\<commit>\FlashGuard.exe
-C:\FlashGuard-Tested\LATEST.txt
-```
-
-`LATEST.txt` contains the path to the most recent fully GPU-tested build.
+- Successful GPU runs publish per-commit test artifacts containing the machine-readable FlashBench reports.
 
 ## Repository layout
 
 - `src/` - FlashGuard C++/embedded HLSL
 - `scripts/` - Windows build entry points
 - `flashbench/` - GPU smoke, replay, visual viewer, and regression automation
-- `docs/ITERATION_WORKFLOW.md` - development/CrowBridge handoff
+- `docs/` - public architecture, testing, and versioning documentation
+- `experiments/` - immutable experiment protocols and archived raw results
+- `VERSION` / `CHANGELOG.md` - software version and public change history
 - `.github/workflows/` - hosted build and self-hosted GPU CI
 
 ## Known limitations
