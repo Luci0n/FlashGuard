@@ -1001,12 +1001,12 @@ MainOutput PSMain(VSOut i)
                 }
             }
 
-            // Portable fallback used only when NVIDIA hardware optical flow is
-            // unavailable. Do not combine both estimators on the NVIDIA path: one
-            // authoritative transport field avoids conflicting motion decisions.
-            if (!hardwareFlowAvailable &&
-                sourceDelta > 0.018 && coarseMotion < 0.30 &&
-                max(coarseEvent, coarseRisk) > 0.018)
+            // Fresh NVOFA stays authoritative. If the NVIDIA session is only
+            // anchor-updated (or unavailable), keep the portable local matcher as
+            // a safety net for small moving content that the coarse scheduler misses.
+            if ((!hardwareFlowAvailable || !hardwareFlowValid) &&
+                sourceDelta > 0.010 && coarseMotion < 0.30 &&
+                max(coarseEvent, coarseRisk) > 0.010)
             {
                 const float2 outputTexel = 1.0 / max(
                     float2(P2.z, P2.w), float2(1.0, 1.0));
