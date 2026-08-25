@@ -10,6 +10,7 @@ Set-Location $root
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $outputPath = Join-Path $OutputDir 'summary.json'
 $logPath = Join-Path $OutputDir 'flashbench.log'
+$smokeReportPath = Join-Path $OutputDir 'nvof-smoke.json'
 
 $summary = [ordered]@{
     schema = 'FLASHBENCH/1'
@@ -21,6 +22,12 @@ $summary = [ordered]@{
     build_ms = 0
     shader_validation_status = 'NOT_RUN'
     shader_validation_ms = 0
+    nvof_smoke_build_status = 'NOT_RUN'
+    nvof_execute_status = 'NOT_RUN'
+    nvof_grid = $null
+    nvof_nonzero_vectors = $null
+    nvof_total_vectors = $null
+    nvof_mean_abs_flow_pixels = $null
     gpu = $null
     nvidia_driver = $null
     nvof_runtime_present = $false
@@ -45,6 +52,13 @@ try {
         throw "release build failed with exit code $buildExit"
     }
     $summary.build_status = 'SUCCESS'
+
+    & cmd.exe /d /c 'flashbench\build-nvof-smoke.bat' 2>&1 | Tee-Object -FilePath $logPath -Append
+    $smokeBuildExit = $LASTEXITCODE
+    if ($smokeBuildExit -ne 0) {
+        throw "NVOFA smoke helper build failed with exit code $smokeBuildExit"
+    }
+    $summary.nvof_smoke_build_status = 'SUCCESS'
 
     $sw.Restart()
     & .\FlashGuard.exe --validate-shaders
@@ -74,6 +88,23 @@ try {
         if (-not $summary.nvof_runtime_present) {
             throw 'nvofapi64.dll was not found in Windows System32'
         }
+
+        Remove-Item $smokeReportPath -ErrorAction SilentlyContinue
+        & .\build\NvofSmoke.exe $smokeReportPath 2>&1 | Tee-Object -FilePath $logPath -Append
+        $nvofExit = $LASTEXITCODE
+        $smoke = $null
+        if (Test-Path $smokeReportPath) {
+            $smoke = Get-Content -Raw $smokeReportPath | ConvertFrom-Json
+            $summary.nvof_grid = $smoke.grid
+            $summary.nvof_nonzero_vectors = $smoke.nonzero_vectors
+            $summary.nvof_total_vectors = $smoke.total_vectors
+            $summary.nvof_mean_abs_flow_pixels = $smoke.mean_abs_flow_pixels
+        }
+        if ($nvofExit -ne 0) {
+            $stage = if ($smoke) { $smoke.stage } else { 'unknown' }
+            throw "NvOFExecute smoke failed at $stage with exit code $nvofExit"
+        }
+        $summary.nvof_execute_status = 'SUCCESS'
     }
 
     $summary.status = 'SUCCESS'
