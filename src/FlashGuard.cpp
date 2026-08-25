@@ -1284,7 +1284,7 @@ MainOutput PSMain(VSOut i)
                 }
 
                 // Dense patch-space refinement resolves the ambiguity of flat
-                // bright objects: many offsets can match the center color, so the
+                // bright objects: many offsets can match the center color, so the)HLSL" R"HLSL(
                 // earlier directional searches may pick the wrong transport. Test
                 // every small local translation by PATCH error and make a strong
                 // structural match decisive. Keep this off global/broad protection
