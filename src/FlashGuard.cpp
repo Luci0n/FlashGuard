@@ -2272,14 +2272,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 1.0 - outputVariation / rawVariation : 0.0;
             const uint64_t flashFlowFrames = flowFrames - staticFlowFrames;
 
-            // Standards-oriented flash sweep. W3C defines a flash as two
-            // opposing transitions. For the general-flash rate below, a
-            // transition must change relative luminance by at least 0.10 and
-            // have a darker state below 0.80. The saturated-red counter follows
-            // the WCAG working definition using R/(R+G+B) >= 0.8 and a
-            // (R-G-B)*320 transition magnitude above 20. The quarter-screen case
-            // is deliberately conservative but is not a formal visual-angle
-            // compliance measurement.
+            // WCAG 2.2-oriented deterministic flash sweep. General-flash
+            // transitions use linear-sRGB relative luminance. Saturated-red
+            // transitions use the WCAG 2.2 CIE 1976 u-prime/v-prime definition.
+            // Flash counts are the maximum completed opposing transition pairs
+            // found in any one-second window, measured between temporal extrema.
+            // Physical display size and viewing distance calibrate the solid
+            // angle of each synthetic flashing region. This remains a regression
+            // corpus, not an external certification or arbitrary-video analyzer.
             struct FlashSweepResult
             {
                 std::string caseName;
@@ -2292,6 +2292,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 double outputGeneralFlashesPerSecond = 0.0;
                 double rawRedFlashesPerSecond = 0.0;
                 double outputRedFlashesPerSecond = 0.0;
+                double regionSolidAngleSr = 0.0;
+                bool areaBelowThreshold = false;
+                bool wcagSc231Pass = false;
+                bool wcagSc232Pass = false;
             };
             std::vector<FlashSweepResult> flashSweep;
             constexpr std::array<double, 8> sweepFrequencies{
@@ -2307,59 +2311,157 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 { "red_full", 1 },
                 { "luminance_quarter", 2 }
             }};
-            const auto countGeneralTransition = [](
-                double previousValue, double currentValue, int& rises, int& falls) {
-                const double delta = currentValue - previousValue;
-                if (std::fabs(delta) >= 0.10 &&
-                    std::min(previousValue, currentValue) < 0.80)
-                {
-                    if (delta > 0.0) ++rises;
-                    else ++falls;
-                }
-            };
-            const auto countRedTransition = [](
-                const FrameSample& previousSample, const FrameSample& currentSample,
-                bool output, int& rises, int& falls) {
-                struct Chromaticity
-                {
-                    double redRatio = 0.0;
-                    double u = 0.0;
-                    double v = 0.0;
-                };
-                const auto chromaticity = [](double r, double g, double b) {
-                    Chromaticity state{};
-                    const double sum = r + g + b;
-                    state.redRatio = sum > 1e-12 ? r / sum : 0.0;
-                    const double X = 0.4124564 * r + 0.3575761 * g + 0.1804375 * b;
-                    const double Y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b;
-                    const double Z = 0.0193339 * r + 0.1191920 * g + 0.9503041 * b;
-                    const double denominator = X + 15.0 * Y + 3.0 * Z;
-                    if (denominator > 1e-12)
-                    {
-                        state.u = 4.0 * X / denominator;
-                        state.v = 9.0 * Y / denominator;
-                    }
-                    return state;
-                };
-                const double pr = output ? previousSample.outputLinearRed : previousSample.sourceLinearRed;
-                const double pg = output ? previousSample.outputLinearGreen : previousSample.sourceLinearGreen;
-                const double pb = output ? previousSample.outputLinearBlue : previousSample.sourceLinearBlue;
-                const double cr = output ? currentSample.outputLinearRed : currentSample.sourceLinearRed;
-                const double cg = output ? currentSample.outputLinearGreen : currentSample.sourceLinearGreen;
-                const double cb = output ? currentSample.outputLinearBlue : currentSample.sourceLinearBlue;
-                const Chromaticity previous = chromaticity(pr, pg, pb);
-                const Chromaticity current = chromaticity(cr, cg, cb);
-                const bool saturated = previous.redRatio >= 0.80 || current.redRatio >= 0.80;
-                const double du = current.u - previous.u;
-                const double dv = current.v - previous.v;
-                if (saturated && std::sqrt(du * du + dv * dv) > 0.20)
-                {
-                    if (current.redRatio > previous.redRatio) ++rises;
-                    else ++falls;
-                }
-            };
+            constexpr int sweepFps = 60;
             constexpr int sweepFrames = 120; // two seconds at 60 FPS
-            constexpr double sweepSeconds = static_cast<double>(sweepFrames) / 60.0;
+            constexpr double sweepSeconds =
+                static_cast<double>(sweepFrames) / static_cast<double>(sweepFps);
+
+            struct WcagChromaticity
+            {
+                double redRatio = 0.0;
+                double u = 0.0;
+                double v = 0.0;
+            };
+            const auto wcagChromaticity = [](const FrameSample& sample, bool output) {
+                const double r = output ? sample.outputLinearRed : sample.sourceLinearRed;
+                const double g = output ? sample.outputLinearGreen : sample.sourceLinearGreen;
+                const double b = output ? sample.outputLinearBlue : sample.sourceLinearBlue;
+                WcagChromaticity state{};
+                const double sum = r + g + b;
+                state.redRatio = sum > 1e-12 ? r / sum : 0.0;
+                const double X = 0.4124564 * r + 0.3575761 * g + 0.1804375 * b;
+                const double Y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b;
+                const double Z = 0.0193339 * r + 0.1191920 * g + 0.9503041 * b;
+                const double denominator = X + 15.0 * Y + 3.0 * Z;
+                if (denominator > 1e-12)
+                {
+                    state.u = 4.0 * X / denominator;
+                    state.v = 9.0 * Y / denominator;
+                }
+                return state;
+            };
+            const auto turningPoints = [](size_t count, const auto& valueAt) {
+                std::vector<size_t> points;
+                if (count == 0) return points;
+                points.push_back(0);
+                int trend = 0;
+                for (size_t i = 1; i < count; ++i)
+                {
+                    const double delta = valueAt(i) - valueAt(i - 1);
+                    const int direction = delta > 1e-7 ? 1 : (delta < -1e-7 ? -1 : 0);
+                    if (direction == 0) continue;
+                    if (trend == 0)
+                    {
+                        trend = direction;
+                    }
+                    else if (direction != trend)
+                    {
+                        if (points.back() != i - 1) points.push_back(i - 1);
+                        trend = direction;
+                    }
+                }
+                if (points.back() != count - 1) points.push_back(count - 1);
+                return points;
+            };
+            struct WcagTransition
+            {
+                int frame = 0;
+                int direction = 0;
+            };
+            const auto maxOpposingPairsInOneSecond = [&](const std::vector<WcagTransition>& transitions) {
+                int maximum = 0;
+                for (int startFrame = 0; startFrame <= sweepFrames; ++startFrame)
+                {
+                    int completed = 0;
+                    int pendingDirection = 0;
+                    for (const WcagTransition& transition : transitions)
+                    {
+                        if (transition.frame < startFrame) continue;
+                        if (transition.frame >= startFrame + sweepFps) break;
+                        if (pendingDirection == 0)
+                        {
+                            pendingDirection = transition.direction;
+                        }
+                        else if (transition.direction == -pendingDirection)
+                        {
+                            ++completed;
+                            pendingDirection = 0;
+                        }
+                        else
+                        {
+                            pendingDirection = transition.direction;
+                        }
+                    }
+                    maximum = std::max(maximum, completed);
+                }
+                return maximum;
+            };
+            const auto maxGeneralFlashesInOneSecond = [&](const std::vector<FrameSample>& samples,
+                                                           bool output) {
+                const auto valueAt = [&](size_t index) {
+                    return output ? samples[index].outputWcagLuma :
+                        samples[index].sourceWcagLuma;
+                };
+                const std::vector<size_t> points = turningPoints(samples.size(), valueAt);
+                std::vector<WcagTransition> transitions;
+                for (size_t i = 1; i < points.size(); ++i)
+                {
+                    const double previousValue = valueAt(points[i - 1]);
+                    const double currentValue = valueAt(points[i]);
+                    const double delta = currentValue - previousValue;
+                    if (std::fabs(delta) >= 0.10 &&
+                        std::min(previousValue, currentValue) < 0.80)
+                    {
+                        transitions.push_back({ static_cast<int>(points[i]),
+                            delta > 0.0 ? 1 : -1 });
+                    }
+                }
+                return maxOpposingPairsInOneSecond(transitions);
+            };
+            const auto maxRedFlashesInOneSecond = [&](const std::vector<FrameSample>& samples,
+                                                       bool output) {
+                const auto ratioAt = [&](size_t index) {
+                    return wcagChromaticity(samples[index], output).redRatio;
+                };
+                const std::vector<size_t> points = turningPoints(samples.size(), ratioAt);
+                std::vector<WcagTransition> transitions;
+                for (size_t i = 1; i < points.size(); ++i)
+                {
+                    const WcagChromaticity previous =
+                        wcagChromaticity(samples[points[i - 1]], output);
+                    const WcagChromaticity current =
+                        wcagChromaticity(samples[points[i]], output);
+                    const double du = current.u - previous.u;
+                    const double dv = current.v - previous.v;
+                    const double distance = std::sqrt(du * du + dv * dv);
+                    if ((previous.redRatio >= 0.80 || current.redRatio >= 0.80) &&
+                        distance > 0.20)
+                    {
+                        const double ratioDelta = current.redRatio - previous.redRatio;
+                        transitions.push_back({ static_cast<int>(points[i]),
+                            ratioDelta >= 0.0 ? 1 : -1 });
+                    }
+                }
+                return maxOpposingPairsInOneSecond(transitions);
+            };
+            const auto sweepRegionSolidAngle = [&](const SweepCase& sweepCase) {
+                const double aspect = static_cast<double>(width) /
+                    std::max(1.0, static_cast<double>(height));
+                const double diagonalCm = m_safety.displayDiagonalInches * 2.54;
+                const double screenHeightCm =
+                    diagonalCm / std::sqrt(aspect * aspect + 1.0);
+                const double screenWidthCm = screenHeightCm * aspect;
+                const double widthFraction = sweepCase.kind == 2 ? 0.5 : 1.0;
+                const double heightFraction = sweepCase.kind == 2 ? 0.5 : 1.0;
+                const double halfWidth = screenWidthCm * widthFraction * 0.5;
+                const double halfHeight = screenHeightCm * heightFraction * 0.5;
+                const double distance = std::max(1.0,
+                    static_cast<double>(m_safety.viewingDistanceCm));
+                return 4.0 * std::atan((halfWidth * halfHeight) /
+                    (distance * std::sqrt(distance * distance +
+                        halfWidth * halfWidth + halfHeight * halfHeight)));
+            };
+
             bool flashSweepPass = true;
             for (const SweepCase& sweepCase : sweepCases)
             {
@@ -2379,14 +2481,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     result.frequencyHz = frequencyHz;
                     double rawRedVariation = 0.0;
                     double outputRedVariation = 0.0;
-                    int rawGeneralRises = 0;
-                    int rawGeneralFalls = 0;
-                    int outputGeneralRises = 0;
-                    int outputGeneralFalls = 0;
-                    int rawRedRises = 0;
-                    int rawRedFalls = 0;
-                    int outputRedRises = 0;
-                    int outputRedFalls = 0;
+                    std::vector<FrameSample> sweepTimeline;
+                    sweepTimeline.reserve(static_cast<size_t>(sweepFrames) + 1u);
+                    sweepTimeline.push_back(previousSweep);
 
                     for (int i = 0; i < sweepFrames; ++i)
                     {
@@ -2432,40 +2529,33 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                             currentSweep.sourceRed - previousSweep.sourceRed);
                         outputRedVariation += std::fabs(
                             currentSweep.outputRed - previousSweep.outputRed);
-                        countGeneralTransition(previousSweep.sourceMean,
-                            currentSweep.sourceMean, rawGeneralRises, rawGeneralFalls);
-                        countGeneralTransition(previousSweep.outputMean,
-                            currentSweep.outputMean, outputGeneralRises, outputGeneralFalls);
-                        countRedTransition(previousSweep, currentSweep, false,
-                            rawRedRises, rawRedFalls);
-                        countRedTransition(previousSweep, currentSweep, true,
-                            outputRedRises, outputRedFalls);
+                        sweepTimeline.push_back(currentSweep);
                         previousSweep = currentSweep;
                     }
 
                     result.reduction = result.rawVariation > 1e-9 ?
                         1.0 - result.outputVariation / result.rawVariation : 0.0;
-                    result.rawGeneralFlashesPerSecond =
-                        static_cast<double>(std::min(rawGeneralRises, rawGeneralFalls)) /
-                        sweepSeconds;
-                    result.outputGeneralFlashesPerSecond =
-                        static_cast<double>(std::min(
-                            outputGeneralRises, outputGeneralFalls)) / sweepSeconds;
-                    result.rawRedFlashesPerSecond =
-                        static_cast<double>(std::min(rawRedRises, rawRedFalls)) /
-                        sweepSeconds;
-                    result.outputRedFlashesPerSecond =
-                        static_cast<double>(std::min(outputRedRises, outputRedFalls)) /
-                        sweepSeconds;
+                    result.rawGeneralFlashesPerSecond = static_cast<double>(
+                        maxGeneralFlashesInOneSecond(sweepTimeline, false));
+                    result.outputGeneralFlashesPerSecond = static_cast<double>(
+                        maxGeneralFlashesInOneSecond(sweepTimeline, true));
+                    result.rawRedFlashesPerSecond = static_cast<double>(
+                        maxRedFlashesInOneSecond(sweepTimeline, false));
+                    result.outputRedFlashesPerSecond = static_cast<double>(
+                        maxRedFlashesInOneSecond(sweepTimeline, true));
 
+                    result.regionSolidAngleSr = sweepRegionSolidAngle(sweepCase);
+                    result.areaBelowThreshold = result.regionSolidAngleSr <= 0.006;
                     const bool stimulusValid =
                         result.rawGeneralFlashesPerSecond > 3.0 ||
-                        (sweepCase.kind == 1 && result.rawRedFlashesPerSecond > 3.0);
+                        result.rawRedFlashesPerSecond > 3.0;
                     const bool outputBelowThree =
                         result.outputGeneralFlashesPerSecond <= 3.0 &&
-                        (sweepCase.kind != 1 ||
-                         result.outputRedFlashesPerSecond <= 3.0);
-                    flashSweepPass = flashSweepPass && stimulusValid && outputBelowThree;
+                        result.outputRedFlashesPerSecond <= 3.0;
+                    result.wcagSc231Pass = outputBelowThree || result.areaBelowThreshold;
+                    result.wcagSc232Pass = outputBelowThree;
+                    flashSweepPass = flashSweepPass && stimulusValid &&
+                        result.wcagSc231Pass && result.wcagSc232Pass;
                     flashSweep.push_back(result);
                 }
             }
@@ -2478,13 +2568,17 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 return false;
             std::fprintf(flashSweepReport,
                 "{\n"
-                "  \"schema\": \"FLASHGUARD_FLASH_SWEEP/1\",\n"
+                "  \"schema\": \"FLASHGUARD_FLASH_SWEEP/2\",\n"
+                "  \"wcag_profile\": \"WCAG_FLASH/1\",\n"
                 "  \"status\": \"%s\",\n"
-                "  \"fps\": 60,\n"
+                "  \"fps\": %d,\n"
                 "  \"duration_seconds_per_case\": %.2f,\n"
-                "  \"note\": \"Screen-mean W3C-style regression; quarter-screen area is not a formal visual-angle certification.\",\n"
+                "  \"display_diagonal_inches\": %.2f,\n"
+                "  \"viewing_distance_cm\": %.2f,\n"
+                "  \"note\": \"WCAG 2.2 deterministic regression using linear-sRGB luminance, temporal extrema, one-second windows, CIE 1976 u-prime/v-prime saturated-red transitions, and calibrated rectangular solid angle; not an external certification or arbitrary-video analyzer.\",\n"
                 "  \"cases\": [\n",
-                flashSweepPass ? "SUCCESS" : "FAILED", sweepSeconds);
+                flashSweepPass ? "SUCCESS" : "FAILED", sweepFps, sweepSeconds,
+                m_safety.displayDiagonalInches, m_safety.viewingDistanceCm);
             for (size_t i = 0; i < flashSweep.size(); ++i)
             {
                 const FlashSweepResult& result = flashSweep[i];
@@ -2495,7 +2589,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     "\"raw_general_flashes_per_second\":%.3f,"
                     "\"output_general_flashes_per_second\":%.3f,"
                     "\"raw_red_flashes_per_second\":%.3f,"
-                    "\"output_red_flashes_per_second\":%.3f}%s\n",
+                    "\"output_red_flashes_per_second\":%.3f,"
+                    "\"region_solid_angle_sr\":%.8f,"
+                    "\"area_below_0_006_sr\":%s,"
+                    "\"wcag_sc_2_3_1_pass\":%s,"
+                    "\"wcag_sc_2_3_2_pass\":%s}%s\n",
                     result.caseName.c_str(), result.frequencyHz,
                     result.rawVariation, result.outputVariation, result.reduction,
                     result.peakOutputDelta,
@@ -2503,6 +2601,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     result.outputGeneralFlashesPerSecond,
                     result.rawRedFlashesPerSecond,
                     result.outputRedFlashesPerSecond,
+                    result.regionSolidAngleSr,
+                    result.areaBelowThreshold ? "true" : "false",
+                    result.wcagSc231Pass ? "true" : "false",
+                    result.wcagSc232Pass ? "true" : "false",
                     (i + 1 < flashSweep.size()) ? "," : "");
             }
             std::fputs("  ]\n}\n", flashSweepReport);
@@ -2701,7 +2803,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 return false;
             std::fprintf(report,
                 "{\n"
-                "  \"schema\": \"FLASHGUARD_REPLAY/1\",\n"
+                "  \"schema\": \"FLASHGUARD_REPLAY/2\",\n"
                 "  \"status\": \"%s\",\n"
                 "  \"width\": %u,\n"
                 "  \"height\": %u,\n"
