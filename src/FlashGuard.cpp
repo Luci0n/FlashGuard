@@ -16,6 +16,7 @@
 #include <d3d11.h>
 #include <d3d11_4.h>
 #include <dxgi1_2.h>
+#include <dxgi1_3.h>
 #include <d3dcompiler.h>
 #include <winrt/base.h>
 
@@ -2082,6 +2083,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             if (m_captureThread.joinable())
                 m_captureThread.join();
 
+            if (m_frameLatencyWaitableObject)
+            {
+                CloseHandle(m_frameLatencyWaitableObject);
+                m_frameLatencyWaitableObject = nullptr;
+            }
             std::scoped_lock lock(m_mutex);
             DestroyOpticalFlow();
             m_duplication = nullptr;
@@ -2271,7 +2277,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             if (!m_swapChain) return;
             m_backBuffer = nullptr;
             m_backBufferRTV = nullptr;
-            HRESULT hr = m_swapChain->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, 0);
+            HRESULT hr = m_swapChain->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN,
+                DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
             if (FAILED(hr)) return;
             RecreateOutputResources();
             ClearAllToBlack();
@@ -2437,6 +2444,19 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     }
                 }
 
+                // Keep the present queue empty BEFORE acquiring the next active
+                // desktop frame. Waiting after capture makes the captured image
+                // older while DXGI/DWM catches up, which is especially visible in
+                // sharp, high-FPS windowed games. Skip the wait after true idle so
+                // a newly changing desktop can wake capture immediately.
+                const int64_t previousCaptureMs =
+                    m_lastRealCaptureMs.load(std::memory_order_acquire);
+                if (m_frameLatencyWaitableObject && previousCaptureMs > 0 &&
+                    NowMs() - previousCaptureMs < 50)
+                {
+                    WaitForSingleObjectEx(m_frameLatencyWaitableObject, 20, FALSE);
+                }
+
                 DXGI_OUTDUPL_FRAME_INFO info{};
                 winrt::com_ptr<IDXGIResource> resource;
                 HRESULT hr = m_duplication->AcquireNextFrame(25, &info, resource.put());
@@ -2564,14 +2584,17 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             desc.Scaling = DXGI_SCALING_STRETCH;
             desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
             desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+            desc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 
             ThrowIfFailed(factory->CreateSwapChainForHwnd(
                 m_device.get(), m_output, &desc, nullptr, nullptr, m_swapChain.put()));
             factory->MakeWindowAssociation(m_output, DXGI_MWA_NO_ALT_ENTER);
 
-            winrt::com_ptr<IDXGIDevice1> dxgi1;
-            if (SUCCEEDED(dxgiDevice->QueryInterface(__uuidof(IDXGIDevice1), dxgi1.put_void())))
-                dxgi1->SetMaximumFrameLatency(1);
+            auto swapChain2 = m_swapChain.as<IDXGISwapChain2>();
+            ThrowIfFailed(swapChain2->SetMaximumFrameLatency(1));
+            m_frameLatencyWaitableObject = swapChain2->GetFrameLatencyWaitableObject();
+            if (!m_frameLatencyWaitableObject)
+                throw E_FAIL;
         }
 
         void CreatePipeline()
@@ -4713,6 +4736,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         winrt::com_ptr<IDXGIOutput1> m_dxgiOutput;
         winrt::com_ptr<IDXGIOutputDuplication> m_duplication;
         winrt::com_ptr<IDXGISwapChain1> m_swapChain;
+        HANDLE m_frameLatencyWaitableObject = nullptr;
         winrt::com_ptr<ID3D11Texture2D> m_backBuffer;
         winrt::com_ptr<ID3D11RenderTargetView> m_backBufferRTV;
         std::array<winrt::com_ptr<ID3D11Texture2D>, 2> m_outputHistoryTextures;
