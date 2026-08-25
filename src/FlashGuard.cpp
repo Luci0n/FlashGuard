@@ -2292,8 +2292,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 double outputGeneralFlashesPerSecond = 0.0;
                 double rawRedFlashesPerSecond = 0.0;
                 double outputRedFlashesPerSecond = 0.0;
+                double rawStrictTransitionsPerSecond = 0.0;
+                double outputStrictTransitionsPerSecond = 0.0;
+                double rawStrictFlashesPerSecond = 0.0;
+                double outputStrictFlashesPerSecond = 0.0;
                 double regionSolidAngleSr = 0.0;
                 bool areaBelowThreshold = false;
+                bool sc231StimulusValid = false;
+                bool sc232StimulusValid = false;
                 bool wcagSc231Pass = false;
                 bool wcagSc232Pass = false;
             };
@@ -2396,6 +2402,21 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 }
                 return maximum;
             };
+            const auto maxTransitionsInOneSecond = [&](const std::vector<WcagTransition>& transitions) {
+                int maximum = 0;
+                for (int startFrame = 0; startFrame <= sweepFrames; ++startFrame)
+                {
+                    int count = 0;
+                    for (const WcagTransition& transition : transitions)
+                    {
+                        if (transition.frame < startFrame) continue;
+                        if (transition.frame >= startFrame + sweepFps) break;
+                        ++count;
+                    }
+                    maximum = std::max(maximum, count);
+                }
+                return maximum;
+            };
             const auto maxGeneralFlashesInOneSecond = [&](const std::vector<FrameSample>& samples,
                                                            bool output) {
                 const auto valueAt = [&](size_t index) {
@@ -2443,6 +2464,25 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     }
                 }
                 return maxOpposingPairsInOneSecond(transitions);
+            };
+            const auto maxStrictTransitionsInOneSecond = [&](const std::vector<FrameSample>& samples,
+                                                              bool output) {
+                const auto valueAt = [&](size_t index) {
+                    return output ? samples[index].outputWcagLuma :
+                        samples[index].sourceWcagLuma;
+                };
+                const std::vector<size_t> points = turningPoints(samples.size(), valueAt);
+                std::vector<WcagTransition> transitions;
+                for (size_t i = 1; i < points.size(); ++i)
+                {
+                    const double delta = valueAt(points[i]) - valueAt(points[i - 1]);
+                    if (std::fabs(delta) > 1e-7)
+                    {
+                        transitions.push_back({ static_cast<int>(points[i]),
+                            delta > 0.0 ? 1 : -1 });
+                    }
+                }
+                return maxTransitionsInOneSecond(transitions);
             };
             const auto sweepRegionSolidAngle = [&](const SweepCase& sweepCase) {
                 const double aspect = static_cast<double>(width) /
@@ -2543,18 +2583,31 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         maxRedFlashesInOneSecond(sweepTimeline, false));
                     result.outputRedFlashesPerSecond = static_cast<double>(
                         maxRedFlashesInOneSecond(sweepTimeline, true));
+                    result.rawStrictTransitionsPerSecond = static_cast<double>(
+                        maxStrictTransitionsInOneSecond(sweepTimeline, false));
+                    result.outputStrictTransitionsPerSecond = static_cast<double>(
+                        maxStrictTransitionsInOneSecond(sweepTimeline, true));
+                    result.rawStrictFlashesPerSecond =
+                        result.rawStrictTransitionsPerSecond * 0.5;
+                    result.outputStrictFlashesPerSecond =
+                        result.outputStrictTransitionsPerSecond * 0.5;
 
                     result.regionSolidAngleSr = sweepRegionSolidAngle(sweepCase);
                     result.areaBelowThreshold = result.regionSolidAngleSr <= 0.006;
-                    const bool stimulusValid =
+                    result.sc231StimulusValid =
                         result.rawGeneralFlashesPerSecond > 3.0 ||
                         result.rawRedFlashesPerSecond > 3.0;
-                    const bool outputBelowThree =
+                    result.sc232StimulusValid =
+                        result.rawStrictTransitionsPerSecond > 6.0;
+                    const bool outputBelowSc231Threshold =
                         result.outputGeneralFlashesPerSecond <= 3.0 &&
                         result.outputRedFlashesPerSecond <= 3.0;
-                    result.wcagSc231Pass = outputBelowThree || result.areaBelowThreshold;
-                    result.wcagSc232Pass = outputBelowThree;
-                    flashSweepPass = flashSweepPass && stimulusValid &&
+                    result.wcagSc231Pass =
+                        outputBelowSc231Threshold || result.areaBelowThreshold;
+                    result.wcagSc232Pass =
+                        result.outputStrictTransitionsPerSecond <= 6.0;
+                    flashSweepPass = flashSweepPass &&
+                        result.sc231StimulusValid && result.sc232StimulusValid &&
                         result.wcagSc231Pass && result.wcagSc232Pass;
                     flashSweep.push_back(result);
                 }
@@ -2568,8 +2621,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 return false;
             std::fprintf(flashSweepReport,
                 "{\n"
-                "  \"schema\": \"FLASHGUARD_FLASH_SWEEP/2\",\n"
-                "  \"wcag_profile\": \"WCAG_FLASH/1\",\n"
+                "  \"schema\": \"FLASHGUARD_FLASH_SWEEP/3\",\n"
+                "  \"wcag_profile\": \"WCAG_FLASH/2\",\n"
                 "  \"status\": \"%s\",\n"
                 "  \"fps\": %d,\n"
                 "  \"duration_seconds_per_case\": %.2f,\n"
@@ -2590,8 +2643,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     "\"output_general_flashes_per_second\":%.3f,"
                     "\"raw_red_flashes_per_second\":%.3f,"
                     "\"output_red_flashes_per_second\":%.3f,"
+                    "\"raw_strict_transitions_per_second\":%.3f,"
+                    "\"output_strict_transitions_per_second\":%.3f,"
+                    "\"raw_strict_flashes_per_second\":%.3f,"
+                    "\"output_strict_flashes_per_second\":%.3f,"
                     "\"region_solid_angle_sr\":%.8f,"
                     "\"area_below_0_006_sr\":%s,"
+                    "\"sc_2_3_1_stimulus_valid\":%s,"
+                    "\"sc_2_3_2_stimulus_valid\":%s,"
                     "\"wcag_sc_2_3_1_pass\":%s,"
                     "\"wcag_sc_2_3_2_pass\":%s}%s\n",
                     result.caseName.c_str(), result.frequencyHz,
@@ -2601,8 +2660,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     result.outputGeneralFlashesPerSecond,
                     result.rawRedFlashesPerSecond,
                     result.outputRedFlashesPerSecond,
+                    result.rawStrictTransitionsPerSecond,
+                    result.outputStrictTransitionsPerSecond,
+                    result.rawStrictFlashesPerSecond,
+                    result.outputStrictFlashesPerSecond,
                     result.regionSolidAngleSr,
                     result.areaBelowThreshold ? "true" : "false",
+                    result.sc231StimulusValid ? "true" : "false",
+                    result.sc232StimulusValid ? "true" : "false",
                     result.wcagSc231Pass ? "true" : "false",
                     result.wcagSc232Pass ? "true" : "false",
                     (i + 1 < flashSweep.size()) ? "," : "");
@@ -2803,7 +2868,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 return false;
             std::fprintf(report,
                 "{\n"
-                "  \"schema\": \"FLASHGUARD_REPLAY/2\",\n"
+                "  \"schema\": \"FLASHGUARD_REPLAY/3\",\n"
                 "  \"status\": \"%s\",\n"
                 "  \"width\": %u,\n"
                 "  \"height\": %u,\n"
