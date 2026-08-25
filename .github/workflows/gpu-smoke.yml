@@ -28,6 +28,16 @@ jobs:
           path: flashbench/results/
           if-no-files-found: warn
           retention-days: 14
+      - name: Stage tested build outside runner workspace
+        if: steps.gpu.outcome == 'success'
+        shell: powershell
+        run: |
+          $root = 'C:\FlashGuard-Tested'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $dest = Join-Path $root '${{ github.sha }}'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -Force .\FlashGuard.exe (Join-Path $dest 'FlashGuard.exe')
+          Set-Content -Path (Join-Path $root 'LATEST.txt') -Value (Join-Path $dest 'FlashGuard.exe')
       - name: Publish GPU smoke status
         if: always()
         shell: powershell
