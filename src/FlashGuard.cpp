@@ -1282,6 +1282,72 @@ MainOutput PSMain(VSOut i)
                             obliqueGate > 0.56 ? 1.0 : obliqueGate);
                     }
                 }
+
+                // Dense patch-space refinement resolves the ambiguity of flat
+                // bright objects: many offsets can match the center color, so the
+                // earlier directional searches may pick the wrong transport. Test
+                // every small local translation by PATCH error and make a strong
+                // structural match decisive. Keep this off global/broad protection
+                // so a true flash never pays the dense search or gets bypassed.
+                if (localMotionGate < 0.98 && samePatchError > 0.012 &&
+                    abs(protectionGate) < 0.5 && overloadGate < 0.5 && P6.x < 0.5)
+                {
+                    float bestDensePatchError = samePatchError;
+                    [loop]
+                    for (int denseY = -4; denseY <= 4; ++denseY)
+                    {
+                        [loop]
+                        for (int denseX = -4; denseX <= 4; ++denseX)
+                        {
+                            if (denseX == 0 && denseY == 0) continue;
+                            const float2 denseOffset = float2(
+                                (float)denseX, (float)denseY) * outputTexel;
+                            float densePatchError = 0.0;
+                            [unroll]
+                            for (int py = -1; py <= 1; ++py)
+                            {
+                                [unroll]
+                                for (int px = -1; px <= 1; ++px)
+                                {
+                                    if (abs(px) + abs(py) <= 1)
+                                    {
+                                        const float2 patchOffset =
+                                            float2((float)px, (float)py) *
+                                            outputTexel * verifyRadius;
+                                        const float3 currentPatch =
+                                            CurrentFrame.SampleLevel(
+                                                LinearClamp, i.uv + patchOffset, 0.0).rgb;
+                                        const float3 previousPatch =
+                                            PreviousSource.SampleLevel(
+                                                LinearClamp,
+                                                i.uv + patchOffset + denseOffset,
+                                                0.0).rgb;
+                                        densePatchError += SourceMatchError(
+                                            currentPatch, previousPatch);
+                                    }
+                                }
+                            }
+                            bestDensePatchError = min(
+                                bestDensePatchError, densePatchError);
+                        }
+                    }
+
+                    const float denseImprovement = saturate(
+                        1.0 - bestDensePatchError / samePatchError);
+                    const float denseMeanError = bestDensePatchError / 5.0;
+                    if (denseImprovement > 0.24 && denseMeanError < 0.085)
+                    {
+                        localMotionGate = 1.0;
+                    }
+                    else
+                    {
+                        const float denseAbsoluteMatch = 1.0 - smoothstep(
+                            0.035, 0.120, denseMeanError);
+                        const float denseGate = smoothstep(
+                            0.24, 0.60, denseImprovement) * denseAbsoluteMatch;
+                        localMotionGate = max(localMotionGate, denseGate);
+                    }
+                }
             }
         })HLSL" R"HLSL(
 
