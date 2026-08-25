@@ -2893,6 +2893,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             // After a reset, the next captured frame becomes a fresh optical-flow anchor.
             m_nvofPreviousValid = false;
             m_nvofFlowValid = false;
+            m_nvofLastExecuteSuccessful = false;
             m_haveDisplayedLuma = false;
             m_haveHardRiseLuma = false;
             m_hardGlobalActive = false;
@@ -3338,6 +3339,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         {
             m_nvofFlowValid = false;
             m_nvofPreviousValid = false;
+            m_nvofLastExecuteSuccessful = false;
             if (m_nvofApi.nvOFUnregisterResourceD3D11)
             {
                 for (auto& handle : m_nvofInputHandles)
@@ -3593,6 +3595,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
         void UpdateOpticalFlow(ID3D11ShaderResourceView* source, bool executeFlow)
         {
+            const bool previousExecuteSuccessful = m_nvofLastExecuteSuccessful;
+            m_nvofLastExecuteSuccessful = false;
             m_nvofFlowValid = false;
             if (!source || !m_psOpticalFlowCopy) return;
 
@@ -3633,7 +3637,13 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 nvof5::NV_OF_EXECUTE_INPUT_PARAMS in{};
                 in.inputFrame = m_nvofInputHandles[writeIndex];
                 in.referenceFrame = m_nvofInputHandles[m_nvofPreviousIndex];
-                in.disableTemporalHints = nvof5::NV_OF_FALSE;
+                // Temporal hints come from the previous NvOFExecute, not from the
+                // most recent anchor copy. Our classifier intentionally skips flow
+                // solves on ordinary frames, so a solve after any skipped/failed
+                // execute must start without a stale hint. Consecutive successful
+                // solves may keep temporal hints for quality and speed.
+                in.disableTemporalHints = previousExecuteSuccessful ?
+                    nvof5::NV_OF_FALSE : nvof5::NV_OF_TRUE;
                 nvof5::NV_OF_EXECUTE_OUTPUT_PARAMS out{};
                 out.outputBuffer = m_nvofForwardHandle;
                 out.bwdOutputBuffer = m_nvofBackwardHandle;
@@ -3645,6 +3655,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     m_nvofApi.nvOFExecute(m_nvofHandle, &in, &out) == nvof5::NV_OF_SUCCESS)
                 {
                     m_nvofFlowValid = true;
+                    m_nvofLastExecuteSuccessful = true;
                 }
             }
             m_nvofPreviousIndex = writeIndex;
@@ -4389,6 +4400,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         size_t m_nvofPreviousIndex = 0;
         bool m_nvofPreviousValid = false;
         bool m_nvofFlowValid = false;
+        bool m_nvofLastExecuteSuccessful = false;
         bool m_nvofUnavailable = false;
         winrt::com_ptr<ID3D11Buffer> m_constants;
 
