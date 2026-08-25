@@ -1,0 +1,27 @@
+name: FlashGuard Build
+
+on:
+  push:
+    branches: [test]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and validate
+        shell: pwsh
+        run: .\flashbench\run.ps1 -Mode compile -OutputDir flashbench/results
+      - name: Upload build report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flashbench-build-${{ github.sha }}
+          path: flashbench/results/
+          if-no-files-found: warn
+          retention-days: 14

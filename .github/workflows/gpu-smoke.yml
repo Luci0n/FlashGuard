@@ -1,0 +1,27 @@
+name: FlashGuard GPU Smoke
+
+on:
+  push:
+    branches: [test]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gpu-smoke:
+    runs-on: [self-hosted, Windows, X64, flashguard-gpu]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and inspect GPU runtime
+        shell: pwsh
+        run: .\flashbench\run.ps1 -Mode gpu-smoke -OutputDir flashbench/results
+      - name: Upload GPU smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flashbench-gpu-${{ github.sha }}
+          path: flashbench/results/
+          if-no-files-found: warn
+          retention-days: 14
