@@ -580,6 +580,7 @@ Texture2D<int2> ForwardOpticalFlow : register(t10);
 Texture2D<int2> BackwardOpticalFlow : register(t11);
 Texture2D<uint> ForwardOpticalCost : register(t12);
 Texture2D<uint> BackwardOpticalCost : register(t13);
+Texture2D<int2> GlobalOpticalFlow : register(t14);
 SamplerState LinearClamp : register(s0);
 
 cbuffer Safety : register(b0)
@@ -684,6 +685,16 @@ float2 LoadOpticalFlow(Texture2D<int2> flowTexture, float2 uv)
     const int2 ip = clamp(int2(floor(p + 0.5)), int2(0, 0),
         int2(flowWidth - 1, flowHeight - 1));
     const float2 flow = (float2)flowTexture.Load(int3(ip, 0)) / 32.0;
+    const float2 flowInputToOutputScale = max(P9.yz, float2(1.0, 1.0));
+    return flow * flowInputToOutputScale;
+}
+
+float2 LoadGlobalOpticalFlow()
+{
+    // Global flow is a single forward vector generated from the dominant
+    // background/camera transport. An unbound SRV reads zero, so this also
+    // behaves safely on drivers where global flow is unavailable.
+    const float2 flow = (float2)GlobalOpticalFlow.Load(int3(0, 0, 0)) / 32.0;
     const float2 flowInputToOutputScale = max(P9.yz, float2(1.0, 1.0));
     return flow * flowInputToOutputScale;
 }
@@ -875,6 +886,38 @@ MainOutput PSMain(VSOut i)
                 const float2 outputSize = max(float2(P2.z, P2.w), float2(1.0, 1.0));
                 const float2 outputTexel = 1.0 / outputSize;
 
+                // NVIDIA's global-flow vector is a strong camera/background prior.
+                // Validate it against the raw source before using it so a spatially
+                // uniform flash cannot masquerade as camera motion.
+                const float2 globalPixels = LoadGlobalOpticalFlow();
+                const float globalMagnitude = length(globalPixels);
+                float globalMotionGate = 0.0;
+                if (globalMagnitude > 0.35 && sourceDelta > 0.004)
+                {
+                    const float2 globalPreviousUv = i.uv + globalPixels / outputSize;
+                    const bool insideGlobalPrevious =
+                        all(globalPreviousUv >= float2(0.0, 0.0)) &&
+                        all(globalPreviousUv <= float2(1.0, 1.0));
+                    if (insideGlobalPrevious)
+                    {
+                        const float3 previousGlobal = PreviousSource.SampleLevel(
+                            LinearClamp, globalPreviousUv, 0.0).rgb;
+                        const float globalError =
+                            SourceMatchError(rawSourceColor, previousGlobal);
+                        const float globalImprovement = saturate(
+                            1.0 - globalError / max(sourceDelta, 0.003));
+                        const float globalAbsoluteMatch =
+                            1.0 - smoothstep(0.035, 0.135, globalError);
+                        const float globalEvidence = globalAbsoluteMatch *
+                            smoothstep(0.18, 0.55, globalImprovement);
+                        globalMotionGate = globalEvidence > 0.48 ? 1.0 :
+                            smoothstep(0.26, 0.48, globalEvidence);
+                        hardwareMotionGate = max(
+                            hardwareMotionGate, globalMotionGate);
+                        localMotionGate = max(localMotionGate, globalMotionGate);
+                    }
+                }
+
                 // --- A. Current surface -> its previous position -----------------
                 const float2 forwardPixels = LoadOpticalFlow(ForwardOpticalFlow, i.uv);
                 const float2 previousUv = i.uv + forwardPixels / outputSize;
@@ -1026,6 +1069,201 @@ MainOutput PSMain(VSOut i)
                     // motion bypass so the freshly revealed background appears now.
                     hardwareMotionGate = max(hardwareMotionGate, vacatedGate);
                     localMotionGate = max(localMotionGate, vacatedGate);
+                }
+
+                // --- C. Conservative disocclusion infill --------------------------
+                // A fast object can expose a strip whose exact boundary vector is
+                // noisy even though nearby previous->current vectors are excellent.
+                // Search only changing pixels and accept an infill bypass only when
+                // a nearby backward vector survives round-trip, raw-image and cost
+                // validation. Strong accumulated flash memory disables this local
+                // infill; the independently validated global-pan gate above remains.
+                if (hardwareMotionGate < 0.80 && sourceDelta > 0.010 &&
+                    temporalRisk < 0.70)
+                {
+                    float bestInfillEvidence = 0.0;
+                    float2 bestInfillFlow = float2(0.0, 0.0);
+                    [unroll]
+                    for (int iri = 0; iri < 4; ++iri)
+                    {
+                        const float radius = exp2((float)(iri + 1)); // 2,4,8,16 px
+                        [unroll]
+                        for (int iy = -1; iy <= 1; ++iy)
+                        {
+                            [unroll]
+                            for (int ix = -1; ix <= 1; ++ix)
+                            {
+                                if (abs(ix) + abs(iy) == 1)
+                                {
+                                    const float2 neighborUv = i.uv +
+                                        float2((float)ix, (float)iy) *
+                                        outputTexel * radius;
+                                    const bool insideNeighbor =
+                                        all(neighborUv >= float2(0.0, 0.0)) &&
+                                        all(neighborUv <= float2(1.0, 1.0));
+                                    if (insideNeighbor)
+                                    {
+                                        const float2 neighborBackward =
+                                            LoadOpticalFlow(
+                                                BackwardOpticalFlow, neighborUv);
+                                        const float neighborMagnitude =
+                                            length(neighborBackward);
+                                        const float2 neighborDestination =
+                                            neighborUv +
+                                            neighborBackward / outputSize;
+                                        const bool insideDestination =
+                                            all(neighborDestination >=
+                                                float2(0.0, 0.0)) &&
+                                            all(neighborDestination <=
+                                                float2(1.0, 1.0));
+                                        if (insideDestination &&
+                                            neighborMagnitude > 0.50)
+                                        {
+                                            const float2 forwardAtDestination =
+                                                LoadOpticalFlow(
+                                                    ForwardOpticalFlow,
+                                                    neighborDestination);
+                                            const float roundTrip = length(
+                                                neighborBackward +
+                                                forwardAtDestination);
+                                            const float allowedRoundTrip =
+                                                max(1.25, 0.65 +
+                                                    neighborMagnitude * 0.22);
+                                            const float fbConfidence =
+                                                1.0 - smoothstep(
+                                                    allowedRoundTrip,
+                                                    allowedRoundTrip + 2.0,
+                                                    roundTrip);
+
+                                            const float3 previousNeighbor =
+                                                PreviousSource.SampleLevel(
+                                                    LinearClamp, neighborUv,
+                                                    0.0).rgb;
+                                            const float3 currentDestination =
+                                                CurrentFrame.SampleLevel(
+                                                    LinearClamp,
+                                                    neighborDestination,
+                                                    0.0).rgb;
+                                            const float3 currentNeighbor =
+                                                CurrentFrame.SampleLevel(
+                                                    LinearClamp, neighborUv,
+                                                    0.0).rgb;
+                                            const float movedError =
+                                                SourceMatchError(
+                                                    previousNeighbor,
+                                                    currentDestination);
+                                            const float stayedError =
+                                                SourceMatchError(
+                                                    previousNeighbor,
+                                                    currentNeighbor);
+                                            const float movedImprovement =
+                                                stayedError > 0.003 ?
+                                                saturate(1.0 -
+                                                    movedError / stayedError) :
+                                                0.0;
+                                            const float absoluteMatch =
+                                                1.0 - smoothstep(
+                                                    0.030, 0.120, movedError);
+                                            float costConfidence = 1.0;
+                                            if (P9.w > 0.5)
+                                            {
+                                                const float flowCost =
+                                                    LoadOpticalCost(
+                                                        BackwardOpticalCost,
+                                                        neighborUv);
+                                                costConfidence =
+                                                    1.0 - smoothstep(
+                                                        0.24, 0.70, flowCost);
+                                            }
+                                            // Only vectors whose displacement can
+                                            // plausibly sweep over this radius may
+                                            // fill the newly exposed strip.
+                                            const float sweptSupport =
+                                                1.0 - smoothstep(
+                                                    neighborMagnitude + 2.0,
+                                                    neighborMagnitude + 7.0,
+                                                    radius);
+                                            const float evidence =
+                                                fbConfidence * absoluteMatch *
+                                                smoothstep(
+                                                    0.32, 0.72,
+                                                    movedImprovement) *
+                                                lerp(0.25, 1.0,
+                                                    costConfidence) *
+                                                sweptSupport;
+                                            if (evidence > bestInfillEvidence)
+                                            {
+                                                bestInfillEvidence = evidence;
+                                                bestInfillFlow =
+                                                    neighborBackward;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Require at least two nearby vectors agreeing with the best
+                    // verified motion before dropping history at the disocclusion.
+                    if (bestInfillEvidence > 0.48)
+                    {
+                        int agreeingVectors = 0;
+                        const float bestMagnitude =
+                            max(length(bestInfillFlow), 0.001);
+                        [unroll]
+                        for (int si = 0; si < 4; ++si)
+                        {
+                            const float radius = exp2((float)(si + 1));
+                            [unroll]
+                            for (int syi = -1; syi <= 1; ++syi)
+                            {
+                                [unroll]
+                                for (int sxi = -1; sxi <= 1; ++sxi)
+                                {
+                                    if (abs(sxi) + abs(syi) == 1)
+                                    {
+                                        const float2 sampleUv = i.uv +
+                                            float2((float)sxi, (float)syi) *
+                                            outputTexel * radius;
+                                        if (all(sampleUv >= float2(0.0, 0.0)) &&
+                                            all(sampleUv <= float2(1.0, 1.0)))
+                                        {
+                                            const float2 sampleFlow =
+                                                LoadOpticalFlow(
+                                                    BackwardOpticalFlow,
+                                                    sampleUv);
+                                            const float sampleMagnitude =
+                                                length(sampleFlow);
+                                            const float directionAgreement =
+                                                dot(sampleFlow, bestInfillFlow) /
+                                                max(sampleMagnitude *
+                                                    bestMagnitude, 0.001);
+                                            const float magnitudeRatio =
+                                                min(sampleMagnitude,
+                                                    bestMagnitude) /
+                                                max(sampleMagnitude,
+                                                    bestMagnitude);
+                                            if (sampleMagnitude > 0.50 &&
+                                                directionAgreement > 0.90 &&
+                                                magnitudeRatio > 0.62)
+                                                agreeingVectors++;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        const float supportGate =
+                            smoothstep(1.0, 3.0,
+                                (float)agreeingVectors);
+                        const float infillGate = supportGate *
+                            smoothstep(0.48, 0.72,
+                                bestInfillEvidence);
+                        hardwareMotionGate = max(
+                            hardwareMotionGate, infillGate);
+                        localMotionGate = max(
+                            localMotionGate, infillGate);
+                    }
                 }
             }
 
@@ -4728,20 +4966,26 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     m_nvofApi.nvOFUnregisterResourceD3D11(m_nvofForwardCostHandle);
                 if (m_nvofBackwardCostHandle)
                     m_nvofApi.nvOFUnregisterResourceD3D11(m_nvofBackwardCostHandle);
+                if (m_nvofGlobalFlowHandle)
+                    m_nvofApi.nvOFUnregisterResourceD3D11(m_nvofGlobalFlowHandle);
             }
             m_nvofForwardHandle = nullptr;
             m_nvofBackwardHandle = nullptr;
             m_nvofForwardCostHandle = nullptr;
             m_nvofBackwardCostHandle = nullptr;
+            m_nvofGlobalFlowHandle = nullptr;
             m_nvofForwardSRV = nullptr;
             m_nvofBackwardSRV = nullptr;
             m_nvofForwardCostSRV = nullptr;
             m_nvofBackwardCostSRV = nullptr;
+            m_nvofGlobalFlowSRV = nullptr;
             m_nvofForwardTexture = nullptr;
             m_nvofBackwardTexture = nullptr;
             m_nvofForwardCostTexture = nullptr;
             m_nvofBackwardCostTexture = nullptr;
+            m_nvofGlobalFlowTexture = nullptr;
             m_nvofCostEnabled = false;
+            m_nvofGlobalFlowEnabled = false;
             for (size_t i = 0; i < m_nvofInputTextures.size(); ++i)
             {
                 m_nvofInputRTVs[i] = nullptr;
@@ -4855,6 +5099,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             // D3D11 driver. NVIDIA recommends this over legacy 32-bit cost.
             m_nvofCostEnabled = !m_nvofCostDisabledByRuntime && NvofHasFormat(
                 nvof5::NV_OF_BUFFER_USAGE_COST, DXGI_FORMAT_R8_UINT);
+            m_nvofGlobalFlowEnabled =
+                !m_nvofGlobalFlowDisabledByRuntime &&
+                NvofHasFormat(nvof5::NV_OF_BUFFER_USAGE_GLOBAL_FLOW,
+                    DXGI_FORMAT_R16G16_SINT);
 
             nvof5::NV_OF_INIT_PARAMS init{};
             init.width = ofWidth;
@@ -4869,7 +5117,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             init.disparityRange = nvof5::NV_OF_STEREO_DISPARITY_RANGE_UNDEFINED;
             init.enableRoi = nvof5::NV_OF_FALSE;
             init.predDirection = nvof5::NV_OF_PRED_DIRECTION_BOTH;
-            init.enableGlobalFlow = nvof5::NV_OF_FALSE;
+            init.enableGlobalFlow = m_nvofGlobalFlowEnabled ?
+                nvof5::NV_OF_TRUE : nvof5::NV_OF_FALSE;
             init.inputBufferFormat = nvof5::NV_OF_BUFFER_FORMAT_ABGR8;
             if (!m_nvofApi.nvOFInit ||
                 m_nvofApi.nvOFInit(m_nvofHandle, &init) != nvof5::NV_OF_SUCCESS)
@@ -4928,6 +5177,30 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 DestroyOpticalFlow();
                 m_nvofUnavailable = true;
                 return false;
+            }
+
+            if (m_nvofGlobalFlowEnabled)
+            {
+                D3D11_TEXTURE2D_DESC globalDesc = flowDesc;
+                // NVIDIA global flow is one vector for the complete frame.
+                globalDesc.Width = 1;
+                globalDesc.Height = 1;
+                if (FAILED(m_device->CreateTexture2D(
+                        &globalDesc, nullptr, m_nvofGlobalFlowTexture.put())) ||
+                    FAILED(m_device->CreateShaderResourceView(
+                        m_nvofGlobalFlowTexture.get(), nullptr,
+                        m_nvofGlobalFlowSRV.put())) ||
+                    m_nvofApi.nvOFRegisterResourceD3D11(
+                        m_nvofHandle, m_nvofGlobalFlowTexture.get(),
+                        &m_nvofGlobalFlowHandle) != nvof5::NV_OF_SUCCESS)
+                {
+                    // Global flow is an optional quality path. Retry without it if
+                    // a driver advertises the format but rejects the one-vector
+                    // resource instead of disabling NVOFA completely.
+                    m_nvofGlobalFlowDisabledByRuntime = true;
+                    DestroyOpticalFlow();
+                    return EnsureOpticalFlow(width, height);
+                }
             }
 
             if (m_nvofCostEnabled)
@@ -5024,6 +5297,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     m_nvofForwardCostHandle : nullptr;
                 out.bwdOutputCostBuffer = m_nvofCostEnabled ?
                     m_nvofBackwardCostHandle : nullptr;
+                out.globalFlowBuffer = m_nvofGlobalFlowEnabled ?
+                    m_nvofGlobalFlowHandle : nullptr;
                 if (m_nvofApi.nvOFExecute &&
                     m_nvofApi.nvOFExecute(m_nvofHandle, &in, &out) == nvof5::NV_OF_SUCCESS)
                 {
@@ -5497,6 +5772,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 (m_nvofFlowValid && m_nvofCostEnabled) ? m_nvofBackwardCostSRV.get() : nullptr
             };
             m_context->PSSetShaderResources(12, 2, costSRVs);
+            ID3D11ShaderResourceView* globalFlowSRV =
+                (m_nvofFlowValid && m_nvofGlobalFlowEnabled) ?
+                m_nvofGlobalFlowSRV.get() : nullptr;
+            m_context->PSSetShaderResources(14, 1, &globalFlowSRV);
             ID3D11SamplerState* sampler = m_sampler.get();
             m_context->PSSetSamplers(0, 1, &sampler);
             ID3D11Buffer* cb = m_constants.get();
@@ -5517,6 +5796,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             m_context->PSSetShaderResources(10, 2, nullFlowSRVs);
             ID3D11ShaderResourceView* nullCostSRVs[2] = { nullptr, nullptr };
             m_context->PSSetShaderResources(12, 2, nullCostSRVs);
+            ID3D11ShaderResourceView* nullGlobalFlowSRV = nullptr;
+            m_context->PSSetShaderResources(14, 1, &nullGlobalFlowSRV);
             ID3D11RenderTargetView* nullRTVs[3] = { nullptr, nullptr, nullptr };
             m_context->OMSetRenderTargets(3, nullRTVs, nullptr);
             m_outputHistoryIndex = historyWriteIndex;
@@ -5772,14 +6053,19 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         winrt::com_ptr<ID3D11ShaderResourceView> m_nvofBackwardSRV;
         winrt::com_ptr<ID3D11Texture2D> m_nvofForwardCostTexture;
         winrt::com_ptr<ID3D11Texture2D> m_nvofBackwardCostTexture;
+        winrt::com_ptr<ID3D11Texture2D> m_nvofGlobalFlowTexture;
         winrt::com_ptr<ID3D11ShaderResourceView> m_nvofForwardCostSRV;
         winrt::com_ptr<ID3D11ShaderResourceView> m_nvofBackwardCostSRV;
+        winrt::com_ptr<ID3D11ShaderResourceView> m_nvofGlobalFlowSRV;
         nvof5::NvOFGPUBufferHandle m_nvofForwardHandle = nullptr;
         nvof5::NvOFGPUBufferHandle m_nvofBackwardHandle = nullptr;
         nvof5::NvOFGPUBufferHandle m_nvofForwardCostHandle = nullptr;
         nvof5::NvOFGPUBufferHandle m_nvofBackwardCostHandle = nullptr;
+        nvof5::NvOFGPUBufferHandle m_nvofGlobalFlowHandle = nullptr;
         bool m_nvofCostEnabled = false;
         bool m_nvofCostDisabledByRuntime = false;
+        bool m_nvofGlobalFlowEnabled = false;
+        bool m_nvofGlobalFlowDisabledByRuntime = false;
         UINT m_nvofWidth = 0;
         UINT m_nvofHeight = 0;
         UINT m_nvofInputWidth = 0;
