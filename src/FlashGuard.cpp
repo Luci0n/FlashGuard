@@ -676,15 +676,16 @@ float2 LoadOpticalFlow(Texture2D<int2> flowTexture, float2 uv)
     const int flowWidth = max((int)P8.z, 1);
     const int flowHeight = max((int)P8.w, 1);
     const float2 p = saturate(uv) * float2(flowWidth, flowHeight) - 0.5;
-    const int2 p0 = clamp(int2(floor(p)), int2(0, 0), int2(flowWidth - 1, flowHeight - 1));
-    const int2 p1 = min(p0 + int2(1, 1), int2(flowWidth - 1, flowHeight - 1));
-    const float2 f = frac(p);
-    const float2 a = (float2)flowTexture.Load(int3(p0.x, p0.y, 0)) / 32.0;
-    const float2 b = (float2)flowTexture.Load(int3(p1.x, p0.y, 0)) / 32.0;
-    const float2 c = (float2)flowTexture.Load(int3(p0.x, p1.y, 0)) / 32.0;
-    const float2 d = (float2)flowTexture.Load(int3(p1.x, p1.y, 0)) / 32.0;
+    // Preserve motion discontinuities. Bilinear interpolation invents vectors at
+    // object/background boundaries (for example 0 px and 16 px becoming 8 px),
+    // which then fail transport verification and re-enable temporal history.
+    // Grid-1 NVOFA is already dense at the OF input resolution; nearest-vector
+    // reconstruction is intentionally conservative at full-resolution edges.
+    const int2 ip = clamp(int2(floor(p + 0.5)), int2(0, 0),
+        int2(flowWidth - 1, flowHeight - 1));
+    const float2 flow = (float2)flowTexture.Load(int3(ip, 0)) / 32.0;
     const float2 flowInputToOutputScale = max(P9.yz, float2(1.0, 1.0));
-    return lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y) * flowInputToOutputScale;
+    return flow * flowInputToOutputScale;
 }
 
 float LoadOpticalCost(Texture2D<uint> costTexture, float2 uv)
@@ -865,14 +866,11 @@ MainOutput PSMain(VSOut i)
             //
             // v9 only handled (1). A bright object therefore left its filtered
             // luminance behind on trailing edges even with valid grid-2 flow.
-            const float cameraMotionNeed =
-                smoothstep(max(0.10, P5.x * 0.85), max(0.18, P5.x * 1.35), P6.y);
-            const float localHazardNeed = max(
-                max(max(coarseEvent, coarseRisk),
-                    max(max(protectionGate, overloadGate), P6.x > 0.5 ? 1.0 : 0.0)),
-                cameraMotionNeed);
-            if (hardwareFlowValid && sourceDelta > 0.004 &&
-                localHazardNeed > 0.018)
+            // Fresh hardware flow is independent evidence and must be evaluated
+            // before flash/CPU state decides whether temporal history is allowed.
+            // The raw patch, forward/backward and NVOFA-cost checks below are the
+            // authority for rejecting noisy/static vectors.
+            if (hardwareFlowValid)
             {
                 const float2 outputSize = max(float2(P2.z, P2.w), float2(1.0, 1.0));
                 const float2 outputTexel = 1.0 / outputSize;
@@ -4864,7 +4862,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             init.outGridSize = static_cast<nvof5::NV_OF_OUTPUT_VECTOR_GRID_SIZE>(m_nvofGridSize);
             init.hintGridSize = nvof5::NV_OF_HINT_VECTOR_GRID_SIZE_UNDEFINED;
             init.mode = nvof5::NV_OF_MODE_OPTICALFLOW;
-            init.perfLevel = nvof5::NV_OF_PERF_LEVEL_FAST;
+            init.perfLevel = nvof5::NV_OF_PERF_LEVEL_MEDIUM;
             init.enableExternalHints = nvof5::NV_OF_FALSE;
             init.enableOutputCost = m_nvofCostEnabled ?
                 nvof5::NV_OF_TRUE : nvof5::NV_OF_FALSE;
