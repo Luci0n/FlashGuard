@@ -247,7 +247,7 @@ namespace
     constexpr UINT kAnalysisHeight = 72;
     constexpr UINT kAnalysisReadbackCount = 12;
     constexpr UINT kDebugWidth = 560;
-    constexpr UINT kDebugHeight = 520;
+    constexpr UINT kDebugHeight = 640;
     constexpr UINT kHintWidth = 900;
     constexpr UINT kHintHeight = 48;
     constexpr UINT kAutomaticShieldLabelWidth = 520;
@@ -1321,7 +1321,7 @@ MainOutput PSMain(VSOut i)
     // processing, so its own status indicator cannot pulse with detector state.
     if (P2.y > 0.5)
     {
-        float2 debugUv = i.uv * float2(P2.z / 560.0, P2.w / 520.0);
+        float2 debugUv = i.uv * float2(P2.z / 560.0, P2.w / 640.0);
         if (debugUv.x <= 1.0 && debugUv.y <= 1.0)
         {
             float4 d = DebugOverlay.SampleLevel(LinearClamp, debugUv, 0.0);
@@ -2451,11 +2451,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 // a newly changing desktop can wake capture immediately.
                 const int64_t previousCaptureMs =
                     m_lastRealCaptureMs.load(std::memory_order_acquire);
+                const auto presentReadyWaitStart = std::chrono::steady_clock::now();
                 if (m_frameLatencyWaitableObject && previousCaptureMs > 0 &&
                     NowMs() - previousCaptureMs < 50)
                 {
                     WaitForSingleObjectEx(m_frameLatencyWaitableObject, 20, FALSE);
                 }
+                m_presentReadyWaitMs.store(std::chrono::duration<float, std::milli>(
+                    std::chrono::steady_clock::now() - presentReadyWaitStart).count(),
+                    std::memory_order_release);
 
                 DXGI_OUTDUPL_FRAME_INFO info{};
                 winrt::com_ptr<IDXGIResource> resource;
@@ -2511,6 +2515,24 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 bool mustRelease = true;
                 try
                 {
+                    m_captureAccumulatedFrames.store(
+                        info.AccumulatedFrames, std::memory_order_release);
+                    if (info.LastPresentTime.QuadPart > 0)
+                    {
+                        static const double qpcToMs = [] {
+                            LARGE_INTEGER frequency{};
+                            return QueryPerformanceFrequency(&frequency) &&
+                                frequency.QuadPart > 0 ?
+                                1000.0 / static_cast<double>(frequency.QuadPart) : 0.0;
+                        }();
+                        LARGE_INTEGER qpcNow{};
+                        QueryPerformanceCounter(&qpcNow);
+                        const double ageMs = std::max(0.0,
+                            static_cast<double>(qpcNow.QuadPart -
+                                info.LastPresentTime.QuadPart) * qpcToMs);
+                        m_captureImageAgeMs.store(static_cast<float>(ageMs),
+                            std::memory_order_release);
+                    }
                     const int64_t realCaptureNowMs = NowMs();
                     m_lastFrameMs.store(realCaptureNowMs, std::memory_order_release);
                     m_lastRealCaptureMs.store(realCaptureNowMs, std::memory_order_release);
@@ -2538,11 +2560,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         if (!std::isfinite(dt) || dt <= 0.0f || dt > 0.5f) dt = 1.0f / 60.0f;
                         m_lastFrameTime = now;
 
+                        const auto processingStart = std::chrono::steady_clock::now();
                         {
                             std::scoped_lock lock(m_mutex);
                             if (!m_stopped.load())
                                 QueueCapturedFrame(texture.get(), dt);
                         }
+                        m_captureProcessMs.store(std::chrono::duration<float, std::milli>(
+                            std::chrono::steady_clock::now() - processingStart).count(),
+                            std::memory_order_release);
                         m_validCaptureFrames.fetch_add(1, std::memory_order_release);
                     }
                 }
@@ -4301,6 +4327,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 L"Future stats:      %d frames\n"
                 L"Buffered frames:   %zu\n"
                 L"Latency target:    %d ms\n"
+                L"Desktop frame age: %.2f ms\n"
+                L"Desktop accumulated: %u\n"
+                L"Capture processing: %.2f ms\n"
+                L"Present queue wait: %.2f ms\n"
+                L"Present call:       %.2f ms\n"
                 L"Analysis misses:   %llu\n"
                 L"Dropped presents:  %llu",
                 m_latestStats.globalLuma, m_latestStats.globalDelta,
@@ -4328,6 +4359,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_latestPrediction.local ? L"LOCAL" : L"NONE",
                 m_protectionStrength,
                 m_predictionFrames, m_bufferedFrameCount, latencyMs,
+                m_captureImageAgeMs.load(std::memory_order_acquire),
+                m_captureAccumulatedFrames.load(std::memory_order_acquire),
+                m_captureProcessMs.load(std::memory_order_acquire),
+                m_presentReadyWaitMs.load(std::memory_order_acquire),
+                m_presentCallMs.load(std::memory_order_acquire),
                 static_cast<unsigned long long>(m_analysisDeadlineMisses),
                 static_cast<unsigned long long>(m_droppedPresents));
 
@@ -4538,7 +4574,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             // Desktop Duplication already paces capture to desktop updates. Queue
             // this frame immediately but do not discard it: DO_NOT_WAIT produced
             // visible motion judder whenever the compositor was briefly busy.
-            ThrowIfFailed(m_swapChain->Present(0, 0));
+            const auto presentStart = std::chrono::steady_clock::now();
+            const HRESULT presentHr = m_swapChain->Present(0, 0);
+            m_presentCallMs.store(std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - presentStart).count(),
+                std::memory_order_release);
+            ThrowIfFailed(presentHr);
         }
 
         void QueueCapturedFrame(ID3D11Texture2D* source, float dt)
@@ -4729,6 +4770,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         std::atomic<int64_t> m_lastRealCaptureMs{ 0 };
         std::atomic<int64_t> m_idleReleaseUntilMs{ 0 };
         std::atomic<uint32_t> m_validCaptureFrames{ 0 };
+        std::atomic<float> m_captureImageAgeMs{ 0.0f };
+        std::atomic<uint32_t> m_captureAccumulatedFrames{ 0 };
+        std::atomic<float> m_captureProcessMs{ 0.0f };
+        std::atomic<float> m_presentReadyWaitMs{ 0.0f };
+        std::atomic<float> m_presentCallMs{ 0.0f };
         std::chrono::steady_clock::time_point m_lastFrameTime{ std::chrono::steady_clock::now() };
 
         winrt::com_ptr<ID3D11Device> m_device;
