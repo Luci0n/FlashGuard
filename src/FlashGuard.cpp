@@ -30,6 +30,7 @@
 #include <cstring>
 #include <cwctype>
 #include <deque>
+#include <filesystem>
 #include <iterator>
 #include <mutex>
 #include <string>
@@ -1753,7 +1754,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 &staging, nullptr, m_replayReadback.put()));
         }
 
-        bool RunSyntheticReplay(const std::wstring& reportPath)
+        bool RunSyntheticReplay(const std::wstring& reportPath,
+                                const std::wstring& visualDir = L"")
         {
             if (!m_replayMode || !m_device || !m_context || !m_replayReadback ||
                 m_outputWidth == 0 || m_outputHeight == 0)
@@ -1763,6 +1765,21 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const UINT width = m_outputWidth;
             const UINT height = m_outputHeight;
             std::vector<uint32_t> pixels(static_cast<size_t>(width) * height);
+            const bool writeVisuals = !visualDir.empty();
+            if (writeVisuals)
+            {
+                std::filesystem::create_directories(visualDir);
+                const auto readmePath =
+                    std::filesystem::path(visualDir) / L"README.txt";
+                FILE* visualReadme = nullptr;
+                if (_wfopen_s(&visualReadme, readmePath.c_str(), L"wb") == 0 &&
+                    visualReadme)
+                {
+                    std::fputs("Each BMP is SOURCE | FILTERED | 6x RGB DIFFERENCE.\r\n"
+                        "Frames are sampled every 10 synthetic frames at 60 FPS.\r\n", visualReadme);
+                    std::fclose(visualReadme);
+                }
+            }
 
             D3D11_TEXTURE2D_DESC sourceDesc{};
             sourceDesc.Width = width;
@@ -1832,6 +1849,75 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 memcpy(&value, &bits, sizeof(value));
                 return value;
             };
+            const auto writeVisualBmp = [&](const wchar_t* caseName, int frameIndex,
+                                            const D3D11_MAPPED_SUBRESOURCE& mapped) {
+                if (!writeVisuals || !caseName || frameIndex < 0) return;
+                const auto caseDir = std::filesystem::path(visualDir) / caseName;
+                std::filesystem::create_directories(caseDir);
+
+                const UINT triptychWidth = width * 3u;
+                std::vector<uint32_t> image(
+                    static_cast<size_t>(triptychWidth) * height, 0xFF000000u);
+                const auto toByte = [](float value) {
+                    return static_cast<uint8_t>(std::lround(
+                        std::clamp(value, 0.0f, 1.0f) * 255.0f));
+                };
+                for (UINT y = 0; y < height; ++y)
+                {
+                    const auto* row = reinterpret_cast<const uint16_t*>(
+                        static_cast<const uint8_t*>(mapped.pData) +
+                        static_cast<size_t>(y) * mapped.RowPitch);
+                    for (UINT x = 0; x < width; ++x)
+                    {
+                        const uint32_t sourcePixel =
+                            pixels[static_cast<size_t>(y) * width + x];
+                        const uint8_t outR = toByte(halfToFloat(row[x * 4 + 0]));
+                        const uint8_t outG = toByte(halfToFloat(row[x * 4 + 1]));
+                        const uint8_t outB = toByte(halfToFloat(row[x * 4 + 2]));
+                        const uint32_t filteredPixel = static_cast<uint32_t>(outB) |
+                            (static_cast<uint32_t>(outG) << 8) |
+                            (static_cast<uint32_t>(outR) << 16) | 0xFF000000u;
+                        const int sourceB = static_cast<int>(sourcePixel & 0xFFu);
+                        const int sourceG = static_cast<int>((sourcePixel >> 8) & 0xFFu);
+                        const int sourceR = static_cast<int>((sourcePixel >> 16) & 0xFFu);
+                        const uint8_t diffB = static_cast<uint8_t>(std::min(
+                            255, std::abs(static_cast<int>(outB) - sourceB) * 6));
+                        const uint8_t diffG = static_cast<uint8_t>(std::min(
+                            255, std::abs(static_cast<int>(outG) - sourceG) * 6));
+                        const uint8_t diffR = static_cast<uint8_t>(std::min(
+                            255, std::abs(static_cast<int>(outR) - sourceR) * 6));
+                        const uint32_t diffPixel = static_cast<uint32_t>(diffB) |
+                            (static_cast<uint32_t>(diffG) << 8) |
+                            (static_cast<uint32_t>(diffR) << 16) | 0xFF000000u;
+                        const size_t dst = static_cast<size_t>(y) * triptychWidth + x;
+                        image[dst] = sourcePixel;
+                        image[dst + width] = filteredPixel;
+                        image[dst + width * 2u] = diffPixel;
+                    }
+                }
+
+                wchar_t fileName[64]{};
+                swprintf_s(fileName, L"frame-%03d.bmp", frameIndex);
+                const auto filePath = caseDir / fileName;
+                BITMAPFILEHEADER fileHeader{};
+                BITMAPINFOHEADER infoHeader{};
+                fileHeader.bfType = 0x4D42;
+                fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
+                fileHeader.bfSize = fileHeader.bfOffBits +
+                    static_cast<DWORD>(image.size() * sizeof(uint32_t));
+                infoHeader.biSize = sizeof(BITMAPINFOHEADER);
+                infoHeader.biWidth = static_cast<LONG>(triptychWidth);
+                infoHeader.biHeight = -static_cast<LONG>(height);
+                infoHeader.biPlanes = 1;
+                infoHeader.biBitCount = 32;
+                infoHeader.biCompression = BI_RGB;
+                FILE* file = nullptr;
+                if (_wfopen_s(&file, filePath.c_str(), L"wb") != 0 || !file) return;
+                std::fwrite(&fileHeader, sizeof(fileHeader), 1, file);
+                std::fwrite(&infoHeader, sizeof(infoHeader), 1, file);
+                std::fwrite(image.data(), sizeof(uint32_t), image.size(), file);
+                std::fclose(file);
+            };
 
             struct FrameSample
             {
@@ -1844,7 +1930,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             };
 
             uint64_t flowFrames = 0;
-            const auto renderAndSample = [&](const RECT* activeRect) {
+            const auto renderAndSample = [&](const RECT* activeRect,
+                                             const wchar_t* visualCase = nullptr,
+                                             int visualFrame = -1) {
                 m_context->UpdateSubresource(source.get(), 0, nullptr,
                     pixels.data(), width * 4u, 0);
                 QueueCapturedFrame(source.get(), dt);
@@ -1914,6 +2002,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         }
                     }
                 }
+                writeVisualBmp(visualCase, visualFrame, mapped);
                 m_context->Unmap(m_replayReadback.get(), 0);
                 if (count)
                 {
@@ -1957,7 +2046,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             for (int i = 0; i < 120; ++i)
             {
                 fillGray(((i / 2) & 1) ? 235 : 20);
-                const FrameSample current = renderAndSample(nullptr);
+                const FrameSample current = renderAndSample(nullptr,
+                    (writeVisuals && i % 10 == 0) ? L"flash_15hz" : nullptr,
+                    i);
                 rawVariation += std::fabs(current.sourceMean - previous.sourceMean);
                 outputVariation += std::fabs(current.outputMean - previous.outputMean);
                 previous = current;
@@ -1986,7 +2077,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     for (int x = std::max(x0, 0); x < x1; ++x)
                         pixels[static_cast<size_t>(y) * width + x] = grayPixel(235);
                 const RECT square{ x0, y0, x1, y1 };
-                const FrameSample sample = renderAndSample(&square);
+                const FrameSample sample = renderAndSample(&square,
+                    (writeVisuals && i % 10 == 0) ? L"bright_motion" : nullptr,
+                    i);
                 movingGhostMae += sample.outsideMae;
                 movingInsideMae += sample.insideMae;
                 movingEdgeMae += sample.edgeMae;
@@ -2017,7 +2110,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     for (int x = std::max(x0, 0); x < x1; ++x)
                         pixels[static_cast<size_t>(y) * width + x] = grayPixel(150);
                 const RECT square{ x0, y0, x1, y1 };
-                smallMovingGhostMae += renderAndSample(&square).outsideMae;
+                smallMovingGhostMae += renderAndSample(&square,
+                    (writeVisuals && i % 10 == 0) ? L"small_motion" : nullptr,
+                    i).outsideMae;
             }
             smallMovingGhostMae /= static_cast<double>(smallMovingFrames);
             const uint64_t smallMovingFlowFrames =
@@ -2037,7 +2132,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             for (int i = 0; i < panFrames; ++i)
             {
                 fillPanPattern((i + 1) * 3);
-                panMae += renderAndSample(nullptr).mae;
+                panMae += renderAndSample(nullptr,
+                    (writeVisuals && i % 10 == 0) ? L"pan" : nullptr,
+                    i).mae;
                 panCameraMotion += m_latestStats.cameraMotionScore;
                 panAffectedArea += m_latestStats.affectedArea;
                 panCoherence += m_latestStats.directionalCoherence;
@@ -6070,6 +6167,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             return ValidateShaderSource() ? 0 : 2;
 
         const std::wstring replayReport = ParseArgumentValue(L"--synthetic-replay");
+        const std::wstring replayVisualDir =
+            ParseArgumentValue(L"--synthetic-replay-visual");
         if (!replayReport.empty())
         {
             POINT origin{ 0, 0 };
@@ -6086,7 +6185,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                 replayOptions.debugOverlay = false;
                 app.ApplyRuntimeOptions(replayOptions);
                 app.InitializeReplay(replayWindow, monitor);
-                const bool passed = app.RunSyntheticReplay(replayReport);
+                const bool passed = app.RunSyntheticReplay(replayReport, replayVisualDir);
                 app.Stop();
                 DestroyWindow(replayWindow);
                 return passed ? 0 : 7;
