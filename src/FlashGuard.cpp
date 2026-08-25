@@ -2066,10 +2066,22 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             double movingEdgeMae = 0.0;
             constexpr int squareSize = 64;
             constexpr int movingFrames = 90;
+            const int settledX0 = 20;
+            const int settledY0 = static_cast<int>(height) / 2 - squareSize / 2;
+            for (int i = 0; i < 30; ++i)
+            {
+                fillGray(24);
+                const int x1 = std::min(settledX0 + squareSize, static_cast<int>(width));
+                const int y1 = std::min(settledY0 + squareSize, static_cast<int>(height));
+                for (int y = std::max(settledY0, 0); y < y1; ++y)
+                    for (int x = std::max(settledX0, 0); x < x1; ++x)
+                        pixels[static_cast<size_t>(y) * width + x] = grayPixel(235);
+                renderAndSample(nullptr);
+            }
             for (int i = 0; i < movingFrames; ++i)
             {
                 fillGray(24);
-                const int x0 = 20 + i * 4;
+                const int x0 = settledX0 + (i + 1) * 4;
                 const int y0 = static_cast<int>(height) / 2 - squareSize / 2;
                 const int x1 = std::min(x0 + squareSize, static_cast<int>(width));
                 const int y1 = std::min(y0 + squareSize, static_cast<int>(height));
@@ -2088,6 +2100,49 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             movingInsideMae /= static_cast<double>(movingFrames);
             movingEdgeMae /= static_cast<double>(movingFrames);
             const uint64_t movingFlowFrames = flowFrames - movingFlowStart;
+
+            // Bright oblique motion: real game objects rarely move on an exact
+            // cardinal or 45-degree path. Keep the object present long enough for
+            // its initial appearance protection to release, then measure motion.
+            const uint64_t obliqueFlowStart = flowFrames;
+            resetCase();
+            constexpr int obliqueSize = 32;
+            constexpr int obliqueFrames = 80;
+            const int obliqueStartX = 80;
+            const int obliqueStartY = 80;
+            for (int i = 0; i < 30; ++i)
+            {
+                fillGray(24);
+                for (int y = obliqueStartY; y < obliqueStartY + obliqueSize; ++y)
+                    for (int x = obliqueStartX; x < obliqueStartX + obliqueSize; ++x)
+                        pixels[static_cast<size_t>(y) * width + x] = grayPixel(235);
+                renderAndSample(nullptr);
+            }
+            double obliqueGhostMae = 0.0;
+            double obliqueInsideMae = 0.0;
+            double obliqueEdgeMae = 0.0;
+            for (int i = 0; i < obliqueFrames; ++i)
+            {
+                fillGray(24);
+                const int x0 = obliqueStartX + (i + 1) * 3;
+                const int y0 = obliqueStartY + (i + 1);
+                const int x1 = x0 + obliqueSize;
+                const int y1 = y0 + obliqueSize;
+                for (int y = y0; y < y1; ++y)
+                    for (int x = x0; x < x1; ++x)
+                        pixels[static_cast<size_t>(y) * width + x] = grayPixel(235);
+                const RECT square{ x0, y0, x1, y1 };
+                const FrameSample sample = renderAndSample(&square,
+                    (writeVisuals && i % 10 == 0) ? L"bright_oblique" : nullptr,
+                    i);
+                obliqueGhostMae += sample.outsideMae;
+                obliqueInsideMae += sample.insideMae;
+                obliqueEdgeMae += sample.edgeMae;
+            }
+            obliqueGhostMae /= static_cast<double>(obliqueFrames);
+            obliqueInsideMae /= static_cast<double>(obliqueFrames);
+            obliqueEdgeMae /= static_cast<double>(obliqueFrames);
+            const uint64_t obliqueFlowFrames = flowFrames - obliqueFlowStart;
 
             // Quake-like local-motion regression: a small, medium-contrast object
             // is intentionally below the coarse NVOFA scheduling thresholds. It
@@ -2178,6 +2233,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const bool metricsFinite = std::isfinite(staticMae) &&
                 std::isfinite(flashReduction) && std::isfinite(movingGhostMae) &&
                 std::isfinite(movingInsideMae) && std::isfinite(movingEdgeMae) &&
+                std::isfinite(obliqueGhostMae) && std::isfinite(obliqueInsideMae) &&
+                std::isfinite(obliqueEdgeMae) &&
                 std::isfinite(smallMovingGhostMae) && std::isfinite(panMae) &&
                 std::isfinite(fastPanMae) && std::isfinite(extremePanMae);
             const bool pass = metricsFinite && staticMae < 0.005 &&
@@ -2203,6 +2260,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "  \"moving_square_ghost_mae\": %.8f,\n"
                 "  \"moving_square_inside_mae\": %.8f,\n"
                 "  \"moving_square_edge_mae\": %.8f,\n"
+                "  \"bright_oblique_ghost_mae\": %.8f,\n"
+                "  \"bright_oblique_inside_mae\": %.8f,\n"
+                "  \"bright_oblique_edge_mae\": %.8f,\n"
                 "  \"small_moving_square_ghost_mae\": %.8f,\n"
                 "  \"pan_mae\": %.8f,\n"
                 "  \"fast_pan_mae\": %.8f,\n"
@@ -2216,6 +2276,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "  \"static_flow_frames\": %llu,\n"
                 "  \"flash_flow_frames\": %llu,\n"
                 "  \"moving_flow_frames\": %llu,\n"
+                "  \"bright_oblique_flow_frames\": %llu,\n"
                 "  \"small_moving_flow_frames\": %llu,\n"
                 "  \"pan_flow_frames\": %llu,\n"
                 "  \"fast_pan_flow_frames\": %llu,\n"
@@ -2225,6 +2286,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 pass ? "SUCCESS" : "FAILED", width, height,
                 staticMae, rawVariation, outputVariation, flashReduction,
                 movingGhostMae, movingInsideMae, movingEdgeMae,
+                obliqueGhostMae, obliqueInsideMae, obliqueEdgeMae,
                 smallMovingGhostMae,
                 panMae, fastPanMae, extremePanMae,
                 panCameraMotion, panCameraMotionMax,
@@ -2233,6 +2295,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 static_cast<unsigned long long>(staticFlowFrames),
                 static_cast<unsigned long long>(flashFlowFrames),
                 static_cast<unsigned long long>(movingFlowFrames),
+                static_cast<unsigned long long>(obliqueFlowFrames),
                 static_cast<unsigned long long>(smallMovingFlowFrames),
                 static_cast<unsigned long long>(panFlowFrames),
                 static_cast<unsigned long long>(fastPanFlowFrames),
