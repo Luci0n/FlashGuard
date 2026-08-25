@@ -72,21 +72,25 @@ try {
 
     if ($Mode -eq 'gpu-smoke') {
         $smi = Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue
-        if (-not $smi) {
-            throw 'nvidia-smi.exe was not found on the self-hosted GPU runner'
+        if ($smi) {
+            $gpuOutput = @(& $smi.Source --query-gpu=name,driver_version --format=csv,noheader 2>&1)
+            $smiExit = $LASTEXITCODE
+            if ($smiExit -eq 0 -and $gpuOutput.Count -gt 0) {
+                $gpuLine = [string]$gpuOutput[0]
+                $parts = $gpuLine -split ',', 2
+                $summary.gpu = $parts[0].Trim()
+                if ($parts.Count -gt 1) { $summary.nvidia_driver = $parts[1].Trim() }
+            } else {
+                "WARN: nvidia-smi query failed (exit $smiExit): $($gpuOutput -join ' ')" | Add-Content -Encoding utf8 $logPath
+            }
+        } else {
+            'WARN: nvidia-smi.exe not found; continuing with the real NVOFA smoke test.' | Add-Content -Encoding utf8 $logPath
         }
-        $gpuLine = (& $smi.Source --query-gpu=name,driver_version --format=csv,noheader 2>&1 | Select-Object -First 1)
-        if ($LASTEXITCODE -ne 0 -or -not $gpuLine) {
-            throw 'nvidia-smi failed to query the NVIDIA GPU'
-        }
-        $parts = $gpuLine -split ',', 2
-        $summary.gpu = $parts[0].Trim()
-        if ($parts.Count -gt 1) { $summary.nvidia_driver = $parts[1].Trim() }
 
         $nvofPath = Join-Path $env:SystemRoot 'System32\nvofapi64.dll'
         $summary.nvof_runtime_present = Test-Path $nvofPath
         if (-not $summary.nvof_runtime_present) {
-            throw 'nvofapi64.dll was not found in Windows System32'
+            'WARN: nvofapi64.dll not found in System32; LoadLibrary in NvofSmoke is authoritative.' | Add-Content -Encoding utf8 $logPath
         }
 
         Remove-Item $smokeReportPath -ErrorAction SilentlyContinue
@@ -105,6 +109,7 @@ try {
             throw "NvOFExecute smoke failed at $stage with exit code $nvofExit"
         }
         $summary.nvof_execute_status = 'SUCCESS'
+        $summary.nvof_runtime_present = $true
     }
 
     $summary.status = 'SUCCESS'
