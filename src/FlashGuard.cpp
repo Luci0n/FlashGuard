@@ -2320,23 +2320,41 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const auto countRedTransition = [](
                 const FrameSample& previousSample, const FrameSample& currentSample,
                 bool output, int& rises, int& falls) {
-                const double pr = output ? previousSample.outputRed : previousSample.sourceRed;
-                const double pg = output ? previousSample.outputGreen : previousSample.sourceGreen;
-                const double pb = output ? previousSample.outputBlue : previousSample.sourceBlue;
-                const double cr = output ? currentSample.outputRed : currentSample.sourceRed;
-                const double cg = output ? currentSample.outputGreen : currentSample.sourceGreen;
-                const double cb = output ? currentSample.outputBlue : currentSample.sourceBlue;
-                const double previousSum = pr + pg + pb;
-                const double currentSum = cr + cg + cb;
-                const bool saturated =
-                    (previousSum > 1e-9 && pr / previousSum >= 0.80) ||
-                    (currentSum > 1e-9 && cr / currentSum >= 0.80);
-                const double previousMetric = std::max(0.0, pr - pg - pb) * 320.0;
-                const double currentMetric = std::max(0.0, cr - cg - cb) * 320.0;
-                const double delta = currentMetric - previousMetric;
-                if (saturated && std::fabs(delta) > 20.0)
+                struct Chromaticity
                 {
-                    if (delta > 0.0) ++rises;
+                    double redRatio = 0.0;
+                    double u = 0.0;
+                    double v = 0.0;
+                };
+                const auto chromaticity = [](double r, double g, double b) {
+                    Chromaticity state{};
+                    const double sum = r + g + b;
+                    state.redRatio = sum > 1e-12 ? r / sum : 0.0;
+                    const double X = 0.4124564 * r + 0.3575761 * g + 0.1804375 * b;
+                    const double Y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b;
+                    const double Z = 0.0193339 * r + 0.1191920 * g + 0.9503041 * b;
+                    const double denominator = X + 15.0 * Y + 3.0 * Z;
+                    if (denominator > 1e-12)
+                    {
+                        state.u = 4.0 * X / denominator;
+                        state.v = 9.0 * Y / denominator;
+                    }
+                    return state;
+                };
+                const double pr = output ? previousSample.outputLinearRed : previousSample.sourceLinearRed;
+                const double pg = output ? previousSample.outputLinearGreen : previousSample.sourceLinearGreen;
+                const double pb = output ? previousSample.outputLinearBlue : previousSample.sourceLinearBlue;
+                const double cr = output ? currentSample.outputLinearRed : currentSample.sourceLinearRed;
+                const double cg = output ? currentSample.outputLinearGreen : currentSample.sourceLinearGreen;
+                const double cb = output ? currentSample.outputLinearBlue : currentSample.sourceLinearBlue;
+                const Chromaticity previous = chromaticity(pr, pg, pb);
+                const Chromaticity current = chromaticity(cr, cg, cb);
+                const bool saturated = previous.redRatio >= 0.80 || current.redRatio >= 0.80;
+                const double du = current.u - previous.u;
+                const double dv = current.v - previous.v;
+                if (saturated && std::sqrt(du * du + dv * dv) > 0.20)
+                {
+                    if (current.redRatio > previous.redRatio) ++rises;
                     else ++falls;
                 }
             };
