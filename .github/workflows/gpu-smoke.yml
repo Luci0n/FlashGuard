@@ -36,12 +36,8 @@ jobs:
         env:
           TEST_TIER: ${{ github.event_name == 'workflow_dispatch' && inputs.test_tier || 'targeted' }}
         run: |
-          $arguments = @(
-            '-Mode', 'gpu-smoke',
-            '-TestTier', $env:TEST_TIER,
-            '-OutputDir', 'flashbench/results'
-          )
-          & .\flashbench\run.ps1 @arguments
+          & .\flashbench\run.ps1 -Mode gpu-smoke `
+            -TestTier $env:TEST_TIER -OutputDir flashbench/results
           exit $LASTEXITCODE
       - name: Upload GPU smoke report
         if: always()
