@@ -4,6 +4,12 @@ on:
   push:
     branches: [test]
   workflow_dispatch:
+    inputs:
+      full_matrix:
+        description: Run the exhaustive tuning/FPS/motion matrix
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: flashguard-gpu-test
@@ -23,7 +29,18 @@ jobs:
         id: gpu
         continue-on-error: true
         shell: powershell
-        run: .\flashbench\run.ps1 -Mode gpu-smoke -OutputDir flashbench/results -TuneMatrix
+        env:
+          FULL_MATRIX: ${{ github.event_name == 'workflow_dispatch' && inputs.full_matrix }}
+        run: |
+          $arguments = @(
+            '-Mode', 'gpu-smoke',
+            '-OutputDir', 'flashbench/results'
+          )
+          if ($env:FULL_MATRIX -eq 'true') {
+            $arguments += '-TuneMatrix'
+          }
+          & .\flashbench\run.ps1 @arguments
+          exit $LASTEXITCODE
       - name: Upload GPU smoke report
         if: always()
         uses: actions/upload-artifact@v6
