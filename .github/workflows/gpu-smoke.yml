@@ -28,6 +28,49 @@ jobs:
     runs-on: [self-hosted, Windows, X64, flashguard-gpu]
     timeout-minutes: 25
     steps:
+      - name: Recover self-hosted runner workspace
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $workspace = $env:GITHUB_WORKSPACE
+          $workspaceExe = Join-Path $workspace 'FlashGuard.exe'
+
+          # A failed/interactive replay can leave the workspace executable open.
+          # Kill only FlashGuard instances whose executable is this runner copy.
+          Get-CimInstance Win32_Process -Filter "Name='FlashGuard.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.ExecutablePath -and
+              [System.IO.Path]::GetFullPath($_.ExecutablePath) -eq
+              [System.IO.Path]::GetFullPath($workspaceExe) } |
+            ForEach-Object {
+              Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+            }
+          Start-Sleep -Milliseconds 250
+
+          # Checkout can recreate the repository from scratch. Clearing the old
+          # workspace before checkout also removes accumulated build/replay output.
+          if (Test-Path $workspace) {
+            Set-Location $env:RUNNER_TEMP
+            Get-ChildItem -LiteralPath $workspace -Force -ErrorAction SilentlyContinue |
+              Remove-Item -Recurse -Force -ErrorAction Stop
+          }
+
+          # Keep only the most recently staged tested executable. Per-SHA staging
+          # otherwise grows forever on a persistent self-hosted runner.
+          $testedRoot = 'C:\FlashGuard-Tested'
+          if (Test-Path $testedRoot) {
+            $latestFile = Join-Path $testedRoot 'LATEST.txt'
+            $keepDirectory = $null
+            if (Test-Path $latestFile) {
+              $latestExe = (Get-Content -LiteralPath $latestFile -Raw).Trim()
+              if ($latestExe) {
+                $keepDirectory = Split-Path -Parent $latestExe
+              }
+            }
+            Get-ChildItem -LiteralPath $testedRoot -Directory -ErrorAction SilentlyContinue |
+              Where-Object { -not $keepDirectory -or $_.FullName -ne $keepDirectory } |
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
       - uses: actions/checkout@v6
       - name: Build and inspect GPU runtime
         id: gpu
