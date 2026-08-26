@@ -655,13 +655,12 @@ MainOutput PSMain(VSOut i)
     const float3 sourceHistoryColor = rawSourceColor;
     float sourceHistoryGeometryConfidence = 0.0;)HLSL" R"HLSL(
 
-    // TRUE OUTPUT-SPACE TEMPORAL FILTER.
-    // The old versions generated a new luminance target from the source but did
-    // not constrain the actual displayed pixel against the previous displayed
-    // pixel. That lets repetitive flashes leak through even while "protected".
-    // PreviousOutput is a full-resolution ping-pong luminance history written by
-    // this same shader on the preceding present.
+    // Full-resolution temporal protection stores displayed RGB only for
+    // measurement/localization. The recursive safety state itself is one scalar:
+    // the protected linear-light luminance carried in PreviousOutput alpha.
+    // This prevents stale RGB/chroma from becoming a moving afterimage.
     float candidateL = Luma(cur);
+    float safetyHistoryL = candidateL;
     if (P7.y > 0.5)
     {
 )HLSL"
@@ -676,6 +675,32 @@ R"HLSL(
             LinearClamp, i.uv, 0.0).rgb;
         const float previousDisplayedL = Luma(previousDisplayed);
         const float displayedDelta = abs(candidateL - previousDisplayedL);
+
+        // Transport only the low-dimensional protection state with a verified
+        // current surface. Newly revealed/vacated pixels explicitly initialize
+        // from the current candidate instead of inheriting the departed surface.
+        float2 safetyStateUv = i.uv;
+        const float stateTransportGate = smoothstep(
+            0.45, 0.75, max(diagCurrentSurfaceGate, diagGlobalFlowGate));
+        if (hardwareFlowValid && stateTransportGate > 0.001)
+        {
+            const float2 outputSize = max(
+                float2(P2.z, P2.w), float2(1.0, 1.0));
+            const float2 stateFlowPixels =
+                LoadOpticalFlow(ForwardOpticalFlow, i.uv);
+            const float2 transportedUv =
+                i.uv + stateFlowPixels / outputSize;
+            if (all(transportedUv >= float2(0.0, 0.0)) &&
+                all(transportedUv <= float2(1.0, 1.0)))
+                safetyStateUv = lerp(i.uv, transportedUv, stateTransportGate);
+        }
+        const float4 previousProtectionState = PreviousOutput.SampleLevel(
+            LinearClamp, safetyStateUv, 0.0);
+        const float stateDisocclusionReset = smoothstep(
+            0.45, 0.75, max(diagVacatedGate, diagInfillGate));
+        float previousProtectedL = lerp(
+            candidateL, previousProtectionState.a,
+            1.0 - stateDisocclusionReset);
 
         // Validate a CURRENT luminance transition against optical transport before
         // treating it as a flash. A translating surface compares against its
@@ -875,29 +900,22 @@ R"HLSL(
             const bool currentEvent = eventMask > 0.05;
             const float tau = currentEvent ?
                 lerp(0.150, 0.235, severe) : lerp(0.030, 0.050, severe);
-            const float alpha = 1.0 - exp(-dt / tau);
+            const float stateAlpha = 1.0 - exp(-dt / tau);
 
-            // Blend the actual previous FILTERED image toward the candidate in
-            // linear light. This is true temporal filtering rather than painting
-            // a newly invented gray target onto a few detector cells. It also
-            // attenuates chromatic alternation whose luminance happens to match.
-            const float3 previousLinear = SrgbToLinear(previousDisplayed);
-            const float3 candidateLinear = SrgbToLinear(cur);
-            float3 temporallyFiltered = LinearToSrgb(
-                lerp(previousLinear, candidateLinear, alpha));
-            // Once a stationary hazardous transition or several reversals are
-            // authorized, amplitude-only smoothing is insufficient: hold the
-            // already-filtered pixel exactly to avoid residual reversals.
+            // Recursive RGB is deliberately gone. Evolve only the transported
+            // protected luminance, then impose that scalar constraint on the
+            // CURRENT candidate color. Chroma therefore comes from the current
+            // surface rather than a stale screen-coordinate display sample.
+            float protectedL = lerp(
+                previousProtectedL, candidateL, stateAlpha);
             const float exactHoldGate = max(
                 repeatedHoldAuthorization, stationaryCurrentHoldAuthorization);
             if (exactHoldGate > 0.72)
-                temporallyFiltered = previousDisplayed;
-            float limitedL = Luma(temporallyFiltered);
+                protectedL = previousProtectedL;
 
-            // During a CURRENT hazardous transition, keep the hard symmetric
-            // slew bound. During release, allow faster convergence; release is
-            // weakly masked and motion-bypassed above, which removes persistent
-            // trails without snapping a still-protected flash to full amplitude.
+            // Attack and release remain bounded and monotonic in luminance-state
+            // space. This keeps the existing flash-rate limit while guaranteeing
+            // stale RGB cannot persist after the underlying surface changes.
             const float profileStep = min(P4.z, P4.w);
             const float standardsStep = 1.30 * dt;
             float maxStep = currentEvent ? min(profileStep, standardsStep) :
@@ -905,14 +923,15 @@ R"HLSL(
             maxStep *= currentEvent ? lerp(1.0, 0.72, severe) : 1.0;
             if (exactHoldGate > 0.72)
                 maxStep = 0.0;
-            const float slewLimitedL = clamp(limitedL,
-                previousDisplayedL - maxStep,
-                previousDisplayedL + maxStep);
-            temporallyFiltered = RemapGlobalLuminance(
-                temporallyFiltered, limitedL, slewLimitedL);
+            protectedL = clamp(protectedL,
+                previousProtectedL - maxStep,
+                previousProtectedL + maxStep);
 
-            cur = lerp(cur, temporallyFiltered, saturate(temporalMask));
+            const float resolvedL = lerp(
+                candidateL, protectedL, saturate(temporalMask));
+            cur = RemapGlobalLuminance(cur, candidateL, resolvedL);
             candidateL = Luma(cur);
+            safetyHistoryL = candidateL;
         }
     }
 )HLSL" R"HLSL(
@@ -936,11 +955,11 @@ R"HLSL(
     cur = lerp(cur, finalOutputGraySrgb, finalOutputRedDesat);
 
     // Save filtered content color BEFORE debug/hotkey/shield-label overlays so
-    // UI pixels never contaminate the temporal feedback state.
-    // Output-history alpha is otherwise unused; retain the final red-safety
-    // authority there so synthetic replay can trace the decision without adding
-    // another diagnostic render target or changing displayed RGB.
-    const float4 historyColor = float4(cur, finalRedSafetyAuthority);
+    // UI pixels never contaminate temporal state. RGB remains the displayed
+    // pre-overlay image for replay/localization; alpha is the compact protection
+    // state: protected linear-light luminance only.
+    safetyHistoryL = Luma(cur);
+    const float4 historyColor = float4(cur, safetyHistoryL);
 
     // The debug panel is a steady, non-flashing texture composited after safety
     // processing, so its own status indicator cannot pulse with detector state.
@@ -985,7 +1004,8 @@ R"HLSL(
     }
 
     output.color = float4(saturate(cur), 1.0);
-    output.historyColor = float4(saturate(historyColor.rgb), 1.0);
+    output.historyColor = float4(
+        saturate(historyColor.rgb), saturate(historyColor.a));
     output.sourceHistoryColor = float4(
         saturate(sourceHistoryColor), saturate(sourceHistoryGeometryConfidence));
     return output;
@@ -1871,7 +1891,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 double outputDisplayLinearRed = 0.0;
                 double outputDisplayLinearGreen = 0.0;
                 double outputDisplayLinearBlue = 0.0;
-                double finalRedSafetyAuthority = 0.0;
+                double protectedLumaState = 0.0;
                 double sourceWcagLuma = 0.0;
                 double outputWcagLuma = 0.0;
                 double outputDisplayWcagLuma = 0.0;
@@ -1929,7 +1949,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         const float r = std::clamp(halfToFloat(row[x * 4 + 0]), 0.0f, 1.0f);
                         const float g = std::clamp(halfToFloat(row[x * 4 + 1]), 0.0f, 1.0f);
                         const float b = std::clamp(halfToFloat(row[x * 4 + 2]), 0.0f, 1.0f);
-                        const double finalRedSafetyAuthority = std::clamp(
+                        const double protectedLumaState = std::clamp(
                             static_cast<double>(halfToFloat(row[x * 4 + 3])),
                             0.0, 1.0);
                         const double outputLuma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
@@ -1985,7 +2005,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         sample.outputDisplayLinearRed += outputDisplayLinearR;
                         sample.outputDisplayLinearGreen += outputDisplayLinearG;
                         sample.outputDisplayLinearBlue += outputDisplayLinearB;
-                        sample.finalRedSafetyAuthority += finalRedSafetyAuthority;
+                        sample.protectedLumaState += protectedLumaState;
                         sample.sourceWcagLuma += sourceWcagLuma;
                         sample.outputWcagLuma += outputWcagLuma;
                         sample.outputDisplayWcagLuma += outputDisplayWcagLuma;
@@ -2054,7 +2074,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     sample.outputDisplayLinearRed /= static_cast<double>(count);
                     sample.outputDisplayLinearGreen /= static_cast<double>(count);
                     sample.outputDisplayLinearBlue /= static_cast<double>(count);
-                    sample.finalRedSafetyAuthority /= static_cast<double>(count);
+                    sample.protectedLumaState /= static_cast<double>(count);
                     sample.sourceWcagLuma /= static_cast<double>(count);
                     sample.outputWcagLuma /= static_cast<double>(count);
                     sample.outputDisplayWcagLuma /= static_cast<double>(count);
@@ -2598,9 +2618,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 {
                     std::fprintf(redTraceReport,
                         "{\n"
-                        "  \"schema\": \"RED_FLASH_TRACE/1\",\n"
+                        "  \"schema\": \"RED_FLASH_TRACE/2\",\n"
                         "  \"fps\": %d,\n"
-                        "  \"note\": \"Replay-only trace of the 15 Hz full-screen saturated-red case. RGB values are final 8-bit-display-equivalent linear-sRGB means; u/v are CIE 1976 u-prime/v-prime. final_red_safety_authority is read from output-history alpha and does not affect displayed RGB.\",\n"
+                        "  \"note\": \"Replay-only trace of the 15 Hz full-screen saturated-red case. RGB values are final 8-bit-display-equivalent linear-sRGB means; u/v are CIE 1976 u-prime/v-prime. protected_luma_state is the transported linear-light protection state stored in output-history alpha.\",\n"
                         "  \"frames\": [\n",
                         sweepFps);
                     for (size_t frame = 0; frame < red15HzTrace.size(); ++frame)
@@ -2616,7 +2636,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                             "\"output_display_linear_rgb\":[%.8f,%.8f,%.8f],"
                             "\"source_red_ratio\":%.8f,\"source_u\":%.8f,\"source_v\":%.8f,"
                             "\"output_red_ratio\":%.8f,\"output_u\":%.8f,\"output_v\":%.8f,"
-                            "\"final_red_safety_authority\":%.8f}%s\n",
+                            "\"protected_luma_state\":%.8f}%s\n",
                             frame,
                             sample.sourceLinearRed, sample.sourceLinearGreen,
                             sample.sourceLinearBlue,
@@ -2625,7 +2645,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                             sample.outputDisplayLinearBlue,
                             sourceState.redRatio, sourceState.u, sourceState.v,
                             outputState.redRatio, outputState.u, outputState.v,
-                            sample.finalRedSafetyAuthority,
+                            sample.protectedLumaState,
                             (frame + 1 < red15HzTrace.size()) ? "," : "");
                     }
                     std::fputs("  ]\n}\n", redTraceReport);
