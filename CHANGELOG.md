@@ -2,6 +2,24 @@
 
 All notable public changes are documented here. FlashGuard follows Semantic Versioning for software releases. Test protocols and archived experiment runs are versioned independently; see `docs/VERSIONING.md`.
 
+## [0.2.0-alpha.1] - 2026-08-25
+
+Current experimental development line. This version starts from the `05c2f09925b52beadc26c75604906a320b8bd671` implementation state and is not a claim that its current GPU replay passes.
+
+### Changed
+
+- Motion handling now includes full-resolution NVIDIA optical-flow transport verification for current surfaces, vacated surfaces, and conservative disocclusion infill.
+- Current flash localization can use a motion-compensated raw-source residual instead of relying only on same-screen-coordinate luminance change.
+- Exact stationary holds, repeated-flash memory, and motion bypass logic have evolved substantially from the original `0.1.0-alpha.1` baseline.
+- Experiment development is now versioned explicitly: behavior-changing experimental commits advance the current prerelease version, while documentation/archive-only commits do not change the software version.
+
+### Known development issues
+
+- Scrolling text and slow/stuttering motion can still retain filtered history and visibly blur.
+- Flash-risk accumulation is not yet fully frame-rate invariant.
+- Current replay diagnostics undersample/interleave motion evidence and are scheduled for replacement in the next protocol generation.
+- `FLASHGUARD_REPLAY/3`, `FLASHGUARD_FLASH_SWEEP/3`, and `WCAG_FLASH/2` are present in archived metadata but still require complete protocol documentation or supersession.
+
 ## [0.1.0-alpha.1] - 2026-08-25
 
 Initial versioned experimental baseline.

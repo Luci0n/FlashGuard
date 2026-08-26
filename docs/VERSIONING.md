@@ -10,27 +10,38 @@ During the experimental period:
 
 ```text
 PATCH  implementation/build fix that preserves intended behavior
-MINOR  detector/filter behavior or capability changes
+MINOR  detector/filter architecture or capability milestone
 MAJOR  incompatible public behavior/API or a mature release boundary
 ```
 
 Pre-release identifiers such as `-alpha.1` indicate that the software remains experimental.
 
-`CHANGELOG.md` summarizes public behavior changes. Git commit hashes remain the authoritative identity for an exact implementation.
+While a MINOR development line is still in alpha, each behavior-affecting experiment advances the numeric prerelease identifier (`-alpha.1`, `-alpha.2`, ...). A new detector/filter architecture or capability milestone advances MINOR and resets the prerelease identifier. Documentation, archived-result, and other metadata-only commits do not change the software version.
+
+The version bump for a behavior-affecting experiment belongs in the same commit as the behavior change so CI artifacts and archived runs observe the correct `VERSION`. `CHANGELOG.md` summarizes meaningful software changes. Git commit hashes remain the authoritative identity for an exact implementation.
+
+## CI policy for non-executable commits
+
+Commits that cannot change executable behavior or test semantics may include `[skip ci]` in the commit message so push-triggered build and GPU workflows do not consume a runner. Examples include a versioning-policy-only commit, prose documentation, or immutable experiment-archive bookkeeping.
+
+Do not skip CI for changes to runtime code, shaders, build logic, replay/sweep generators, metric definitions, protocol implementations, or workflow behavior. Those commits must run the applicable validation.
 
 ## Protocol versions
 
-Test schemas have independent stable identifiers, currently:
+Test schemas have independent stable identifiers. The repository currently contains historical and active schema identifiers including:
 
 ```text
 FLASHBENCH/2
-FLASHGUARD_REPLAY/2
-FLASHGUARD_FLASH_SWEEP/2
-WCAG_FLASH/1
+FLASHGUARD_REPLAY/3
+FLASHGUARD_FLASH_SWEEP/3
+WCAG_FLASH/2
 NVOF_SMOKE/1
+MOTION_DIAGNOSTICS/1
 ```
 
-Historical `/1` protocol documents remain preserved for archived runs that used the earlier measurement semantics.
+A protocol identifier is not considered fully documented merely because it appears in generated JSON or `experiments/manifest.json`; the matching protocol document must exist under `experiments/protocols/` before the protocol is treated as a stable comparison baseline.
+
+Historical protocol documents remain preserved for archived runs that used earlier measurement semantics.
 
 A material change to stimulus generation, metric definition, pass/fail criteria, or measurement semantics requires a new protocol/schema version. Old results keep their original version.
 
@@ -55,7 +66,7 @@ Archived runs use a directory name containing date, abbreviated commit, and purp
 - hashes of preserved raw result files
 - relationship to a preceding experiment when relevant
 
-The commit hash, not the directory abbreviation, is authoritative.
+The commit hash, not the directory abbreviation, is authoritative. Runs from different protocol versions are not treated as direct before/after evidence unless the measurement semantics are demonstrated to be comparable.
 
 ## Immutability
 
