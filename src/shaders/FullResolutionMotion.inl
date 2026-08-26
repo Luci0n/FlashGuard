@@ -5,6 +5,8 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
         float motionCompensatedSourceDelta = 0.0;
         float localMotionGate = 0.0;
         float hardwareMotionGate = 0.0;
+        float2 protectionStatePreviousUv = i.uv;
+        float protectionStateTransportConfidence = 0.0;
         float diagGlobalFlowGate = 0.0;
         float diagCurrentSurfaceGate = 0.0;
         float diagVacatedGate = 0.0;
@@ -91,6 +93,11 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                             motionCompensatedSourceDelta,
                             min(motionCompensatedSourceDelta, globalError),
                             globalMotionGate);
+                        if (globalMotionGate > protectionStateTransportConfidence)
+                        {
+                            protectionStateTransportConfidence = globalMotionGate;
+                            protectionStatePreviousUv = globalPreviousUv;
+                        }
                     }
                 }
 
@@ -210,6 +217,11 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                         smoothstep(0.18, 0.34, transportEvidence);
                     diagCurrentSurfaceGate = max(
                         diagCurrentSurfaceGate, transportGate);
+                    if (transportGate > protectionStateTransportConfidence)
+                    {
+                        protectionStateTransportConfidence = transportGate;
+                        protectionStatePreviousUv = previousUv;
+                    }
 
                     // The compensated residual is measured only after geometry is
                     // accepted. It remains independent evidence of intrinsic change.

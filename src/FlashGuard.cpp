@@ -385,6 +385,7 @@ Texture2D<int2> BackwardOpticalFlow : register(t11);
 Texture2D<uint> ForwardOpticalCost : register(t12);
 Texture2D<uint> BackwardOpticalCost : register(t13);
 Texture2D<int2> GlobalOpticalFlow : register(t14);
+Texture2D PreviousProtectionState : register(t15);
 SamplerState LinearClamp : register(s0);
 
 cbuffer Safety : register(b0)
@@ -519,14 +520,16 @@ struct MainOutput
     float4 color : SV_TARGET0;
     float4 historyColor : SV_TARGET1;
     float4 sourceHistoryColor : SV_TARGET2;
-    float4 motionDiagnostics0 : SV_TARGET3;
-    float4 motionDiagnostics1 : SV_TARGET4;
-    float4 motionDiagnostics2 : SV_TARGET5;
+    float4 protectionState : SV_TARGET3;
+    float4 motionDiagnostics0 : SV_TARGET4;
+    float4 motionDiagnostics1 : SV_TARGET5;
+    float4 motionDiagnostics2 : SV_TARGET6;
 };
 
 MainOutput PSMain(VSOut i)
 {
     MainOutput output;
+    output.protectionState = float4(0.0, 0.0, 0.0, 0.0);
     output.motionDiagnostics0 = float4(0.0, 0.0, 0.0, 0.0);
     output.motionDiagnostics1 = float4(0.0, 0.0, 0.0, 0.0);
     output.motionDiagnostics2 = float4(0.0, 0.0, 0.0, 0.0);
@@ -655,12 +658,16 @@ MainOutput PSMain(VSOut i)
     const float3 sourceHistoryColor = rawSourceColor;
     float sourceHistoryGeometryConfidence = 0.0;)HLSL" R"HLSL(
 
-    // Full-resolution temporal protection stores displayed RGB only for
-    // measurement/localization. The recursive safety state itself is one scalar:
-    // the protected linear-light luminance carried in PreviousOutput alpha.
-    // This prevents stale RGB/chroma from becoming a moving afterimage.
+    // Displayed history is observation/localization only. Recursive safety state
+    // lives in a separate texture and follows a verified surface: protected
+    // luminance plus short-lived intrinsic-risk and red-safety authority. Keeping
+    // RGB out of that state prevents moving afterimages while preserving hazard
+    // memory that the alpha.10 luminance-only experiment discarded.
     float candidateL = Luma(cur);
     float safetyHistoryL = candidateL;
+    float protectionStateLuma = candidateL;
+    float protectionStateRisk = 0.0;
+    float protectionStateRedAuthority = 0.0;
     if (P7.y > 0.5)
     {
 )HLSL"
@@ -676,31 +683,28 @@ R"HLSL(
         const float previousDisplayedL = Luma(previousDisplayed);
         const float displayedDelta = abs(candidateL - previousDisplayedL);
 
-        // Transport only the low-dimensional protection state with a verified
-        // current surface. Newly revealed/vacated pixels explicitly initialize
-        // from the current candidate instead of inheriting the departed surface.
-        float2 safetyStateUv = i.uv;
-        const float stateTransportGate = smoothstep(
-            0.45, 0.75, max(diagCurrentSurfaceGate, diagGlobalFlowGate));
-        if (hardwareFlowValid && stateTransportGate > 0.001)
+        // Use the exact previous UV selected by the strongest validated transport
+        // path in FullResolutionMotion. A disocclusion belongs to a new surface,
+        // so it starts from the current candidate and inherits no hazard memory.
+        const float explicitDisocclusionGate =
+            saturate(max(diagVacatedGate, diagInfillGate));
+        const float4 previousProtectionState = PreviousProtectionState.SampleLevel(
+            LinearClamp, protectionStatePreviousUv, 0.0);
+        const bool previousProtectionValid = previousProtectionState.a >= 0.5;
+        float previousProtectedL = previousProtectionValid ?
+            saturate(previousProtectionState.r) : candidateL;
+        float transportedSurfaceRisk = previousProtectionValid ?
+            saturate(previousProtectionState.g) * exp(-dt / 0.55) : 0.0;
+        float transportedRedAuthority = previousProtectionValid ?
+            saturate(previousProtectionState.b) * exp(-dt / 0.20) : 0.0;
+        if (explicitDisocclusionGate > 0.55)
         {
-            const float2 outputSize = max(
-                float2(P2.z, P2.w), float2(1.0, 1.0));
-            const float2 stateFlowPixels =
-                LoadOpticalFlow(ForwardOpticalFlow, i.uv);
-            const float2 transportedUv =
-                i.uv + stateFlowPixels / outputSize;
-            if (all(transportedUv >= float2(0.0, 0.0)) &&
-                all(transportedUv <= float2(1.0, 1.0)))
-                safetyStateUv = lerp(i.uv, transportedUv, stateTransportGate);
+            previousProtectedL = candidateL;
+            transportedSurfaceRisk = 0.0;
+            transportedRedAuthority = 0.0;
         }
-        const float4 previousProtectionState = PreviousOutput.SampleLevel(
-            LinearClamp, safetyStateUv, 0.0);
-        const float stateDisocclusionReset = smoothstep(
-            0.45, 0.75, max(diagVacatedGate, diagInfillGate));
-        float previousProtectedL = lerp(
-            candidateL, previousProtectionState.a,
-            1.0 - stateDisocclusionReset);
+        finalRedSafetyAuthority = max(
+            finalRedSafetyAuthority, transportedRedAuthority);
 
         // Validate a CURRENT luminance transition against optical transport before
         // treating it as a flash. A translating surface compares against its
@@ -783,7 +787,7 @@ R"HLSL(
         const float eventMask =
             max(eventGate * eventDeltaGate, directIntrinsicEvent);
         const float holdMask = holdGate * holdContentGate * holdDeltaGate;
-        const float repeatedRisk = temporalRisk;
+        const float repeatedRisk = max(temporalRisk, transportedSurfaceRisk);
         const float repeatedMemoryGate = smoothstep(0.34, 0.62, repeatedRisk);
         // A repeated flash spends most of each half-cycle with near-zero
         // frame-to-frame source delta. Keep intrinsic authority alive across that
@@ -807,8 +811,6 @@ R"HLSL(
         // residual is small. Vacated/disoccluded pixels normally drop the history
         // of the surface that left, but repeated intrinsic evidence may conservatively
         // override that drop when geometry and flash evidence conflict.
-        const float explicitDisocclusionGate =
-            saturate(max(diagVacatedGate, diagInfillGate));
         const float correspondenceGate =
             max(motionGate, hardwareMotionGate);
         const float verifiedFlashOverride =
@@ -823,9 +825,9 @@ R"HLSL(
         // immediately and stays desaturated through a stable repeated half-cycle.
         const float residualRedAuthority =
             saturate(max(intrinsicResidualGate, repeatedStableIntrinsicAuthority));
-        finalRedSafetyAuthority = max(
-            residualRedAuthority,
-            redMitigationGate * (1.0 - effectiveMotionGate));
+        finalRedSafetyAuthority = max(finalRedSafetyAuthority,
+            max(residualRedAuthority,
+                redMitigationGate * (1.0 - effectiveMotionGate)));
         const float intrinsicRedDesat =
             residualRedAuthority * smoothstep(0.05, 0.35, isolatedRed);
         if (intrinsicRedDesat > 0.001)
@@ -933,6 +935,14 @@ R"HLSL(
             candidateL = Luma(cur);
             safetyHistoryL = candidateL;
         }
+
+        // Refresh surface-local safety memory from intrinsic evidence only. The
+        // analyzer's broader temporalRisk remains independent, while this state
+        // follows moving geometry and therefore survives a genuine moving flash
+        // without dragging stale RGB behind the object.
+        protectionStateRisk = saturate(max(transportedSurfaceRisk,
+            max(directIntrinsicEvent, eventMask * intrinsicResidualGate)));
+        protectionStateRedAuthority = saturate(finalRedSafetyAuthority);
     }
 )HLSL" R"HLSL(
 
@@ -953,6 +963,7 @@ R"HLSL(
         smoothstep(0.68, 0.80, finalOutputRedRatio);
     const float3 finalOutputGraySrgb = LinearToSrgb(finalOutputGray.xxx);
     cur = lerp(cur, finalOutputGraySrgb, finalOutputRedDesat);
+    protectionStateLuma = Luma(cur);
 
     // Save filtered content color BEFORE debug/hotkey/shield-label overlays so
     // UI pixels never contaminate temporal state. RGB remains the displayed
@@ -1008,6 +1019,9 @@ R"HLSL(
         saturate(historyColor.rgb), saturate(historyColor.a));
     output.sourceHistoryColor = float4(
         saturate(sourceHistoryColor), saturate(sourceHistoryGeometryConfidence));
+    output.protectionState = float4(
+        saturate(protectionStateLuma), saturate(protectionStateRisk),
+        saturate(protectionStateRedAuthority), 1.0);
     return output;
 }
 )HLSL"
@@ -4841,6 +4855,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_sourceHistorySRVs[i] = nullptr;
                 m_sourceHistoryRTVs[i] = nullptr;
                 m_sourceHistoryTextures[i] = nullptr;
+                m_protectionStateSRVs[i] = nullptr;
+                m_protectionStateRTVs[i] = nullptr;
+                m_protectionStateTextures[i] = nullptr;
                 ThrowIfFailed(m_device->CreateTexture2D(&history, nullptr,
                     m_outputHistoryTextures[i].put()));
                 ThrowIfFailed(m_device->CreateRenderTargetView(
@@ -4853,9 +4870,16 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     m_sourceHistoryTextures[i].get(), nullptr, m_sourceHistoryRTVs[i].put()));
                 ThrowIfFailed(m_device->CreateShaderResourceView(
                     m_sourceHistoryTextures[i].get(), nullptr, m_sourceHistorySRVs[i].put()));
+                ThrowIfFailed(m_device->CreateTexture2D(&history, nullptr,
+                    m_protectionStateTextures[i].put()));
+                ThrowIfFailed(m_device->CreateRenderTargetView(
+                    m_protectionStateTextures[i].get(), nullptr, m_protectionStateRTVs[i].put()));
+                ThrowIfFailed(m_device->CreateShaderResourceView(
+                    m_protectionStateTextures[i].get(), nullptr, m_protectionStateSRVs[i].put()));
                 const float clearHistory[4] = { 0, 0, 0, 0 };
                 m_context->ClearRenderTargetView(m_outputHistoryRTVs[i].get(), clearHistory);
                 m_context->ClearRenderTargetView(m_sourceHistoryRTVs[i].get(), clearHistory);
+                m_context->ClearRenderTargetView(m_protectionStateRTVs[i].get(), clearHistory);
             }
             m_outputHistoryIndex = 0;
             m_outputHistoryValid = false;
@@ -5240,11 +5264,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_backBufferRTV.get(),
                 m_outputHistoryRTVs[historyWriteIndex].get(),
                 m_sourceHistoryRTVs[sourceHistoryWriteIndex].get(),
+                m_protectionStateRTVs[historyWriteIndex].get(),
                 m_motionDiagnosticRTVs[0].get(),
                 m_motionDiagnosticRTVs[1].get(),
                 m_motionDiagnosticRTVs[2].get()
             };
-            const UINT rtvCount = m_motionDiagnosticRTVs[0] ? 6u : 3u;
+            const UINT rtvCount = m_motionDiagnosticRTVs[0] ? 7u : 4u;
             m_context->OMSetRenderTargets(rtvCount, rtvs, nullptr);
             m_context->IASetInputLayout(nullptr);
             m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -5284,6 +5309,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 (m_nvofFlowValid && m_nvofGlobalFlowEnabled) ?
                 m_nvofGlobalFlowSRV.get() : nullptr;
             m_context->PSSetShaderResources(14, 1, &globalFlowSRV);
+            ID3D11ShaderResourceView* protectionStateSRV = m_outputHistoryValid ?
+                m_protectionStateSRVs[m_outputHistoryIndex].get() : nullptr;
+            m_context->PSSetShaderResources(15, 1, &protectionStateSRV);
             ID3D11SamplerState* sampler = m_sampler.get();
             m_context->PSSetSamplers(0, 1, &sampler);
             ID3D11Buffer* cb = m_constants.get();
@@ -5306,8 +5334,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             m_context->PSSetShaderResources(12, 2, nullCostSRVs);
             ID3D11ShaderResourceView* nullGlobalFlowSRV = nullptr;
             m_context->PSSetShaderResources(14, 1, &nullGlobalFlowSRV);
-            ID3D11RenderTargetView* nullRTVs[6] = {
-                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
+            ID3D11ShaderResourceView* nullProtectionStateSRV = nullptr;
+            m_context->PSSetShaderResources(15, 1, &nullProtectionStateSRV);
+            ID3D11RenderTargetView* nullRTVs[7] = {
+                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
             };
             m_context->OMSetRenderTargets(rtvCount, nullRTVs, nullptr);
             m_outputHistoryIndex = historyWriteIndex;
@@ -5545,6 +5575,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         std::array<winrt::com_ptr<ID3D11Texture2D>, 2> m_outputHistoryTextures;
         std::array<winrt::com_ptr<ID3D11RenderTargetView>, 2> m_outputHistoryRTVs;
         std::array<winrt::com_ptr<ID3D11ShaderResourceView>, 2> m_outputHistorySRVs;
+        std::array<winrt::com_ptr<ID3D11Texture2D>, 2> m_protectionStateTextures;
+        std::array<winrt::com_ptr<ID3D11RenderTargetView>, 2> m_protectionStateRTVs;
+        std::array<winrt::com_ptr<ID3D11ShaderResourceView>, 2> m_protectionStateSRVs;
         size_t m_outputHistoryIndex = 0;
         bool m_outputHistoryValid = false;
         bool m_replayMode = false;
