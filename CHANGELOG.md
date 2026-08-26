@@ -2,6 +2,20 @@
 
 All notable public changes are documented here. FlashGuard follows Semantic Versioning for software releases. Test protocols and archived experiment runs are versioned independently; see `docs/VERSIONING.md`.
 
+## [0.2.0-alpha.7] - 2026-08-26
+
+Intrinsic saturated-red authority correction.
+
+### Fixed
+
+- A strong motion-compensated intrinsic residual now drives saturated-red desaturation with a nonlinear chroma gate, allowing genuinely saturated intrinsic red transitions to reach full neutralization instead of leaving residual red proportional to the old isolated-red scalar.
+- Ordinary translating red content remains on the motion path because the new authority still requires compensated intrinsic residual or stable repeated intrinsic authority.
+
+### Validation
+
+- Geometry, luminance protection, and REPLAY/6 stimuli are unchanged.
+- The targeted GPU replay and flash sweep determine whether the remaining 12/15/25 Hz red failures are eliminated without regressing scroll/pan metrics.
+
 ## [0.2.0-alpha.6] - 2026-08-26
 
 Motion-corroborated stable-hold and residual red-flash correction.

@@ -797,11 +797,12 @@ R"HLSL(
         // immediately and stays desaturated through a stable repeated half-cycle.
         const float residualRedAuthority =
             saturate(max(intrinsicResidualGate, repeatedStableIntrinsicAuthority));
-        if (isolatedRed > 0.001 && residualRedAuthority > 0.001)
+        const float intrinsicRedDesat =
+            residualRedAuthority * smoothstep(0.05, 0.35, isolatedRed);
+        if (intrinsicRedDesat > 0.001)
         {
             const float residualGray = Luma(cur);
-            cur = lerp(cur, residualGray.xxx,
-                isolatedRed * residualRedAuthority);
+            cur = lerp(cur, residualGray.xxx, intrinsicRedDesat);
             candidateL = Luma(cur);
         }
 )HLSL" R"HLSL(
