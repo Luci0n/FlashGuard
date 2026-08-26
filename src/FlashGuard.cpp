@@ -6701,8 +6701,23 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                 DestroyWindow(replayWindow);
                 return passed ? 0 : 7;
             }
+            catch (HRESULT hr)
+            {
+                std::fprintf(stderr,
+                    "synthetic replay HRESULT 0x%08X\n",
+                    static_cast<unsigned>(hr));
+                DestroyWindow(replayWindow);
+                return 8;
+            }
+            catch (const std::exception& error)
+            {
+                std::fprintf(stderr, "synthetic replay exception: %s\n", error.what());
+                DestroyWindow(replayWindow);
+                return 8;
+            }
             catch (...)
             {
+                std::fprintf(stderr, "synthetic replay exception: unknown\n");
                 DestroyWindow(replayWindow);
                 return 8;
             }
