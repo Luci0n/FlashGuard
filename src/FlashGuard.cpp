@@ -1299,6 +1299,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             m_output = output;
             m_monitor = monitor;
             m_replayMode = true;
+            m_replayClockSeconds = 0.0;
             m_debugEnabled.store(false, std::memory_order_release);
             FindOutputAndCreateDevice();
 
@@ -1768,6 +1769,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const auto resetCase = [&]() {
                 ResetDelayedPipeline();
                 m_timelineSeconds = 0.0f;
+                m_replayClockSeconds = 0.0;
                 m_lastHazardTime = -100.0f;
                 m_lastGlobalHazardTime = -100.0f;
                 m_nextSequence = 0;
@@ -4492,7 +4494,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             c.p2[1] = m_debugEnabled.load(std::memory_order_acquire) ? 1.0f : 0.0f;
             c.p2[2] = static_cast<float>(m_outputWidth);
             c.p2[3] = static_cast<float>(m_outputHeight);
-            c.p3[0] = NowMs() < m_hintUntilMs ? 1.0f : 0.0f;
+            const int64_t behaviorNowMs = m_replayMode ?
+                static_cast<int64_t>(std::llround(m_replayClockSeconds * 1000.0)) : NowMs();
+            c.p3[0] = behaviorNowMs < m_hintUntilMs ? 1.0f : 0.0f;
             c.p3[1] = overloadFallback ? 1.0f : 0.0f;
             c.p3[2] = m_safety.overloadWhiteCeiling;
             c.p3[3] = m_automaticShieldActive.load(std::memory_order_acquire) ? 1.0f : 0.0f;
@@ -4648,10 +4652,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         void QueueCapturedFrame(ID3D11Texture2D* source, float dt)
         {
             m_instantFrameDt = std::clamp(dt, 1.0f / 240.0f, 0.05f);
+            if (m_replayMode)
+                m_replayClockSeconds += static_cast<double>(m_instantFrameDt);
+
             // Keep feedback rendering alive briefly if the desktop becomes static.
             // This is long enough for the fast release path to converge even after
             // a near full-range protected transition.
-            m_idleReleaseUntilMs.store(NowMs() + 500, std::memory_order_release);
+            const int64_t behaviorNowMs = m_replayMode ?
+                static_cast<int64_t>(std::llround(m_replayClockSeconds * 1000.0)) : NowMs();
+            m_idleReleaseUntilMs.store(behaviorNowMs + 500, std::memory_order_release);
             EnsureRawRing(source);
             if (m_rawFrames.empty()) return;
 
@@ -4856,6 +4865,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         size_t m_outputHistoryIndex = 0;
         bool m_outputHistoryValid = false;
         bool m_replayMode = false;
+        double m_replayClockSeconds = 0.0;
         winrt::com_ptr<ID3D11Texture2D> m_replayReadback;
         winrt::com_ptr<ID3D11Texture2D> m_motionDiagnosticTexture;
         winrt::com_ptr<ID3D11RenderTargetView> m_motionDiagnosticRTV;
