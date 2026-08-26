@@ -34,7 +34,8 @@
     "FLASHGUARD_TRAIL_METRICS/1",
     "FLASHGUARD_PERCEPTUAL_SWEEP/1",
     "FLASHGUARD_REPLAY_BATCH/1",
-    "FLASHGUARD_MATRIX/3"
+    "FLASHGUARD_MATRIX/3",
+    "FLASHGUARD_SCREENING_PROBES/1"
   ],
   "runs": [
     {
@@ -90,6 +91,11 @@
     {
       "run_id": "2026-08-26_3ea4ed2e_discriminating-fast-screen",
       "commit": "3ea4ed2e813f4f37260fd504e96588696864f2f6",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_153e1b91_threshold-probe-cross-coupling",
+      "commit": "153e1b91515d4146f9ae140692446e6d20e70de7",
       "result": "SUCCESS"
     }
   ]
