@@ -931,7 +931,10 @@ R"HLSL(
 
     // Save filtered content color BEFORE debug/hotkey/shield-label overlays so
     // UI pixels never contaminate the temporal feedback state.
-    const float4 historyColor = float4(cur, 1.0);
+    // Output-history alpha is otherwise unused; retain the final red-safety
+    // authority there so synthetic replay can trace the decision without adding
+    // another diagnostic render target or changing displayed RGB.
+    const float4 historyColor = float4(cur, finalRedSafetyAuthority);
 
     // The debug panel is a steady, non-flashing texture composited after safety
     // processing, so its own status indicator cannot pulse with detector state.
@@ -1862,6 +1865,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 double outputDisplayLinearRed = 0.0;
                 double outputDisplayLinearGreen = 0.0;
                 double outputDisplayLinearBlue = 0.0;
+                double finalRedSafetyAuthority = 0.0;
                 double sourceWcagLuma = 0.0;
                 double outputWcagLuma = 0.0;
                 double outputDisplayWcagLuma = 0.0;
@@ -1919,6 +1923,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         const float r = std::clamp(halfToFloat(row[x * 4 + 0]), 0.0f, 1.0f);
                         const float g = std::clamp(halfToFloat(row[x * 4 + 1]), 0.0f, 1.0f);
                         const float b = std::clamp(halfToFloat(row[x * 4 + 2]), 0.0f, 1.0f);
+                        const double finalRedSafetyAuthority = std::clamp(
+                            static_cast<double>(halfToFloat(row[x * 4 + 3])),
+                            0.0, 1.0);
                         const double outputLuma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
                         const double outputLinearR = srgbToLinear(r);
                         const double outputLinearG = srgbToLinear(g);
@@ -1972,6 +1979,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         sample.outputDisplayLinearRed += outputDisplayLinearR;
                         sample.outputDisplayLinearGreen += outputDisplayLinearG;
                         sample.outputDisplayLinearBlue += outputDisplayLinearB;
+                        sample.finalRedSafetyAuthority += finalRedSafetyAuthority;
                         sample.sourceWcagLuma += sourceWcagLuma;
                         sample.outputWcagLuma += outputWcagLuma;
                         sample.outputDisplayWcagLuma += outputDisplayWcagLuma;
@@ -2040,6 +2048,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     sample.outputDisplayLinearRed /= static_cast<double>(count);
                     sample.outputDisplayLinearGreen /= static_cast<double>(count);
                     sample.outputDisplayLinearBlue /= static_cast<double>(count);
+                    sample.finalRedSafetyAuthority /= static_cast<double>(count);
                     sample.sourceWcagLuma /= static_cast<double>(count);
                     sample.outputWcagLuma /= static_cast<double>(count);
                     sample.outputDisplayWcagLuma /= static_cast<double>(count);
@@ -2421,6 +2430,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             };
 
             bool flashSweepPass = true;
+            std::vector<FrameSample> red15HzTrace;
             for (const SweepCase& sweepCase : sweepCases)
             {
                 for (double frequencyHz : sweepFrequencies)
@@ -2565,7 +2575,55 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     flashSweepPass = flashSweepPass &&
                         result.sc231StimulusValid && result.sc232StimulusValid &&
                         result.wcagSc231Pass && result.wcagSc232Pass;
+                    if (sweepCase.kind == 1 && std::fabs(frequencyHz - 15.0) < 0.001)
+                        red15HzTrace = sweepTimeline;
                     flashSweep.push_back(result);
+                }
+            }
+
+            if (!red15HzTrace.empty())
+            {
+                const auto redTracePath =
+                    std::filesystem::path(reportPath).parent_path() /
+                    L"red-flash-trace-15hz.json";
+                FILE* redTraceReport = nullptr;
+                if (_wfopen_s(&redTraceReport, redTracePath.c_str(), L"wb") == 0 &&
+                    redTraceReport)
+                {
+                    std::fprintf(redTraceReport,
+                        "{\n"
+                        "  \"schema\": \"RED_FLASH_TRACE/1\",\n"
+                        "  \"fps\": %d,\n"
+                        "  \"note\": \"Replay-only trace of the 15 Hz full-screen saturated-red case. RGB values are final 8-bit-display-equivalent linear-sRGB means; u/v are CIE 1976 u-prime/v-prime. final_red_safety_authority is read from output-history alpha and does not affect displayed RGB.\",\n"
+                        "  \"frames\": [\n",
+                        sweepFps);
+                    for (size_t frame = 0; frame < red15HzTrace.size(); ++frame)
+                    {
+                        const FrameSample& sample = red15HzTrace[frame];
+                        const WcagChromaticity sourceState =
+                            wcagChromaticity(sample, false);
+                        const WcagChromaticity outputState =
+                            wcagChromaticity(sample, true);
+                        std::fprintf(redTraceReport,
+                            "    {\"frame\":%zu,"
+                            "\"source_linear_rgb\":[%.8f,%.8f,%.8f],"
+                            "\"output_display_linear_rgb\":[%.8f,%.8f,%.8f],"
+                            "\"source_red_ratio\":%.8f,\"source_u\":%.8f,\"source_v\":%.8f,"
+                            "\"output_red_ratio\":%.8f,\"output_u\":%.8f,\"output_v\":%.8f,"
+                            "\"final_red_safety_authority\":%.8f}%s\n",
+                            frame,
+                            sample.sourceLinearRed, sample.sourceLinearGreen,
+                            sample.sourceLinearBlue,
+                            sample.outputDisplayLinearRed,
+                            sample.outputDisplayLinearGreen,
+                            sample.outputDisplayLinearBlue,
+                            sourceState.redRatio, sourceState.u, sourceState.v,
+                            outputState.redRatio, outputState.u, outputState.v,
+                            sample.finalRedSafetyAuthority,
+                            (frame + 1 < red15HzTrace.size()) ? "," : "");
+                    }
+                    std::fputs("  ]\n}\n", redTraceReport);
+                    std::fclose(redTraceReport);
                 }
             }
 
