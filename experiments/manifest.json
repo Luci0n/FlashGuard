@@ -1,6 +1,6 @@
 {
   "archive_schema": "FLASHGUARD_EXPERIMENT_ARCHIVE/1",
-  "current_software_version": "0.2.0-alpha.8",
+  "current_software_version": "0.2.0-alpha.10",
   "protocols": [
     "FLASHBENCH/1",
     "FLASHGUARD_REPLAY/1",
@@ -27,7 +27,9 @@
     "FLASHBENCH/5",
     "FLASHGUARD_REPLAY/6",
     "FLASHGUARD_FLASH_SWEEP/6",
-    "WCAG_FLASH/5"
+    "WCAG_FLASH/5",
+    "RED_FLASH_TRACE/1",
+    "RED_FLASH_TRACE/2"
   ],
   "runs": [
     {
@@ -54,6 +56,16 @@
       "run_id": "2026-08-26_0c0aa304_verified-local-transport-veto",
       "commit": "0c0aa30498b77bf06c83d927dfa056e0cebc56ff",
       "result": "FAILED"
+    },
+    {
+      "run_id": "2026-08-26_82208634_chromaticity-red-clamp",
+      "commit": "82208634053559bc3b52f040c65e36d602d406c9",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_539eee97_compact-protection-state",
+      "commit": "539eee97434f763b292878fd36e89b01060d1052",
+      "result": "SUCCESS"
     }
   ]
 }
