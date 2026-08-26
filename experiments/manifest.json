@@ -35,6 +35,11 @@
       "run_id": "2026-08-26_bbc703d2_exact-stationary-hold",
       "commit": "bbc703d2f1c9e653ffdf1778c89664e73af4f1da",
       "result": "FAILED"
+    },
+    {
+      "run_id": "2026-08-26_0c0aa304_verified-local-transport-veto",
+      "commit": "0c0aa30498b77bf06c83d927dfa056e0cebc56ff",
+      "result": "FAILED"
     }
   ]
 }

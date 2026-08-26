@@ -776,11 +776,18 @@ R"HLSL(
             repeatedMemoryGate * max(eventGate, holdGate * stableSourceGate);
         // A current hazardous transition with neither scene-level motion nor
         // strong verified local transport is stationary enough to hold immediately.
-        // Small moving objects may not influence the coarse/CPU priors, so let
-        // trustworthy full-resolution transport cancel this hold before it can
-        // freeze the object's previous screen position into a visible trail.
-        const float verifiedLocalTransportGate =
-            smoothstep(0.45, 0.75, rawEffectiveMotionGate);
+        // Do not use rawEffectiveMotionGate here: it also contains global/portable
+        // evidence, which a stationary regional flash can sparsely excite. Current-
+        // surface transport is already patch/round-trip/cost verified. Vacated and
+        // infill evidence is more ambiguous, so require local analyzer-space motion
+        // as independent support before it can cancel the exact current-event hold.
+        const float verifiedCurrentSurfaceTransport =
+            smoothstep(0.45, 0.75, diagCurrentSurfaceGate);
+        const float verifiedTrailingTransport =
+            smoothstep(0.45, 0.75, max(diagVacatedGate, diagInfillGate)) *
+            coarseMotionGate;
+        const float verifiedLocalTransportGate = max(
+            verifiedCurrentSurfaceTransport, verifiedTrailingTransport);
         const float stationaryCurrentHoldAuthorization =
             eventGate * eventDeltaGate *
             (1.0 - smoothstep(0.02, 0.12, corroboratedMotionGate)) *
