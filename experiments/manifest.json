@@ -23,7 +23,11 @@
     "FLASHBENCH/4",
     "FLASHGUARD_REPLAY/5",
     "FLASHGUARD_FLASH_SWEEP/5",
-    "WCAG_FLASH/4"
+    "WCAG_FLASH/4",
+    "FLASHBENCH/5",
+    "FLASHGUARD_REPLAY/6",
+    "FLASHGUARD_FLASH_SWEEP/6",
+    "WCAG_FLASH/5"
   ],
   "runs": [
     {

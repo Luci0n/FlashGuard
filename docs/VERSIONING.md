@@ -31,10 +31,10 @@ Do not skip CI for changes to runtime code, shaders, build logic, replay/sweep g
 Test schemas have independent stable identifiers. The repository currently contains historical and active schema identifiers including:
 
 ```text
-FLASHBENCH/4
-FLASHGUARD_REPLAY/5
-FLASHGUARD_FLASH_SWEEP/5
-WCAG_FLASH/4
+FLASHBENCH/5
+FLASHGUARD_REPLAY/6
+FLASHGUARD_FLASH_SWEEP/6
+WCAG_FLASH/5
 NVOF_SMOKE/1
 MOTION_DIAGNOSTICS/2
 MOTION_REALIZATION/1

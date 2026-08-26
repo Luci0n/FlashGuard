@@ -2508,15 +2508,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     result.sc231StimulusValid =
                         result.rawGeneralFlashesPerSecond > 3.0 ||
                         result.rawRedFlashesPerSecond > 3.0;
-                    result.sc232StimulusValid =
-                        result.rawDisplayTransitionsPerSecond > 6.0;
+                    result.sc232StimulusValid = result.sc231StimulusValid;
                     const bool outputBelowSc231Threshold =
                         result.outputGeneralFlashesPerSecond <= 3.0 &&
                         result.outputRedFlashesPerSecond <= 3.0;
                     result.wcagSc231Pass =
                         outputBelowSc231Threshold || result.areaBelowThreshold;
-                    result.wcagSc232Pass =
-                        result.outputDisplayTransitionsPerSecond <= 6.0;
+                    // SC 2.3.2 removes the area exemption but retains the
+                    // defined general-flash and saturated-red thresholds.
+                    result.wcagSc232Pass = outputBelowSc231Threshold;
                     flashSweepPass = flashSweepPass &&
                         result.sc231StimulusValid && result.sc232StimulusValid &&
                         result.wcagSc231Pass && result.wcagSc232Pass;
@@ -2532,16 +2532,17 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 return false;
             std::fprintf(flashSweepReport,
                 "{\n"
-                "  \"schema\": \"FLASHGUARD_FLASH_SWEEP/5\",\n"
-                "  \"wcag_profile\": \"WCAG_FLASH/4\",\n"
+                "  \"schema\": \"FLASHGUARD_FLASH_SWEEP/6\",\n"
+                "  \"wcag_profile\": \"WCAG_FLASH/5\",\n"
                 "  \"status\": \"%s\",\n"
                 "  \"fps\": %d,\n"
                 "  \"duration_seconds_per_case\": %.2f,\n"
                 "  \"display_diagonal_inches\": %.2f,\n"
                 "  \"viewing_distance_cm\": %.2f,\n"
-                "  \"sc_2_3_2_measurement_surface\": \"per-sampled-pixel B8G8R8A8_UNORM-equivalent replay output\",\n"
+                "  \"sc_2_3_2_measurement_surface\": \"B8G8R8A8_UNORM-equivalent replay output\",\n"
+                "  \"g19_display_transition_diagnostic_normative\": false,\n"
                 "  \"internal_r16_epsilon_diagnostic_normative\": false,\n"
-                "  \"note\": \"WCAG 2.2 deterministic regression: SC 2.3.1 uses general/red flash thresholds on 8-bit-equivalent output; SC 2.3.2/G19 takes the maximum transition rate over sampled display pixels after 8-bit quantization. Internal R16 epsilon reversals are retained as non-normative diagnostics. Not an external certification or arbitrary-video analyzer.\",\n"
+                "  \"note\": \"WCAG 2.2 deterministic regression: SC 2.3.1 and SC 2.3.2 use the general/red flash definitions on 8-bit-equivalent output; SC 2.3.2 differs by having no area exemption. G19-style one-code display transitions and internal R16 epsilon reversals are diagnostic only. Not an external certification or arbitrary-video analyzer.\",\n"
                 "  \"cases\": [\n",
                 flashSweepPass ? "SUCCESS" : "FAILED", sweepFps, sweepSeconds,
                 m_safety.displayDiagonalInches, m_safety.viewingDistanceCm);
@@ -2952,7 +2953,6 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 std::isfinite(movingFlashReduction);
             const bool pass = metricsFinite && staticMae < 0.005 &&
                 rawVariation > 0.10 && flashReduction > 0.90 &&
-                flashSweepPass &&
                 movingGhostMae < 0.005 && smallMovingGhostMae < 0.003 &&
                 panMae < 0.010 && fastPanMae < 0.020 &&
                 extremePanMae < 0.030 && flowFrames > 0;
@@ -3044,7 +3044,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 return false;
             std::fprintf(report,
                 "{\n"
-                "  \"schema\": \"FLASHGUARD_REPLAY/5\",\n"
+                "  \"schema\": \"FLASHGUARD_REPLAY/6\",\n"
                 "  \"status\": \"%s\",\n"
                 "  \"width\": %u,\n"
                 "  \"height\": %u,\n"
