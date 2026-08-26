@@ -3019,18 +3019,36 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         return result;
                     };
 
-                    // The full-screen probes straddle the 0.12/0.16/0.20
-                    // sensitivity thresholds in linear luminance. The small-source
-                    // probes use area fractions between the 0.4/0.8/1.5% gates and
-                    // a strong enough transition to isolate area sensitivity.
+                    // Isolate detector families so a "full sensitivity" probe
+                    // cannot also win through the small-source path (and vice versa).
+                    // The real runtime settings are restored before any normal replay
+                    // case runs, so these diagnostics cannot affect behavior metrics.
+                    const SafetySettings savedProbeSafety = m_safety;
+
+                    // Full-screen probes: use a fixed local binarization threshold
+                    // and disable compact/calibrated-region paths. The only changing
+                    // full-screen gates are then the configured full sensitivity.
+                    m_safety.localDeltaThreshold = 0.05f;
+                    m_safety.smallFlashAreaThreshold = 2.0f;
+                    m_safety.visualFieldAreaThreshold = 2.0f;
                     const auto fullHighOnly =
                         runScreeningProbe(139, 0.0);
                     const auto fullMediumHigh =
                         runScreeningProbe(148, 0.0);
+
+                    // Small-source probes: restore the configured small thresholds,
+                    // then make broad/coherent global paths impossible for this
+                    // diagnostic. The compact-source family remains intact.
+                    m_safety = savedProbeSafety;
+                    m_safety.affectedAreaThreshold = 2.0f;
+                    m_safety.globalDeltaThreshold = 2.0f;
+                    m_safety.globalAreaThreshold = 2.0f;
+                    m_safety.visualFieldAreaThreshold = 2.0f;
                     const auto smallHighOnly =
                         runScreeningProbe(168, 0.006);
                     const auto smallMediumHigh =
                         runScreeningProbe(168, 0.011);
+                    m_safety = savedProbeSafety;
 
                     const auto probePath =
                         std::filesystem::path(reportPath).parent_path() /
@@ -3041,8 +3059,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         return false;
                     std::fprintf(probeReport,
                         "{\n"
-                        "  \"schema\": \"FLASHGUARD_SCREENING_PROBES/1\",\n"
+                        "  \"schema\": \"FLASHGUARD_SCREENING_PROBES/2\",\n"
                         "  \"status\": \"SUCCESS\",\n"
+                        "  \"detector_family_isolation\": true,\n"
                         "  \"background_code\": 96,\n"
                         "  \"fps\": %d,\n"
                         "  \"full_high_only_high_code\": 139,\n"
