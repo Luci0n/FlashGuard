@@ -82,6 +82,7 @@ function Read-Candidate {
     $trail = Get-Content -Raw $trailPath | ConvertFrom-Json
     $perceptualExecuted = Test-Path $perceptualPath
     $probeExecuted = Test-Path $probePath
+    $probeSchema = ''
     $perceptualMin = 0.0
     $perceptualMax = 0.0
     $fullHighOnlyResidual = 1.0
@@ -99,6 +100,7 @@ function Read-Candidate {
     }
     if ($probeExecuted) {
         $probe = Get-Content -Raw $probePath | ConvertFrom-Json
+        $probeSchema = [string]$probe.schema
         $fullHighOnlyResidual = [double]$probe.full_high_only_residual_ratio
         $fullMediumHighResidual = [double]$probe.full_medium_high_residual_ratio
         $smallHighOnlyResidual = [double]$probe.small_high_only_residual_ratio
@@ -140,6 +142,8 @@ function Read-Candidate {
         perceptual_sweep_min_reduction = [double]$perceptualMin
         perceptual_sweep_max_output_delta = [double]$perceptualMax
         screening_probes_executed = [bool]$probeExecuted
+        screening_probe_schema = $probeSchema
+        screening_probes_rankable = [bool]$probeExecuted
         full_high_only_residual_ratio = [double]$fullHighOnlyResidual
         full_medium_high_residual_ratio = [double]$fullMediumHighResidual
         small_high_only_residual_ratio = [double]$smallHighOnlyResidual
@@ -157,7 +161,7 @@ function Test-Dominates {
         $A.perceptual_sweep_min_reduction -ge $B.perceptual_sweep_min_reduction -and
         $A.perceptual_sweep_max_output_delta -le $B.perceptual_sweep_max_output_delta)
     $probeComparable =
-        $A.screening_probes_executed -and $B.screening_probes_executed
+        $A.screening_probes_rankable -and $B.screening_probes_rankable
     $probeNoWorse = -not $probeComparable -or (
         $A.full_high_only_residual_ratio -le $B.full_high_only_residual_ratio -and
         $A.full_medium_high_residual_ratio -le $B.full_medium_high_residual_ratio -and
@@ -234,7 +238,7 @@ function Add-RelativeRegret {
             $ratios += (([double]$candidate.perceptual_sweep_max_output_delta + $eps) /
                 ([double]$Baseline.perceptual_sweep_max_output_delta + $eps))
         }
-        if ($candidate.screening_probes_executed -and $Baseline.screening_probes_executed) {
+        if ($candidate.screening_probes_rankable -and $Baseline.screening_probes_rankable) {
             $ratios += (([double]$candidate.full_high_only_residual_ratio + $eps) /
                 ([double]$Baseline.full_high_only_residual_ratio + $eps))
             $ratios += (([double]$candidate.full_medium_high_residual_ratio + $eps) /
@@ -248,6 +252,95 @@ function Add-RelativeRegret {
             -NotePropertyValue (($ratios | Measure-Object -Maximum).Maximum) -Force
     }
     return $Candidates
+}
+
+function Get-ScreeningProbeContract {
+    param([object[]]$Candidates)
+    $axisTolerance = 0.01
+    $separationMargin = 0.002
+    $reasons = @()
+    $wrongSchema = @($Candidates | Where-Object {
+        -not $_.screening_probes_executed -or
+        $_.screening_probe_schema -ne 'FLASHGUARD_SCREENING_PROBES/3'
+    })
+    if ($wrongSchema.Count -gt 0) {
+        $reasons += 'missing or non-v3 probe report'
+    }
+
+    $meanFor = {
+        param([object[]]$Rows, [string]$Property)
+        $values = @($Rows | ForEach-Object { [double]($_.$Property) })
+        if ($values.Count -eq 0) { return [double]::NaN }
+        return [double](($values | Measure-Object -Average).Average)
+    }
+    $spanFor = {
+        param([object[]]$Rows, [string]$Property)
+        $values = @($Rows | ForEach-Object { [double]($_.$Property) })
+        if ($values.Count -lt 2) { return 0.0 }
+        $measure = $values | Measure-Object -Minimum -Maximum
+        return [double]$measure.Maximum - [double]$measure.Minimum
+    }
+
+    foreach ($profile in 0..2) {
+        $profileRows = @($Candidates | Where-Object { $_.profile -eq $profile })
+        foreach ($full in 0..2) {
+            $rows = @($profileRows | Where-Object { $_.full_sensitivity -eq $full })
+            foreach ($property in @('full_high_only_residual_ratio',
+                                     'full_medium_high_residual_ratio')) {
+                if ((& $spanFor $rows $property) -gt $axisTolerance) {
+                    $reasons += "profile $profile full $full probe varies with small axis"
+                    break
+                }
+            }
+        }
+        foreach ($small in 0..2) {
+            $rows = @($profileRows | Where-Object { $_.small_sensitivity -eq $small })
+            foreach ($property in @('small_high_only_residual_ratio',
+                                     'small_medium_high_residual_ratio')) {
+                if ((& $spanFor $rows $property) -gt $axisTolerance) {
+                    $reasons += "profile $profile small $small probe varies with full axis"
+                    break
+                }
+            }
+        }
+
+        $fullHigh = @()
+        $fullMedium = @()
+        $smallHigh = @()
+        $smallMedium = @()
+        foreach ($level in 0..2) {
+            $fullRows = @($profileRows | Where-Object { $_.full_sensitivity -eq $level })
+            $smallRows = @($profileRows | Where-Object { $_.small_sensitivity -eq $level })
+            $fullHigh += & $meanFor $fullRows 'full_high_only_residual_ratio'
+            $fullMedium += & $meanFor $fullRows 'full_medium_high_residual_ratio'
+            $smallHigh += & $meanFor $smallRows 'small_high_only_residual_ratio'
+            $smallMedium += & $meanFor $smallRows 'small_medium_high_residual_ratio'
+        }
+
+        if (-not ($fullHigh[2] + $separationMargin -lt
+                  [Math]::Min($fullHigh[0], $fullHigh[1]))) {
+            $reasons += "profile $profile full high-only threshold ordering failed"
+        }
+        if (-not ([Math]::Max($fullMedium[1], $fullMedium[2]) +
+                  $separationMargin -lt $fullMedium[0])) {
+            $reasons += "profile $profile full medium-high threshold ordering failed"
+        }
+        if (-not ($smallHigh[2] + $separationMargin -lt
+                  [Math]::Min($smallHigh[0], $smallHigh[1]))) {
+            $reasons += "profile $profile small high-only threshold ordering failed"
+        }
+        if (-not ([Math]::Max($smallMedium[1], $smallMedium[2]) +
+                  $separationMargin -lt $smallMedium[0])) {
+            $reasons += "profile $profile small medium-high threshold ordering failed"
+        }
+    }
+
+    [pscustomobject]@{
+        pass = ($reasons.Count -eq 0)
+        axis_invariance_tolerance = $axisTolerance
+        separation_margin = $separationMargin
+        reasons = @($reasons | Select-Object -Unique)
+    }
 }
 
 # Stage 1: all independent profile/full/small combinations, not just paired
@@ -275,6 +368,10 @@ $screenBatch = Invoke-ReplayBatch -Name 'screen' -Specs $screenSpecs `
 $screenResults = @($screenSpecs | ForEach-Object {
     Read-Candidate -Spec $_ -BatchDir $screenBatch.directory
 })
+$screenProbeContract = Get-ScreeningProbeContract -Candidates $screenResults
+foreach ($candidate in $screenResults) {
+    $candidate.screening_probes_rankable = [bool]$screenProbeContract.pass
+}
 $screenEligible = @($screenResults | Where-Object {
     $_.replay_status -eq 'SUCCESS'
 })
@@ -295,6 +392,7 @@ if ($ScreenOnly) {
         selection = 'pareto frontier then minimum worst relative regression versus production default'
         screen_batch_elapsed_ms = $screenBatch.elapsed_ms
         screen_candidates = $screenResults
+        screening_probe_contract = $screenProbeContract
         screen_pareto_frontier = @($screenFrontier | ForEach-Object { $_.name })
         selected = $screenBest
     } | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8 `
@@ -347,6 +445,7 @@ if (-not $selected) { $selected = $verifyEligible | Sort-Object max_relative_reg
     screen_batch_elapsed_ms = $screenBatch.elapsed_ms
     verify_batch_elapsed_ms = $verifyBatch.elapsed_ms
     screen_candidates = $screenResults
+    screening_probe_contract = $screenProbeContract
     screen_pareto_frontier = @($screenFrontier | ForEach-Object { $_.name })
     verify_candidates = $verifyResults
     verify_pareto_frontier = @($verifyFrontier | ForEach-Object { $_.name })

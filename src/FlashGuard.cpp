@@ -3030,7 +3030,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     // full-screen gates are then the configured full sensitivity.
                     m_safety.localDeltaThreshold = 0.05f;
                     m_safety.smallFlashAreaThreshold = 2.0f;
+                    m_safety.affectedAreaThreshold = 2.0f;
+                    m_safety.coherenceThreshold = 2.0f;
                     m_safety.visualFieldAreaThreshold = 2.0f;
+                    m_safety.patternScoreThreshold = 2.0f;
                     const auto fullHighOnly =
                         runScreeningProbe(139, 0.0);
                     const auto fullMediumHigh =
@@ -3044,6 +3047,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     m_safety.globalDeltaThreshold = 2.0f;
                     m_safety.globalAreaThreshold = 2.0f;
                     m_safety.visualFieldAreaThreshold = 2.0f;
+                    m_safety.patternScoreThreshold = 2.0f;
                     const auto smallHighOnly =
                         runScreeningProbe(168, 0.006);
                     const auto smallMediumHigh =
@@ -3059,9 +3063,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         return false;
                     std::fprintf(probeReport,
                         "{\n"
-                        "  \"schema\": \"FLASHGUARD_SCREENING_PROBES/2\",\n"
+                        "  \"schema\": \"FLASHGUARD_SCREENING_PROBES/3\",\n"
                         "  \"status\": \"SUCCESS\",\n"
                         "  \"detector_family_isolation\": true,\n"
+                        "  \"global_delta_only_full_probe\": true,\n"
                         "  \"background_code\": 96,\n"
                         "  \"fps\": %d,\n"
                         "  \"full_high_only_high_code\": 139,\n"
