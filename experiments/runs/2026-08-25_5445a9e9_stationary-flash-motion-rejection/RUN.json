@@ -1,0 +1,35 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-25_5445a9e9_stationary-flash-motion-rejection",
+  "tested_commit": "5445a9e92d5032a86ab9c4926459cc8b371bfc31",
+  "software_version": "0.1.0-alpha.1",
+  "timestamp_utc": "2026-08-25T19:45:00Z",
+  "source_artifact": "flashbench-gpu-5445a9e-rerun.zip",
+  "result": "FAILED",
+  "protocols": [
+    "FLASHBENCH/2",
+    "FLASHGUARD_REPLAY/3",
+    "FLASHGUARD_FLASH_SWEEP/3",
+    "WCAG_FLASH/2",
+    "NVOF_SMOKE/1",
+    "MOTION_DIAGNOSTICS/1"
+  ],
+  "environment": {
+    "machine": "CROW",
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "nvidia_driver": "561.09",
+    "replay_width": 640,
+    "replay_height": 360,
+    "replay_fps": 60
+  },
+  "intervention": "Reject stationary repeated-flash false motion unless CPU/coarse scene motion corroborates it.",
+  "automated_observation": "Large-object and pan ghosting improved substantially; all eight quarter-screen SC 2.3.2 cases still failed with microscopic residual transitions.",
+  "raw_file_sha256": {
+    "summary.json": "ffd82f6aba5837b29e3ed19a96164d9d2b5387748c59b0cc3b5799addff03d01",
+    "flash-sweep.json": "0a19bf38cc7c5f0058c5cb2aac581ee35f3fb4e2a86f3337f1d81b56f003a077",
+    "synthetic-replay.json": "1e9f207c93d2612751e84c5f76a51c5192651e5ab963ba0a70adcda3941a9f3e",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "motion-diagnostics.json": "410c6c2dfb49c6b953d966a3555805532047f811ac04048d3e1c0840c9965390"
+  }
+}

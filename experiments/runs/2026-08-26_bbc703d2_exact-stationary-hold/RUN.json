@@ -1,0 +1,39 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-26_bbc703d2_exact-stationary-hold",
+  "tested_commit": "bbc703d2f1c9e653ffdf1778c89664e73af4f1da",
+  "software_version": "0.1.0-alpha.1",
+  "timestamp_utc": "2026-08-26T00:36:10Z",
+  "ci_run_id": 32914917054,
+  "ci_artifact_id": 9588087396,
+  "ci_artifact_sha256": "565fbd5bdcafc7a11f0c99e85c332769883480ee2015183d524b937eab65e77c",
+  "result": "FAILED",
+  "protocols": [
+    "FLASHBENCH/2",
+    "FLASHGUARD_REPLAY/3",
+    "FLASHGUARD_FLASH_SWEEP/3",
+    "WCAG_FLASH/2",
+    "NVOF_SMOKE/1",
+    "MOTION_DIAGNOSTICS/1"
+  ],
+  "environment": {
+    "machine": "CROW",
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "nvidia_driver": "561.09",
+    "replay_width": 640,
+    "replay_height": 360,
+    "replay_fps": 60
+  },
+  "intervention": "Hold an uncorroborated stationary hazardous transition exactly from its first event frame.",
+  "automated_observation": "Quarter-screen SC 2.3.2 failures fell from eight to two while established large-object and pan motion gains remained.",
+  "qualitative_observation": "Manual red-X moving-box tests showed visible trailing at low speeds, revealing that scene-level corroboration alone misclassifies small local motion as stationary.",
+  "preceded_by": "2026-08-25_5445a9e9_stationary-flash-motion-rejection",
+  "raw_file_sha256": {
+    "summary.json": "1686d4bf67d57b123c863c1eea4aa51ef5e1d5a10ea73ecda47e41a9a9dc01fd",
+    "flash-sweep.json": "f62e2f2f3bf6e1ae20bbe27cfa9b7708de608bd133160d8c2bf3e48a361d026e",
+    "synthetic-replay.json": "7685c361e1ba1fecb2eec0a1984a25fb33c84427444484177c5af2596ad7b7ab",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "motion-diagnostics.json": "863953d9a9e710074887b9cf2a59579df38fc4d3a872240242f814494c93b1a3"
+  }
+}

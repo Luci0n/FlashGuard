@@ -774,14 +774,17 @@ R"HLSL(
         const float repeatedMemoryGate = smoothstep(0.34, 0.62, repeatedRisk);
         const float repeatedHoldAuthorization =
             repeatedMemoryGate * max(eventGate, holdGate * stableSourceGate);
-        // A current hazardous transition with no scene-level motion evidence is
-        // stationary enough to hold immediately. Waiting for reversal memory
-        // permits the first microscopic excursion, which a strict evaluator then
-        // counts on every subsequent reversal. Coherent translation cancels this
-        // authorization through the same CPU/coarse corroboration used above.
+        // A current hazardous transition with neither scene-level motion nor
+        // strong verified local transport is stationary enough to hold immediately.
+        // Small moving objects may not influence the coarse/CPU priors, so let
+        // trustworthy full-resolution transport cancel this hold before it can
+        // freeze the object's previous screen position into a visible trail.
+        const float verifiedLocalTransportGate =
+            smoothstep(0.45, 0.75, rawEffectiveMotionGate);
         const float stationaryCurrentHoldAuthorization =
             eventGate * eventDeltaGate *
-            (1.0 - smoothstep(0.02, 0.12, corroboratedMotionGate));
+            (1.0 - smoothstep(0.02, 0.12, corroboratedMotionGate)) *
+            (1.0 - verifiedLocalTransportGate);
         const float repeatedHoldMask =
             repeatedHoldAuthorization * (1.0 - effectiveMotionGate);
         float temporalMask = max(

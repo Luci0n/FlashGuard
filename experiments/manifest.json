@@ -8,7 +8,10 @@
     "FLASHBENCH/2",
     "FLASHGUARD_REPLAY/2",
     "FLASHGUARD_FLASH_SWEEP/2",
+    "FLASHGUARD_REPLAY/3",
+    "FLASHGUARD_FLASH_SWEEP/3",
     "WCAG_FLASH/1",
+    "WCAG_FLASH/2",
     "NVOF_SMOKE/1",
     "MOTION_DIAGNOSTICS/1"
   ],
@@ -22,6 +25,16 @@
       "run_id": "2026-08-25_1802a4e6_flash-sweep-pass",
       "commit": "1802a4e68656d432a10ce2bf6ba11060ed8d9788",
       "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-25_5445a9e9_stationary-flash-motion-rejection",
+      "commit": "5445a9e92d5032a86ab9c4926459cc8b371bfc31",
+      "result": "FAILED"
+    },
+    {
+      "run_id": "2026-08-26_bbc703d2_exact-stationary-hold",
+      "commit": "bbc703d2f1c9e653ffdf1778c89664e73af4f1da",
+      "result": "FAILED"
     }
   ]
 }
