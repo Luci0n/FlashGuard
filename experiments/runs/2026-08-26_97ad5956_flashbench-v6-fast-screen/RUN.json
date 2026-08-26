@@ -1,0 +1,39 @@
+{
+  "schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-26_97ad5956_flashbench-v6-fast-screen",
+  "tested_commit": "97ad59568f10753bb37c78a6f6cf41f3a04918b5",
+  "software_version": "0.3.0-alpha.1",
+  "timestamp_utc": "2026-08-26T13:56:15Z",
+  "ci_run_id": 32976601400,
+  "ci_artifact_id": 9609923515,
+  "ci_artifact_sha256": "fd743d1b9f0be3b6577dfcfd6bafd45e34c576ab7ca30bf298c78e79c6abc4e1",
+  "result": "SUCCESS",
+  "intervention": "FlashBench v6 screening acceleration: 256x144 candidate resolution, representative 10 Hz normative subset, two-case low-contrast mini-sweep, shortened non-ranking probes, and retained persistent 27-configuration GPU batch.",
+  "quantitative_observation": {
+    "previous_screen_elapsed_ms": 664756,
+    "screen_elapsed_ms": 105151,
+    "screen_speedup_x": 6.3215,
+    "candidate_count": 27,
+    "mean_candidate_elapsed_ms": 3526.96,
+    "behavior_pass_count": 0,
+    "selected": "profile_1_full_2_small_0",
+    "root_moving_vacated_p99_max": 0.82726907,
+    "root_moving_clear_05_ms": 83.333,
+    "root_perceptual_sweep_min_reduction": -0.01165778
+  },
+  "qualitative_observation": "The shortened screen achieved a large throughput gain but 256x144 erased useful configuration discrimination: major trail and low-contrast metrics became identical across all candidates, and the legacy full-suite pass gate marked every screening candidate FAILED because one-frame smoke probes were still judged by full-suite thresholds. Retain the speed evidence, but reject this exact screen configuration as the next harness baseline.",
+  "raw_file_sha256": {
+    "artifact.zip": "fd743d1b9f0be3b6577dfcfd6bafd45e34c576ab7ca30bf298c78e79c6abc4e1",
+    "flash-sweep.json": "06544d12166deae7e6e2f341148f644b6d3c9668cac933f649fa7bd21253a1d7",
+    "matrix/matrix.json": "7c3cea6a3420b9fba5fc450c56871d6c6eff7a04fe8c06fe88ea138275439acd",
+    "matrix/screen-batch.json": "59581ac55bbddd5679d231e09938d5b3539a57dc09960b55f03afe94d5f97289",
+    "motion-diagnostics.json": "70d83b45e2445545d184df3625857e8f1c03066bedebc6bf23991d775a65edb7",
+    "motion-realization.json": "ddb0838b040af1e13e22b65699bd4952c782592f919e181c90de0a57bc8040ae",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "perceptual-sweep.json": "f3c96f3bdb083daaf7002bba9d98fe5433b6b9243f082e0957b97ced8fe31061",
+    "red-flash-trace-15hz.json": "ccce86237f8badd4f9692119c2eab432367e6c51a0c39f2a5f39b9f358e2272c",
+    "summary.json": "73ef9a5a116a4e8e6365756a30922b19361bc91c9a6446b7de1dbeb8b5484504",
+    "synthetic-replay.json": "b30bfabb770a156b0853fe2f5056239ecef8f03ad1d17bc2093fa35550b944cb",
+    "trail-metrics.json": "be4114662151e1c708ef7a1a66112c98ad6e09d3e391847451345101ce358145"
+  }
+}

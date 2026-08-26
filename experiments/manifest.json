@@ -81,6 +81,11 @@
       "run_id": "2026-08-26_d8320909_flashbench-v6-calibration",
       "commit": "d83209096b846bd05b55193f0cd473eb350f8249",
       "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_97ad5956_flashbench-v6-fast-screen",
+      "commit": "97ad59568f10753bb37c78a6f6cf41f3a04918b5",
+      "result": "SUCCESS"
     }
   ]
 }
