@@ -86,6 +86,11 @@
       "run_id": "2026-08-26_97ad5956_flashbench-v6-fast-screen",
       "commit": "97ad59568f10753bb37c78a6f6cf41f3a04918b5",
       "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_3ea4ed2e_discriminating-fast-screen",
+      "commit": "3ea4ed2e813f4f37260fd504e96588696864f2f6",
+      "result": "SUCCESS"
     }
   ]
 }

@@ -1,0 +1,40 @@
+{
+  "schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-26_3ea4ed2e_discriminating-fast-screen",
+  "tested_commit": "3ea4ed2e813f4f37260fd504e96588696864f2f6",
+  "software_version": "0.3.0-alpha.1",
+  "timestamp_utc": "2026-08-26T14:11:46Z",
+  "ci_run_id": 32978132802,
+  "ci_artifact_id": 9610532254,
+  "ci_artifact_sha256": "82098a9a6601bc3424f3fc3abaf7c8facf45b6c5c23eb391e19c7d70740c9fd9",
+  "result": "SUCCESS",
+  "intervention": "FlashBench v6 restored screening validity and 320x180 candidate resolution while retaining the persistent 27-configuration batch and aggressive screening shortcuts.",
+  "quantitative_observation": {
+    "screen_elapsed_ms": 115052,
+    "candidate_count": 27,
+    "screen_success_count": 27,
+    "selected": "profile_1_full_2_small_0",
+    "moving_square_vacated_p99_max_unique_values": 1,
+    "small_moving_square_vacated_p99_max_unique_values": 1,
+    "perceptual_sweep_min_reduction_unique_values": 1,
+    "root_moving_vacated_p99_max": 0.82726907,
+    "root_moving_clear_05_ms": 83.333,
+    "root_moving_flash_reduction": 0.29055976,
+    "root_perceptual_sweep_min_reduction": -0.01165778
+  },
+  "qualitative_observation": "The screening-specific pass contract fixed the false FAILED status and 320x180 retained fast throughput, but the key perceptual trail and low-contrast metrics remained identical across full/small sensitivity settings. The screen is valid infrastructure but still under-discriminating for sensitivity tuning; threshold-probing cases are required.",
+  "raw_file_sha256": {
+    "artifact.zip": "82098a9a6601bc3424f3fc3abaf7c8facf45b6c5c23eb391e19c7d70740c9fd9",
+    "flash-sweep.json": "3a66d0ceb1291527338a7c33a6c40a1a4c29a1fb2f92086e6e0d90cdd54c2d9c",
+    "motion-diagnostics.json": "b772817baaffc9fd8cfea6363fab3c64048899712bb8ae87c2265fdca11571e9",
+    "motion-realization.json": "ddb0838b040af1e13e22b65699bd4952c782592f919e181c90de0a57bc8040ae",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "perceptual-sweep.json": "f3c96f3bdb083daaf7002bba9d98fe5433b6b9243f082e0957b97ced8fe31061",
+    "red-flash-trace-15hz.json": "ccce86237f8badd4f9692119c2eab432367e6c51a0c39f2a5f39b9f358e2272c",
+    "summary.json": "b03a95f572f096ea54cbdd0485823594625626017be10c169b2bdf80bb9d0860",
+    "synthetic-replay.json": "6e5493296eda0a34527f3203a8ef80474d384c9a0cea812e05bdd54f0a93c42e",
+    "trail-metrics.json": "5017b9c4085498dd7955a116fd776e29c79f226a4baeab0d41afbf80caa98f0e",
+    "matrix/matrix.json": "fe14236d0c5efd34efcd4649f216df4b4022d887ca0e1bdc7f51896a85ee04f4",
+    "matrix/screen-batch.json": "770daf7ebb6c8773c46d73c45de3b71f75b056da45f773bf20fe236a00f7d2cb"
+  }
+}
