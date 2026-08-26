@@ -1,0 +1,41 @@
+{
+  "schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-26_0c94a7e6_self-validating-probes",
+  "tested_commit": "0c94a7e6fe7b729f82ff5480113a8703107e2a97",
+  "software_version": "0.3.0-alpha.1",
+  "timestamp_utc": "2026-08-26T17:24:52Z",
+  "ci_run_id": 32986983947,
+  "ci_artifact_id": 9615711668,
+  "ci_artifact_sha256": "3ad82e79da815eff012f1d7dd0bf2401dee0e164a20e770a4955b61793e88a15",
+  "result": "SUCCESS",
+  "intervention": "FlashBench v6 screening probes v3 isolate detector families and add a self-validating contract that excludes probe measurements from ranking unless axis invariance and expected threshold ordering are demonstrated.",
+  "quantitative_observation": {
+    "screen_elapsed_ms": 121235,
+    "candidate_count": 27,
+    "screen_success_count": 27,
+    "speedup_vs_original_v6_x": 5.4837,
+    "pareto_candidate_count": 6,
+    "selected": "profile_1_full_1_small_1",
+    "probe_contract_pass": false,
+    "probe_contract_reason_count": 13,
+    "selected_moving_vacated_p99_max": 0.82726907,
+    "selected_moving_vacated_peak": 0.82726907,
+    "selected_moving_clear_05_ms": 233.333,
+    "selected_perceptual_sweep_min_reduction": -0.00387579
+  },
+  "qualitative_observation": "The self-validation behaved correctly: the v3 probe contract failed because the full-screen and small-source residual ratios remained essentially invariant across the intended sensitivity axes, with one remaining profile-1 cross-axis anomaly. Probe data was automatically marked non-rankable, so candidate selection fell back to the established replay/trail/perceptual metrics and selected the production-default profile_1_full_1_small_1. The fast screen remains useful, but the profile/full/small settings are not a meaningful optimization space for the Instant GPU path; future search should expose direct benchmark-only detector/temporal thresholds instead of trying to infer them through UI sensitivity presets.",
+  "raw_file_sha256": {
+    "artifact.zip": "3ad82e79da815eff012f1d7dd0bf2401dee0e164a20e770a4955b61793e88a15",
+    "flash-sweep.json": "2d7ba4409847e62e6d79861490c7295f01380a27cda0b8ee66c10b6690b48695",
+    "motion-diagnostics.json": "5b760e8d82918aecd089db6a972045acbc92a0eb1b1d25d598e43d241e60f330",
+    "motion-realization.json": "ddb0838b040af1e13e22b65699bd4952c782592f919e181c90de0a57bc8040ae",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "perceptual-sweep.json": "f3c96f3bdb083daaf7002bba9d98fe5433b6b9243f082e0957b97ced8fe31061",
+    "red-flash-trace-15hz.json": "ccce86237f8badd4f9692119c2eab432367e6c51a0c39f2a5f39b9f358e2272c",
+    "summary.json": "89ba6bd90aa489c8623f7ef5a7ea8114f32e4eb90d90947dfeb4d7149cc03705",
+    "synthetic-replay.json": "fb8cf3c1865b2c1a53aa29ec7e1ae91a6d42e4fbf94a76ae87f5f7a63e7b0a35",
+    "trail-metrics.json": "be4114662151e1c708ef7a1a66112c98ad6e09d3e391847451345101ce358145",
+    "matrix/matrix.json": "a232435b2afe822007c1c77f463d55b76e47feaa134814548960f205c29f6675",
+    "matrix/screen/batch.json": "7e3cf69f33781e048562711796a7ef842b754dba140be513deb4e77bea9b0c34"
+  }
+}
