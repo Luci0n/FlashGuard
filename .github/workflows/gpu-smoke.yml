@@ -46,12 +46,43 @@ jobs:
             }
           Start-Sleep -Milliseconds 250
 
+          # Persistent runner processes and temp trees consume both disk and
+          # Windows commit. Keep this dedicated GPU runner self-cleaning so the
+          # page file can grow and Git/MSVC do not fail from ERROR_COMMITMENT_LIMIT.
+          foreach ($name in @('cl', 'mspdbsrv', 'vctip', 'NvofSmoke')) {
+            Get-Process -Name $name -ErrorAction SilentlyContinue |
+              Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+          $tempCutoff = (Get-Date).AddMinutes(-30)
+          if (Test-Path $env:RUNNER_TEMP) {
+            Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.LastWriteTime -lt $tempCutoff } |
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          $userTemp = [System.IO.Path]::GetTempPath()
+          if ($userTemp -and (Test-Path $userTemp)) {
+            $userTempCutoff = (Get-Date).AddDays(-1)
+            Get-ChildItem -LiteralPath $userTemp -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.LastWriteTime -lt $userTempCutoff } |
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
           # Checkout can recreate the repository from scratch. Clearing the old
           # workspace before checkout also removes accumulated build/replay output.
           if (Test-Path $workspace) {
             Set-Location $env:RUNNER_TEMP
             Get-ChildItem -LiteralPath $workspace -Force -ErrorAction SilentlyContinue |
               Remove-Item -Recurse -Force -ErrorAction Stop
+          }
+
+          $driveName = [System.IO.Path]::GetPathRoot($workspace).TrimEnd('\').TrimEnd(':')
+          $drive = Get-PSDrive -Name $driveName -ErrorAction SilentlyContinue
+          $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+          if ($drive) {
+            Write-Host ("Runner free disk: {0:N2} GB" -f ($drive.Free / 1GB))
+          }
+          if ($os) {
+            Write-Host ("Runner free virtual memory: {0:N0} MB" -f ($os.FreeVirtualMemory / 1KB))
           }
 
           # Keep only the most recently staged tested executable. Per-SHA staging

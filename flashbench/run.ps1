@@ -82,13 +82,18 @@ try {
     "Test tier: $TestTier" | Add-Content -Encoding utf8 $logPath
     "Commit: $($summary.commit)" | Add-Content -Encoding utf8 $logPath
 
+    # Targeted/quick replay validates behavior, not optimized CPU codegen. Use
+    # the lighter dev build to reduce compile time and commit pressure on the
+    # persistent GPU runner; full and compile validation remain release builds.
+    $buildMode = if ($Mode -eq 'gpu-smoke' -and $TestTier -ne 'full') { 'dev' } else { 'release' }
+    "Build configuration: $buildMode" | Add-Content -Encoding utf8 $logPath
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    & cmd.exe /d /c 'scripts\build.bat release' 2>&1 | Tee-Object -FilePath $logPath -Append
+    & cmd.exe /d /c "scripts\build.bat $buildMode" 2>&1 | Tee-Object -FilePath $logPath -Append
     $buildExit = $LASTEXITCODE
     $sw.Stop()
     $summary.build_ms = $sw.ElapsedMilliseconds
     if ($buildExit -ne 0) {
-        throw "release build failed with exit code $buildExit"
+        throw "$buildMode build failed with exit code $buildExit"
     }
     $summary.build_status = 'SUCCESS'
 
