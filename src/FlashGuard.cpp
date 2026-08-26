@@ -142,6 +142,12 @@ namespace
         float p7[4];
         float p8[4];
         float p9[4];
+        float p10[4];
+        float p11[4];
+        float p12[4];
+        float p13[4];
+        float p14[4];
+        float p15[4];
     };
     static_assert(sizeof(ShaderConstants) % 16 == 0);
 
@@ -185,8 +191,38 @@ namespace
         bool debugOverlay = false;
     };
 
+    // Full-resolution shader behavior has exact production defaults here. The
+    // replay batch may override these values without recompiling or changing UI.
+    struct ShaderTuningSettings
+    {
+        float eventDeltaLow = 0.008f;
+        float eventDeltaHigh = 0.035f;
+        float holdDeltaLow = 0.028f;
+        float holdDeltaHigh = 0.085f;
+        float stableSourceLow = 0.012f;
+        float stableSourceHigh = 0.055f;
+        float intrinsicResidualLow = 0.020f;
+        float intrinsicResidualHigh = 0.090f;
+        float repeatedMemoryLow = 0.34f;
+        float repeatedMemoryHigh = 0.62f;
+        float holdGateLow = 0.16f;
+        float holdGateHigh = 0.58f;
+        float transportConfidenceLow = 0.45f;
+        float transportConfidenceHigh = 0.75f;
+        float disocclusionResetGate = 0.55f;
+        float surfaceRiskTau = 0.55f;
+        float eventStateTauScale = 1.0f;
+        float releaseStateTauScale = 1.0f;
+        float exactHoldThreshold = 0.72f;
+        float movingHoldFloorMax = 0.035f;
+        float directIntrinsicDisplayLow = 0.010f;
+        float directIntrinsicDisplayHigh = 0.040f;
+        float eventSeedLow = 0.025f;
+        float eventSeedHigh = 0.14f;
+    };
+
     // Replay-batch-only overrides. Production/UI code never supplies these;
-    // negative values preserve the exact RuntimeOptions-derived defaults.
+    // negative outer values preserve the exact RuntimeOptions-derived defaults.
     struct BenchmarkTuning
     {
         bool enabled = false;
@@ -202,6 +238,7 @@ namespace
         float minimumProtectionTime = -1.0f;
         float releaseTime = -1.0f;
         float cameraMotionSuppression = -1.0f;
+        ShaderTuningSettings shader{};
     };
 
     struct HotkeyBinding
@@ -420,6 +457,12 @@ cbuffer Safety : register(b0)
     float4 P7;
     float4 P8;
     float4 P9; // x = idle release tick (no new desktop event)
+    float4 P10; // event/hold displayed-delta gates
+    float4 P11; // source-stability / intrinsic residual gates
+    float4 P12; // repeated-memory / hold-memory gates
+    float4 P13; // transport confidence / disocclusion / risk decay
+    float4 P14; // temporal-state tau scales / exact hold / moving floor
+    float4 P15; // direct-intrinsic display / event-seed gates
 };
 
 struct VSOut
@@ -714,10 +757,10 @@ R"HLSL(
         float previousProtectedL = previousProtectionValid ?
             saturate(previousProtectionState.r) : candidateL;
         float transportedSurfaceRisk = previousProtectionValid ?
-            saturate(previousProtectionState.g) * exp(-dt / 0.55) : 0.0;
+            saturate(previousProtectionState.g) * exp(-dt / max(P13.w, 0.05)) : 0.0;
         float transportedRedAuthority = previousProtectionValid ?
             saturate(previousProtectionState.b) * exp(-dt / 0.20) : 0.0;
-        if (explicitDisocclusionGate > 0.55)
+        if (explicitDisocclusionGate > P13.z)
         {
             previousProtectedL = candidateL;
             transportedSurfaceRisk = 0.0;
@@ -751,8 +794,8 @@ R"HLSL(
             max(max(coarseEvent, broadRisk), max(protectionGate, overloadGate));
         const float holdSeed = max(max(coarseRisk, broadRisk * 0.70),
             max(protectionGate, overloadGate));
-        const float eventGate = smoothstep(0.025, 0.14, eventSeed);
-        const float holdGate = smoothstep(0.16, 0.58, holdSeed);
+        const float eventGate = smoothstep(P15.z, P15.w, eventSeed);
+        const float holdGate = smoothstep(P12.z, P12.w, holdSeed);
         // Either analyzer-space coherent translation or verified full-resolution
         // motion classification is sufficient to reject temporal drag. Local flow
         // is especially important for small bright moving objects that occupy too
@@ -780,8 +823,8 @@ R"HLSL(
         // Small ordinary changes should not drag filtered history around. A
         // CURRENT hazard gets a sensitive localization gate; MEMORY-only release
         // requires a much larger outstanding displayed difference.
-        const float eventDeltaGate = smoothstep(0.008, 0.035, validatedEventDelta);
-        const float holdDeltaGate = smoothstep(0.028, 0.085, displayedDelta);
+        const float eventDeltaGate = smoothstep(P10.x, P10.y, validatedEventDelta);
+        const float holdDeltaGate = smoothstep(P10.z, P10.w, displayedDelta);
 
         // During MEMORY-only release, source history is the crucial discriminator:
         // if the raw source barely changed, this is the same protected
@@ -789,11 +832,11 @@ R"HLSL(
         // changed substantially but there is no new hazard event, treat it as new
         // content/motion and mostly bypass old history. A high-risk memory keeps a
         // small safety floor in case one detector frame is missed during repetition.
-        const float stableSourceGate = 1.0 - smoothstep(0.012, 0.055, sourceDelta);
+        const float stableSourceGate = 1.0 - smoothstep(P11.x, P11.y, sourceDelta);
         const float veryHighMemory = smoothstep(0.78, 0.96, holdSeed);
         // Memory alone must not drag bright moving content. Keep only a tiny floor
         // for a detector-frame miss during an already very strong flash sequence.
-        const float movingHoldFloor = lerp(0.0, 0.035, veryHighMemory);
+        const float movingHoldFloor = lerp(0.0, P14.w, veryHighMemory);
         const float holdContentGate = max(stableSourceGate, movingHoldFloor);
 
         // Full-resolution compensated source residual is the intrinsic-change
@@ -801,14 +844,14 @@ R"HLSL(
         // case the residual stays large and must override the motion bypass.
         // Stale flash memory is never allowed to invalidate geometry.
         const float intrinsicResidualGate =
-            smoothstep(0.020, 0.090, motionCompensatedSourceDelta);
+            smoothstep(P11.z, P11.w, motionCompensatedSourceDelta);
         const float directIntrinsicEvent =
-            intrinsicResidualGate * smoothstep(0.010, 0.040, displayedDelta);
+            intrinsicResidualGate * smoothstep(P15.x, P15.y, displayedDelta);
         const float eventMask =
             max(eventGate * eventDeltaGate, directIntrinsicEvent);
         const float holdMask = holdGate * holdContentGate * holdDeltaGate;
         const float repeatedRisk = max(temporalRisk, transportedSurfaceRisk);
-        const float repeatedMemoryGate = smoothstep(0.34, 0.62, repeatedRisk);
+        const float repeatedMemoryGate = smoothstep(P12.x, P12.y, repeatedRisk);
         // A repeated flash spends most of each half-cycle with near-zero
         // frame-to-frame source delta. Keep intrinsic authority alive across that
         // stable interval instead of letting noisy/global flow reopen the bypass.
@@ -868,11 +911,11 @@ R"HLSL(
         const float repeatedHoldAuthorization =
             repeatedMemoryGate * max(eventMask, holdGate * stableSourceGate);
         const float verifiedCurrentSurfaceTransport =
-            smoothstep(0.45, 0.75, diagCurrentSurfaceGate);
+            smoothstep(P13.x, P13.y, diagCurrentSurfaceGate);
         const float verifiedVacatedTransport =
-            smoothstep(0.45, 0.75, diagVacatedGate);
+            smoothstep(P13.x, P13.y, diagVacatedGate);
         const float verifiedInfillTransport =
-            smoothstep(0.45, 0.75, diagInfillGate) *
+            smoothstep(P13.x, P13.y, diagInfillGate) *
             coarseMotionGate;
         const float currentSurfaceHoldVeto =
             verifiedCurrentSurfaceTransport * (1.0 - motionProtectionAuthority);
@@ -921,8 +964,9 @@ R"HLSL(
             // even when the coarse analyzer called the same pixels motion.
             const bool currentEvent = eventMask > 0.05;
             const float tau = currentEvent ?
-                lerp(0.150, 0.235, severe) : lerp(0.030, 0.050, severe);
-            const float stateAlpha = 1.0 - exp(-dt / tau);
+                lerp(0.150, 0.235, severe) * P14.x :
+                lerp(0.030, 0.050, severe) * P14.y;
+            const float stateAlpha = 1.0 - exp(-dt / max(tau, 0.005));
 
             // Recursive RGB is deliberately gone. Evolve only the transported
             // protected luminance, then impose that scalar constraint on the
@@ -932,7 +976,7 @@ R"HLSL(
                 previousProtectedL, candidateL, stateAlpha);
             const float exactHoldGate = max(
                 repeatedHoldAuthorization, stationaryCurrentHoldAuthorization);
-            if (exactHoldGate > 0.72)
+            if (exactHoldGate > P14.z)
                 protectedL = previousProtectedL;
 
             // Attack and release remain bounded and monotonic in luminance-state
@@ -943,7 +987,7 @@ R"HLSL(
             float maxStep = currentEvent ? min(profileStep, standardsStep) :
                 max(standardsStep, 2.60 * dt);
             maxStep *= currentEvent ? lerp(1.0, 0.72, severe) : 1.0;
-            if (exactHoldGate > 0.72)
+            if (exactHoldGate > P14.z)
                 maxStep = 0.0;
             protectedL = clamp(protectedL,
                 previousProtectedL - maxStep,
@@ -3922,9 +3966,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_inputFormat = DXGI_FORMAT_UNKNOWN;
                 ResetDelayedPipeline();
             }
-            // This setting has no UI preset of its own. Reset it explicitly so
-            // benchmark overrides cannot leak into the next persistent-batch case.
+            // Settings without UI presets are reset explicitly so benchmark
+            // overrides cannot leak into the next persistent-batch case.
             m_safety.cameraMotionSuppression = 0.32f;
+            m_shaderTuning = ShaderTuningSettings{};
             m_debugEnabled.store(options.debugOverlay, std::memory_order_release);
         }
 
@@ -3960,6 +4005,51 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.releaseTime, 0.10f, 1.50f);
             apply(m_safety.cameraMotionSuppression,
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
+
+            // Shader candidates are generated by FlashBench with ordered pairs.
+            // Clamp every scalar defensively, then reject malformed pairs back to
+            // the exact production defaults instead of letting one case poison the
+            // persistent batch.
+            ShaderTuningSettings shader = tuning.shader;
+            const auto clamp = [](float value, float low, float high) {
+                return std::isfinite(value) ? std::clamp(value, low, high) : low;
+            };
+            shader.eventDeltaLow = clamp(shader.eventDeltaLow, 0.0f, 0.20f);
+            shader.eventDeltaHigh = clamp(shader.eventDeltaHigh, 0.001f, 0.30f);
+            shader.holdDeltaLow = clamp(shader.holdDeltaLow, 0.0f, 0.25f);
+            shader.holdDeltaHigh = clamp(shader.holdDeltaHigh, 0.001f, 0.35f);
+            shader.stableSourceLow = clamp(shader.stableSourceLow, 0.0f, 0.20f);
+            shader.stableSourceHigh = clamp(shader.stableSourceHigh, 0.001f, 0.30f);
+            shader.intrinsicResidualLow = clamp(shader.intrinsicResidualLow, 0.0f, 0.25f);
+            shader.intrinsicResidualHigh = clamp(shader.intrinsicResidualHigh, 0.001f, 0.35f);
+            shader.repeatedMemoryLow = clamp(shader.repeatedMemoryLow, 0.0f, 0.95f);
+            shader.repeatedMemoryHigh = clamp(shader.repeatedMemoryHigh, 0.01f, 1.0f);
+            shader.holdGateLow = clamp(shader.holdGateLow, 0.0f, 0.95f);
+            shader.holdGateHigh = clamp(shader.holdGateHigh, 0.01f, 1.0f);
+            shader.transportConfidenceLow = clamp(shader.transportConfidenceLow, 0.0f, 0.95f);
+            shader.transportConfidenceHigh = clamp(shader.transportConfidenceHigh, 0.01f, 1.0f);
+            shader.disocclusionResetGate = clamp(shader.disocclusionResetGate, 0.05f, 0.95f);
+            shader.surfaceRiskTau = clamp(shader.surfaceRiskTau, 0.05f, 2.0f);
+            shader.eventStateTauScale = clamp(shader.eventStateTauScale, 0.20f, 3.0f);
+            shader.releaseStateTauScale = clamp(shader.releaseStateTauScale, 0.20f, 3.0f);
+            shader.exactHoldThreshold = clamp(shader.exactHoldThreshold, 0.10f, 0.99f);
+            shader.movingHoldFloorMax = clamp(shader.movingHoldFloorMax, 0.0f, 0.20f);
+            shader.directIntrinsicDisplayLow = clamp(shader.directIntrinsicDisplayLow, 0.0f, 0.20f);
+            shader.directIntrinsicDisplayHigh = clamp(shader.directIntrinsicDisplayHigh, 0.001f, 0.30f);
+            shader.eventSeedLow = clamp(shader.eventSeedLow, 0.0f, 0.50f);
+            shader.eventSeedHigh = clamp(shader.eventSeedHigh, 0.001f, 0.80f);
+            const ShaderTuningSettings defaults{};
+            const auto ordered = [](float low, float high) { return low + 0.0005f < high; };
+            if (!ordered(shader.eventDeltaLow, shader.eventDeltaHigh)) { shader.eventDeltaLow = defaults.eventDeltaLow; shader.eventDeltaHigh = defaults.eventDeltaHigh; }
+            if (!ordered(shader.holdDeltaLow, shader.holdDeltaHigh)) { shader.holdDeltaLow = defaults.holdDeltaLow; shader.holdDeltaHigh = defaults.holdDeltaHigh; }
+            if (!ordered(shader.stableSourceLow, shader.stableSourceHigh)) { shader.stableSourceLow = defaults.stableSourceLow; shader.stableSourceHigh = defaults.stableSourceHigh; }
+            if (!ordered(shader.intrinsicResidualLow, shader.intrinsicResidualHigh)) { shader.intrinsicResidualLow = defaults.intrinsicResidualLow; shader.intrinsicResidualHigh = defaults.intrinsicResidualHigh; }
+            if (!ordered(shader.repeatedMemoryLow, shader.repeatedMemoryHigh)) { shader.repeatedMemoryLow = defaults.repeatedMemoryLow; shader.repeatedMemoryHigh = defaults.repeatedMemoryHigh; }
+            if (!ordered(shader.holdGateLow, shader.holdGateHigh)) { shader.holdGateLow = defaults.holdGateLow; shader.holdGateHigh = defaults.holdGateHigh; }
+            if (!ordered(shader.transportConfidenceLow, shader.transportConfidenceHigh)) { shader.transportConfidenceLow = defaults.transportConfidenceLow; shader.transportConfidenceHigh = defaults.transportConfidenceHigh; }
+            if (!ordered(shader.directIntrinsicDisplayLow, shader.directIntrinsicDisplayHigh)) { shader.directIntrinsicDisplayLow = defaults.directIntrinsicDisplayLow; shader.directIntrinsicDisplayHigh = defaults.directIntrinsicDisplayHigh; }
+            if (!ordered(shader.eventSeedLow, shader.eventSeedHigh)) { shader.eventSeedLow = defaults.eventSeedLow; shader.eventSeedHigh = defaults.eventSeedHigh; }
+            m_shaderTuning = shader;
         }
 
         bool ReadyToShow() const
@@ -5752,6 +5842,30 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             c.p9[2] = m_nvofInputHeight > 0 ?
                 static_cast<float>(m_outputHeight) / static_cast<float>(m_nvofInputHeight) : 1.0f;
             c.p9[3] = (m_nvofFlowValid && m_nvofCostEnabled) ? 1.0f : 0.0f;
+            c.p10[0] = m_shaderTuning.eventDeltaLow;
+            c.p10[1] = m_shaderTuning.eventDeltaHigh;
+            c.p10[2] = m_shaderTuning.holdDeltaLow;
+            c.p10[3] = m_shaderTuning.holdDeltaHigh;
+            c.p11[0] = m_shaderTuning.stableSourceLow;
+            c.p11[1] = m_shaderTuning.stableSourceHigh;
+            c.p11[2] = m_shaderTuning.intrinsicResidualLow;
+            c.p11[3] = m_shaderTuning.intrinsicResidualHigh;
+            c.p12[0] = m_shaderTuning.repeatedMemoryLow;
+            c.p12[1] = m_shaderTuning.repeatedMemoryHigh;
+            c.p12[2] = m_shaderTuning.holdGateLow;
+            c.p12[3] = m_shaderTuning.holdGateHigh;
+            c.p13[0] = m_shaderTuning.transportConfidenceLow;
+            c.p13[1] = m_shaderTuning.transportConfidenceHigh;
+            c.p13[2] = m_shaderTuning.disocclusionResetGate;
+            c.p13[3] = m_shaderTuning.surfaceRiskTau;
+            c.p14[0] = m_shaderTuning.eventStateTauScale;
+            c.p14[1] = m_shaderTuning.releaseStateTauScale;
+            c.p14[2] = m_shaderTuning.exactHoldThreshold;
+            c.p14[3] = m_shaderTuning.movingHoldFloorMax;
+            c.p15[0] = m_shaderTuning.directIntrinsicDisplayLow;
+            c.p15[1] = m_shaderTuning.directIntrinsicDisplayHigh;
+            c.p15[2] = m_shaderTuning.eventSeedLow;
+            c.p15[3] = m_shaderTuning.eventSeedHigh;
 
             D3D11_MAPPED_SUBRESOURCE mapped{};
             ThrowIfFailed(m_context->Map(m_constants.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
@@ -6066,6 +6180,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         HWND m_output{};
         HMONITOR m_monitor{};
         SafetySettings m_safety{};
+        ShaderTuningSettings m_shaderTuning{};
         float m_contrastReduction = 2.0f / 3.0f;
         int m_profilePreset = 1;
         int m_fullScreenSensitivity = 1;
@@ -7368,9 +7483,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     long long elapsedMs = 0;
                 };
                 // Six columns remains backward compatible. Matrix v4 appends
-                // twelve benchmark-only detector/temporal settings.
-                std::vector<std::array<std::wstring, 18>> specs;
-                wchar_t line[2048]{};
+                // twelve outer detector/temporal settings; matrix v5 appends 24
+                // full-resolution shader transport/hold settings after those.
+                std::vector<std::array<std::wstring, 42>> specs;
+                wchar_t line[4096]{};
                 while (std::fgetws(line, static_cast<int>(std::size(line)), plan))
                 {
                     std::wstring text(line);
@@ -7388,13 +7504,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         if (tab == std::wstring::npos) break;
                         start = tab + 1;
                     }
-                    if (fields.size() != 6 && fields.size() != 18)
+                    if (fields.size() != 6 && fields.size() != 18 && fields.size() != 42)
                     {
                         std::fclose(plan);
                         DestroyWindow(replayWindow);
                         return 10;
                     }
-                    std::array<std::wstring, 18> spec{};
+                    std::array<std::wstring, 42> spec{};
                     for (size_t i = 0; i < fields.size(); ++i) spec[i] = fields[i];
                     const bool safeName = !spec[0].empty() && spec[0].size() <= 80 &&
                         std::all_of(spec[0].begin(), spec[0].end(), [](wchar_t c) {
@@ -7455,6 +7571,30 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     tune(15, tuning.minimumProtectionTime);
                     tune(16, tuning.releaseTime);
                     tune(17, tuning.cameraMotionSuppression);
+                    tune(18, tuning.shader.eventDeltaLow);
+                    tune(19, tuning.shader.eventDeltaHigh);
+                    tune(20, tuning.shader.holdDeltaLow);
+                    tune(21, tuning.shader.holdDeltaHigh);
+                    tune(22, tuning.shader.stableSourceLow);
+                    tune(23, tuning.shader.stableSourceHigh);
+                    tune(24, tuning.shader.intrinsicResidualLow);
+                    tune(25, tuning.shader.intrinsicResidualHigh);
+                    tune(26, tuning.shader.repeatedMemoryLow);
+                    tune(27, tuning.shader.repeatedMemoryHigh);
+                    tune(28, tuning.shader.holdGateLow);
+                    tune(29, tuning.shader.holdGateHigh);
+                    tune(30, tuning.shader.transportConfidenceLow);
+                    tune(31, tuning.shader.transportConfidenceHigh);
+                    tune(32, tuning.shader.disocclusionResetGate);
+                    tune(33, tuning.shader.surfaceRiskTau);
+                    tune(34, tuning.shader.eventStateTauScale);
+                    tune(35, tuning.shader.releaseStateTauScale);
+                    tune(36, tuning.shader.exactHoldThreshold);
+                    tune(37, tuning.shader.movingHoldFloorMax);
+                    tune(38, tuning.shader.directIntrinsicDisplayLow);
+                    tune(39, tuning.shader.directIntrinsicDisplayHigh);
+                    tune(40, tuning.shader.eventSeedLow);
+                    tune(41, tuning.shader.eventSeedHigh);
                     app.ApplyRuntimeOptions(replayOptions);
                     app.ApplyBenchmarkTuning(tuning);
                     const auto caseDir = std::filesystem::path(replayBatchOutput) / spec[0];
