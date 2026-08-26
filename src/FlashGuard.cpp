@@ -804,6 +804,8 @@ R"HLSL(
                 isolatedRed * residualRedAuthority);
             candidateL = Luma(cur);
         }
+)HLSL" R"HLSL(
+
 
         // Once a pixel has accumulated repeated-flash memory, keep the output
         // truly stationary between opposing transitions. Merely shrinking each
@@ -1123,6 +1125,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         (corrShift >= corrSame + 0.015 || motionExplained >= 0.65);
     const bool translatedMotion = structuredPatch && structuralShift &&
         motionExplained >= max(P5.x, 0.34);
+
+)HLSL" R"HLSL(
 
     const float curRedRatio = cur.r / max(cur.r + cur.g + cur.b, 0.0001);
     const float prevRedRatio = prev.r / max(prev.r + prev.g + prev.b, 0.0001);
