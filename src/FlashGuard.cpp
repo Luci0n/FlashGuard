@@ -648,10 +648,11 @@ MainOutput PSMain(VSOut i)
     cur = lerp(cur, gray.xxx,
         isolatedRed * effectiveRedDesat * redMitigationGate);
 
-    // Preserve the RAW source before temporal feedback. This history is used for
-    // local motion transport and release discrimination. Keeping it raw means a
-    // protected/tonemapped previous output cannot masquerade as object motion.
-    const float3 sourceHistoryColor = rawSourceColor;)HLSL" R"HLSL(
+    // Preserve the RAW source before temporal feedback. RGB is the unfiltered
+    // appearance used for correspondence; alpha carries a short-lived geometry
+    // confidence that can be transported with the surface on the next frame.
+    const float3 sourceHistoryColor = rawSourceColor;
+    float sourceHistoryGeometryConfidence = 0.0;)HLSL" R"HLSL(
 
     // TRUE OUTPUT-SPACE TEMPORAL FILTER.
     // The old versions generated a new luminance target from the source but did
@@ -745,41 +746,32 @@ R"HLSL(
         const float movingHoldFloor = lerp(0.0, 0.035, veryHighMemory);
         const float holdContentGate = max(stableSourceGate, movingHoldFloor);
 
-        const float eventMask = eventGate * eventDeltaGate;
+        // Full-resolution compensated source residual is the intrinsic-change
+        // signal. Geometry may be valid while a moving surface flashes; in that
+        // case the residual stays large and must override the motion bypass.
+        // Stale flash memory is never allowed to invalidate geometry.
+        const float intrinsicResidualGate =
+            smoothstep(0.020, 0.090, motionCompensatedSourceDelta);
+        const float directIntrinsicEvent =
+            intrinsicResidualGate * smoothstep(0.010, 0.040, displayedDelta);
+        const float eventMask =
+            max(eventGate * eventDeltaGate, directIntrinsicEvent);
         const float holdMask = holdGate * holdContentGate * holdDeltaGate;
-        // NVIDIA/verified translation wins for an isolated moving edge. A flash is
-        // allowed to override that bypass only after the instant temporal state
-        // has accumulated repeated-transition evidence. PSInstantSafety clears
-        // this memory when coherent translation explains the change, so ordinary
-        // scrolling and object motion cannot turn one appearance/disappearance
-        // pair into a long history blend.
         const float repeatedRisk = temporalRisk;
-        const float repeatedEventGate =
-            smoothstep(0.16, 0.50, repeatedRisk) * eventGate;
-        const float currentHazardMotionOverride =
-            smoothstep(0.08, 0.36, eventMask) * repeatedEventGate;
-        // A flow field that passed forward/backward and raw-patch verification is
-        // stronger evidence than an analyzer-cell flash classification. Preserve
-        // that bypass unless the SAME pixel has accumulated very strong reversal
-        // memory; this is what keeps pans and translated bright edges from dragging.
-        const float verifiedFlashOverride = currentHazardMotionOverride *
-            smoothstep(0.70, 0.92, repeatedRisk) *
-            (1.0 - corroboratedMotionGate);
-        const float rawEffectiveMotionGate = max(
-            motionGate * (1.0 - currentHazardMotionOverride),
-            hardwareMotionGate * (1.0 - verifiedFlashOverride));
 
-        // A stationary repeated flash can create plausible local patch matches
-        // and even a small erroneous optical-flow field inside a uniform flashing
-        // region. Once reversal memory is established, reject those local-only
-        // motion claims when both independent scene-level motion priors remain
-        // absent. Genuine fast motion retains authority through the corroborated
-        // coarse/CPU gate above.
-        const float stationaryRepeatedFlashGate =
-            smoothstep(0.50, 0.70, repeatedRisk) * eventGate *
-            (1.0 - smoothstep(0.02, 0.12, corroboratedMotionGate));
-        const float effectiveMotionGate = rawEffectiveMotionGate *
-            (1.0 - stationaryRepeatedFlashGate);
+        // Correspondence and appearance are independent. Ordinary verified
+        // correspondence bypasses old displayed history only while its compensated
+        // residual is small. Vacated/disoccluded pixels are explicit geometry:
+        // their old history belongs to a surface that left this screen position.
+        const float explicitDisocclusionGate =
+            saturate(max(diagVacatedGate, diagInfillGate));
+        const float correspondenceGate =
+            max(motionGate, hardwareMotionGate);
+        const float verifiedFlashOverride =
+            hardwareMotionGate * intrinsicResidualGate;
+        const float effectiveMotionGate = max(
+            explicitDisocclusionGate,
+            correspondenceGate * (1.0 - intrinsicResidualGate));
 
         // Once a pixel has accumulated repeated-flash memory, keep the output
         // truly stationary between opposing transitions. Merely shrinking each
@@ -787,13 +779,9 @@ R"HLSL(
         // transition test. Verified motion still cancels this hold immediately.
         const float repeatedMemoryGate = smoothstep(0.34, 0.62, repeatedRisk);
         const float repeatedHoldAuthorization =
-            repeatedMemoryGate * max(eventGate, holdGate * stableSourceGate);
-        // The primary discriminator is now validatedEventDelta above: motion must
-        // explain the raw luminance change, rather than merely coexist with it.
-        // These verified transport gates are retained as a second authorization
-        // path at exact-hold boundaries. Current-surface and vacated transport are
-        // both forward/backward + photometrically verified; conservative infill
-        // remains dependent on independent analyzer-space motion.
+            repeatedMemoryGate * max(eventMask, holdGate * stableSourceGate);
+        // These transport gates remain useful only at exact-hold boundaries.
+        // They no longer participate in deciding whether geometry itself is valid.
         const float verifiedCurrentSurfaceTransport =
             smoothstep(0.45, 0.75, diagCurrentSurfaceGate);
         const float verifiedVacatedTransport =
@@ -805,7 +793,7 @@ R"HLSL(
             verifiedCurrentSurfaceTransport,
             max(verifiedVacatedTransport, verifiedInfillTransport));
         const float stationaryCurrentHoldAuthorization =
-            eventGate * eventDeltaGate *
+            eventMask *
             (1.0 - smoothstep(0.02, 0.12, corroboratedMotionGate)) *
             (1.0 - verifiedLocalTransportGate);
         const float repeatedHoldMask =
@@ -814,11 +802,10 @@ R"HLSL(
             max(eventMask, holdMask) * (1.0 - effectiveMotionGate),
             repeatedHoldMask);
 
-        // Only a CURRENT strong detector event can force full temporal authority.
-        // Stale memory can remain strong on a static protected surface, but it can
-        // never turn newly moving content into a 100% history blend.
-        if (eventSeed >= 0.12 && displayedDelta >= 0.018 &&
-            (motionGate < 0.55 || repeatedEventGate > 0.45))
+        // A strong intrinsic residual can authorize the current transition even
+        // when coarse analyzer-space motion classified the same region as moving.
+        if (max(eventSeed, directIntrinsicEvent) >= 0.12 &&
+            displayedDelta >= 0.018 && effectiveMotionGate < 0.55)
             temporalMask = max(temporalMask, 1.0 - effectiveMotionGate);
         if (stationaryCurrentHoldAuthorization > 0.72)
             temporalMask = 1.0;
@@ -839,11 +826,11 @@ R"HLSL(
 
         if (temporalMask > 0.001)
         {
-            const float severe = smoothstep(0.45, 0.90, max(eventSeed, holdSeed));
-            // While a transition is actively happening, retain the strong
-            // research-inspired temporal low-pass. During release, converge much
-            // faster so a finished flash does not turn later motion into trails.
-            const bool currentEvent = eventGate > 0.05;
+            const float severe = smoothstep(0.45, 0.90,
+                max(max(eventSeed, holdSeed), directIntrinsicEvent));
+            // Intrinsic full-resolution evidence can mark a transition current
+            // even when the coarse analyzer called the same pixels motion.
+            const bool currentEvent = eventMask > 0.05;
             const float tau = currentEvent ?
                 lerp(0.150, 0.235, severe) : lerp(0.030, 0.050, severe);
             const float alpha = 1.0 - exp(-dt / tau);
@@ -935,7 +922,8 @@ R"HLSL(
 
     output.color = float4(saturate(cur), 1.0);
     output.historyColor = float4(saturate(historyColor.rgb), 1.0);
-    output.sourceHistoryColor = float4(saturate(sourceHistoryColor), 1.0);
+    output.sourceHistoryColor = float4(
+        saturate(sourceHistoryColor), saturate(sourceHistoryGeometryConfidence));
     return output;
 }
 )HLSL"

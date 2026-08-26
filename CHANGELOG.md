@@ -2,6 +2,23 @@
 
 All notable public changes are documented here. FlashGuard follows Semantic Versioning for software releases. Test protocols and archived experiment runs are versioned independently; see `docs/VERSIONING.md`.
 
+## [0.2.0-alpha.3] - 2026-08-26
+
+Motion/flash correspondence architecture experiment.
+
+### Changed
+
+- NVIDIA optical-flow current-surface and vacated/disocclusion confidence now comes from geometric evidence: forward/back consistency, optical-flow cost, neighborhood flow coherence, spatial observability, and short surface continuity.
+- Motion-compensated source residual is evaluated independently from geometry. Valid correspondence with a small residual bypasses stale displayed history; valid correspondence with a large residual remains a protectable moving intrinsic flash.
+- Accumulated flash memory no longer vetoes verified correspondence.
+- Raw-source alpha carries one-frame geometry confidence along matched surfaces to tolerate brief correspondence dropouts without recursively warping filtered RGB.
+- Fresh NVOFA disables the photometric portable matcher; appearance matching remains a fallback only when fresh hardware flow is unavailable.
+- Removed several per-pixel previous-frame photometric verification samples from the hardware-flow path.
+
+### Validation
+
+- This remains an experimental architecture change. The targeted GPU replay and flash sweep on this commit determine whether it is retained.
+
 ## [0.2.0-alpha.2] - 2026-08-25
 
 First behavioral experiment in the 0.2 development line.

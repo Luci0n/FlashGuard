@@ -17,8 +17,9 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
         const bool hardwareFlowValid = P8.x > 0.75 && P7.z > 0.5;
         if (P7.z > 0.5)
         {
-            const float3 previousSourceSame = PreviousSource.SampleLevel(
-                LinearClamp, i.uv, 0.0).rgb;
+            const float4 previousSourceSameState = PreviousSource.SampleLevel(
+                LinearClamp, i.uv, 0.0);
+            const float3 previousSourceSame = previousSourceSameState.rgb;
             sourceDelta = SourceMatchError(rawSourceColor, previousSourceSame);
             motionCompensatedSourceDelta = sourceDelta;
 
@@ -38,15 +39,40 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
             {
                 const float2 outputSize = max(float2(P2.z, P2.w), float2(1.0, 1.0));
                 const float2 outputTexel = 1.0 / outputSize;
+                const float2 forwardPixels =
+                    LoadOpticalFlow(ForwardOpticalFlow, i.uv);
+                const float flowMagnitude = length(forwardPixels);
 
-                // NVIDIA's global-flow vector is a strong camera/background prior.
-                // Validate it against the raw source before using it so a spatially
-                // uniform flash cannot masquerade as camera motion.
+                // Global-flow confidence is geometric: require dominant/local
+                // vector agreement and NVOFA cost. The warped source is sampled
+                // only after that decision to measure independent appearance
+                // residual, so a moving flash can retain valid geometry.
                 const float2 globalPixels = LoadGlobalOpticalFlow();
                 const float globalMagnitude = length(globalPixels);
                 float globalMotionGate = 0.0;
-                if (globalMagnitude > 0.35 && sourceDelta > 0.004)
+                if (globalMagnitude > 0.35 && flowMagnitude > 0.10)
                 {
+                    const float directionAgreement =
+                        dot(globalPixels, forwardPixels) /
+                        max(globalMagnitude * flowMagnitude, 0.001);
+                    const float magnitudeAgreement =
+                        min(globalMagnitude, flowMagnitude) /
+                        max(globalMagnitude, flowMagnitude);
+                    float localCostConfidence = 1.0;
+                    if (P9.w > 0.5)
+                    {
+                        const float flowCost = LoadOpticalCost(
+                            ForwardOpticalCost, i.uv);
+                        localCostConfidence =
+                            1.0 - smoothstep(0.28, 0.78, flowCost);
+                    }
+                    const float globalEvidence =
+                        smoothstep(0.72, 0.94, directionAgreement) *
+                        smoothstep(0.30, 0.72, magnitudeAgreement) *
+                        lerp(0.35, 1.0, localCostConfidence);
+                    globalMotionGate = globalEvidence > 0.52 ? 1.0 :
+                        smoothstep(0.28, 0.52, globalEvidence);
+
                     const float2 globalPreviousUv = i.uv + globalPixels / outputSize;
                     const bool insideGlobalPrevious =
                         all(globalPreviousUv >= float2(0.0, 0.0)) &&
@@ -57,14 +83,6 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                             LinearClamp, globalPreviousUv, 0.0).rgb;
                         const float globalError =
                             SourceMatchError(rawSourceColor, previousGlobal);
-                        const float globalImprovement = saturate(
-                            1.0 - globalError / max(sourceDelta, 0.003));
-                        const float globalAbsoluteMatch =
-                            1.0 - smoothstep(0.035, 0.135, globalError);
-                        const float globalEvidence = globalAbsoluteMatch *
-                            smoothstep(0.18, 0.55, globalImprovement);
-                        globalMotionGate = globalEvidence > 0.48 ? 1.0 :
-                            smoothstep(0.26, 0.48, globalEvidence);
                         diagGlobalFlowGate = max(diagGlobalFlowGate, globalMotionGate);
                         hardwareMotionGate = max(
                             hardwareMotionGate, globalMotionGate);
@@ -77,27 +95,30 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                 }
 
                 // --- A. Current surface -> its previous position -----------------
-                const float2 forwardPixels = LoadOpticalFlow(ForwardOpticalFlow, i.uv);
                 const float2 previousUv = i.uv + forwardPixels / outputSize;
-                const float flowMagnitude = length(forwardPixels);
                 const bool insidePrevious = all(previousUv >= float2(0.0, 0.0)) &&
                     all(previousUv <= float2(1.0, 1.0));
 
                 if (insidePrevious && flowMagnitude > 0.10)
                 {
-                    const float3 previousWarped = PreviousSource.SampleLevel(
-                        LinearClamp, previousUv, 0.0).rgb;
+                    const float4 previousWarpedState = PreviousSource.SampleLevel(
+                        LinearClamp, previousUv, 0.0);
+                    const float3 previousWarped = previousWarpedState.rgb;
+                    const float previousGeometryConfidence =
+                        saturate(previousWarpedState.a);
                     const float currentSurfaceResidual =
                         SourceMatchError(rawSourceColor, previousWarped);
                     const float2 backwardPixels = LoadOpticalFlow(
                         BackwardOpticalFlow, previousUv);
                     const float roundTripError = length(forwardPixels + backwardPixels);
 
-                    // Verify transport with a small CROSS patch, not one pixel.
-                    // This makes a good flow match decisive while rejecting a flash
-                    // that merely happens to produce a plausible vector.
-                    float samePatchError = 0.0;
-                    float warpedPatchError = 0.0;
+                    // Measure current-frame spatial observability only. Do not use
+                    // current-vs-previous appearance similarity to establish
+                    // correspondence: intrinsic brightness/chroma may legitimately
+                    // change on a moving surface.
+                    float currentStructure = 0.0;
+                    float2 currentGradient = float2(0.0, 0.0);
+                    const float centerSourceLuma = Luma(rawSourceColor);
                     [unroll]
                     for (int py = -1; py <= 1; ++py)
                     {
@@ -108,33 +129,18 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                             {
                                 const float2 patchOffset =
                                     float2((float)px, (float)py) * outputTexel * 2.0;
-                                const float2 currentPatchUv = i.uv + patchOffset;
                                 const float3 currentPatch = CurrentFrame.SampleLevel(
-                                    LinearClamp, currentPatchUv, 0.0).rgb;
-                                const float3 previousSamePatch = PreviousSource.SampleLevel(
-                                    LinearClamp, currentPatchUv, 0.0).rgb;
-
-                                const float2 patchForward = LoadOpticalFlow(
-                                    ForwardOpticalFlow, currentPatchUv);
-                                const float2 patchPreviousUv =
-                                    currentPatchUv + patchForward / outputSize;
-                                const float3 previousWarpedPatch = PreviousSource.SampleLevel(
-                                    LinearClamp, patchPreviousUv, 0.0).rgb;
-
-                                samePatchError += SourceMatchError(
-                                    currentPatch, previousSamePatch);
-                                warpedPatchError += SourceMatchError(
-                                    currentPatch, previousWarpedPatch);
+                                    LinearClamp, i.uv + patchOffset, 0.0).rgb;
+                                const float patchLuma = Luma(currentPatch);
+                                currentStructure +=
+                                    abs(patchLuma - centerSourceLuma);
+                                currentGradient +=
+                                    float2((float)px, (float)py) * patchLuma;
                             }
                         }
                     }
-                    samePatchError /= 5.0;
-                    warpedPatchError /= 5.0;
+                    currentStructure /= 5.0;
 
-                    const float patchImprovement = samePatchError > 0.003 ?
-                        saturate(1.0 - warpedPatchError / samePatchError) : 0.0;
-                    const float absoluteMatch =
-                        1.0 - smoothstep(0.030, 0.125, warpedPatchError);
                     const float allowedRoundTrip =
                         max(1.25, 0.65 + flowMagnitude * 0.22);
                     const float fbConfidence =
@@ -149,31 +155,70 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                             ForwardOpticalCost, i.uv);
                         costConfidence = 1.0 - smoothstep(0.28, 0.78, flowCost);
                     }
-                    const float transportEvidence =
-                        fbConfidence * absoluteMatch *
-                        smoothstep(0.10, 0.34, patchImprovement) *
-                        lerp(0.35, 1.0, costConfidence);
 
-                    // Once the warped raw patch genuinely explains the new image,
-                    // make motion nearly binary. Partial gates are precisely what
-                    // left 30-70% of old history visible in v9.
+                    float flowCoherence = 0.0;
+                    [unroll]
+                    for (int ni = 0; ni < 4; ++ni)
+                    {
+                        const float2 neighborDirection = ni == 0 ? float2(-1.0, 0.0) :
+                            (ni == 1 ? float2(1.0, 0.0) :
+                            (ni == 2 ? float2(0.0, -1.0) : float2(0.0, 1.0)));
+                        const float2 neighborUv =
+                            i.uv + neighborDirection * outputTexel * 4.0;
+                        const float2 neighborFlow =
+                            LoadOpticalFlow(ForwardOpticalFlow, neighborUv);
+                        const float neighborMagnitude = length(neighborFlow);
+                        if (neighborMagnitude > 0.10)
+                        {
+                            const float directionAgreement =
+                                dot(forwardPixels, neighborFlow) /
+                                max(flowMagnitude * neighborMagnitude, 0.001);
+                            const float magnitudeAgreement =
+                                min(flowMagnitude, neighborMagnitude) /
+                                max(flowMagnitude, neighborMagnitude);
+                            flowCoherence +=
+                                smoothstep(0.70, 0.94, directionAgreement) *
+                                smoothstep(0.30, 0.75, magnitudeAgreement);
+                        }
+                    }
+                    flowCoherence *= 0.25;
+
+                    const float gradientMagnitude = length(currentGradient);
+                    const float normalAlignment = gradientMagnitude > 0.0005 ?
+                        abs(dot(forwardPixels, currentGradient) /
+                            max(flowMagnitude * gradientMagnitude, 0.001)) : 0.0;
+                    const float edgeObservability =
+                        smoothstep(0.004, 0.035, currentStructure) *
+                        smoothstep(0.20, 0.72, normalAlignment);
+                    const float coherentObservability =
+                        smoothstep(0.40, 0.78, flowCoherence);
+                    const float geometryObservability =
+                        max(edgeObservability, coherentObservability);
+                    const float geometryBase =
+                        fbConfidence * geometryObservability *
+                        lerp(0.35, 1.0, costConfidence);
+                    const float continuitySupport =
+                        smoothstep(0.25, 0.70, previousGeometryConfidence);
+                    const float continuityGeometry =
+                        fbConfidence * coherentObservability * continuitySupport *
+                        lerp(0.35, 1.0, costConfidence);
+                    const float transportEvidence =
+                        max(geometryBase, continuityGeometry * 0.92);
+
                     const float transportGate =
                         transportEvidence > 0.34 ? 1.0 :
                         smoothstep(0.18, 0.34, transportEvidence);
                     diagCurrentSurfaceGate = max(
                         diagCurrentSurfaceGate, transportGate);
 
+                    // The compensated residual is measured only after geometry is
+                    // accepted. It remains independent evidence of intrinsic change.
                     motionCompensatedSourceDelta = lerp(
                         motionCompensatedSourceDelta,
                         min(motionCompensatedSourceDelta, currentSurfaceResidual),
                         transportGate);
                     hardwareMotionGate = max(hardwareMotionGate, transportGate);
-                    if (transportGate > localMotionGate)
-                    {
-                        // Flow is classification evidence only. Never spatially warp
-                        // displayed history: one bad vector should not bend geometry.
-                        localMotionGate = transportGate;
-                    }
+                    localMotionGate = max(localMotionGate, transportGate);
                 }
 
                 // --- B. Previous surface moved AWAY from this screen pixel -------
@@ -196,26 +241,12 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                     const float vacatedRoundTrip =
                         length(backwardFromHere + forwardAtDestination);
 
-                    const float3 previousHere = PreviousSource.SampleLevel(
-                        LinearClamp, i.uv, 0.0).rgb;
-                    const float3 currentAtDestination = CurrentFrame.SampleLevel(
-                        LinearClamp, movedToUv, 0.0).rgb;
-
-                    const float movedObjectError =
-                        SourceMatchError(previousHere, currentAtDestination);
-                    const float stayedHereError =
-                        SourceMatchError(previousHere, rawSourceColor);
-                    const float movedImprovement = stayedHereError > 0.003 ?
-                        saturate(1.0 - movedObjectError / stayedHereError) : 0.0;
-
                     const float vacatedAllowedRoundTrip =
                         max(1.25, 0.65 + vacatedMagnitude * 0.22);
                     const float vacatedFb =
                         1.0 - smoothstep(vacatedAllowedRoundTrip,
                                        vacatedAllowedRoundTrip + 2.0,
                                        vacatedRoundTrip);
-                    const float vacatedMatch =
-                        1.0 - smoothstep(0.030, 0.125, movedObjectError);
                     float vacatedCostConfidence = 1.0;
                     if (P9.w > 0.5)
                     {
@@ -223,10 +254,14 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                             BackwardOpticalCost, i.uv);
                         vacatedCostConfidence = 1.0 - smoothstep(0.28, 0.78, flowCost);
                     }
+                    const float vacatedContinuity =
+                        smoothstep(0.25, 0.70, previousSourceSameState.a);
+                    // A vacated-surface decision is geometric. Appearance at this
+                    // screen coordinate now belongs to a newly revealed surface.
                     const float vacatedEvidence =
-)HLSL" R"HLSL(                        vacatedFb * vacatedMatch *
-                        smoothstep(0.12, 0.38, movedImprovement) *
-                        lerp(0.35, 1.0, vacatedCostConfidence);
+)HLSL" R"HLSL(                        vacatedFb *
+                        lerp(0.35, 1.0, vacatedCostConfidence) *
+                        lerp(0.55, 1.0, vacatedContinuity);
 
                     const float vacatedGate =
                         vacatedEvidence > 0.34 ? 1.0 :
@@ -250,8 +285,8 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                 // A fast object can expose a strip whose exact boundary vector is
                 // noisy even though nearby previous->current vectors are excellent.
                 // Search only changing pixels and accept an infill bypass only when
-                // a nearby backward vector survives round-trip, raw-image and cost
-                // validation. Strong accumulated flash memory disables this local
+                // a nearby backward vector survives round-trip, cost, and prior
+                // surface-continuity validation. Strong flash memory disables this local
                 // infill; the independently validated global-pan gate above remains.
                 if (hardwareMotionGate < 0.80 && sourceDelta > 0.010 &&
                     temporalRisk < 0.70)
@@ -310,35 +345,10 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                                                     allowedRoundTrip + 2.0,
                                                     roundTrip);
 
-                                            const float3 previousNeighbor =
+                                            const float4 previousNeighborState =
                                                 PreviousSource.SampleLevel(
                                                     LinearClamp, neighborUv,
-                                                    0.0).rgb;
-                                            const float3 currentDestination =
-                                                CurrentFrame.SampleLevel(
-                                                    LinearClamp,
-                                                    neighborDestination,
-                                                    0.0).rgb;
-                                            const float3 currentNeighbor =
-                                                CurrentFrame.SampleLevel(
-                                                    LinearClamp, neighborUv,
-                                                    0.0).rgb;
-                                            const float movedError =
-                                                SourceMatchError(
-                                                    previousNeighbor,
-                                                    currentDestination);
-                                            const float stayedError =
-                                                SourceMatchError(
-                                                    previousNeighbor,
-                                                    currentNeighbor);
-                                            const float movedImprovement =
-                                                stayedError > 0.003 ?
-                                                saturate(1.0 -
-                                                    movedError / stayedError) :
-                                                0.0;
-                                            const float absoluteMatch =
-                                                1.0 - smoothstep(
-                                                    0.030, 0.120, movedError);
+                                                    0.0);
                                             float costConfidence = 1.0;
                                             if (P9.w > 0.5)
                                             {
@@ -358,14 +368,16 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                                                     neighborMagnitude + 2.0,
                                                     neighborMagnitude + 7.0,
                                                     radius);
+                                            const float neighborContinuity =
+                                                smoothstep(0.25, 0.70,
+                                                    previousNeighborState.a);
                                             const float evidence =
-                                                fbConfidence * absoluteMatch *
-                                                smoothstep(
-                                                    0.32, 0.72,
-                                                    movedImprovement) *
+                                                fbConfidence *
                                                 lerp(0.25, 1.0,
                                                     costConfidence) *
-                                                sweptSupport;
+                                                sweptSupport *
+                                                lerp(0.45, 1.0,
+                                                    neighborContinuity);
                                             if (evidence > bestInfillEvidence)
                                             {
                                                 bestInfillEvidence = evidence;
@@ -443,10 +455,10 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                 }
             }
 
-            // Fresh NVOFA gets first chance, but bright/flat surfaces can leave
-            // weak edge/disocclusion evidence. Let the raw-image matcher verify
-            // low-confidence pixels instead of accepting a partial motion gate.
-            if ((!hardwareFlowValid || localMotionGate < 0.80) &&
+            // The raw-image matcher is a fallback only. When fresh NVOFA exists,
+            // appearance similarity must never be mixed back into geometric
+            // correspondence confidence.
+            if (!hardwareFlowValid &&
                 P6.y < max(0.10, P5.x * 0.75) &&
                 sourceDelta > 0.010 && coarseMotion < 0.30 &&
                 max(coarseEvent, coarseRisk) > 0.010)
@@ -798,5 +810,13 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                     }
                 }
             }
+
+            // Transport one-frame geometry confidence with raw source RGB.
+            // Newly revealed pixels deliberately start untrusted so the departed
+            // surface's confidence cannot leak onto a disocclusion.
+            sourceHistoryGeometryConfidence =
+                saturate(max(diagGlobalFlowGate, diagCurrentSurfaceGate));
+            sourceHistoryGeometryConfidence *=
+                1.0 - saturate(max(diagVacatedGate, diagInfillGate));
         }
 )HLSL"
