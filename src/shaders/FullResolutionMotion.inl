@@ -2,6 +2,7 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
         // objects create a huge same-coordinate delta even though their appearance
         // is unchanged; using that delta directly is what produced v7's trails.
         float sourceDelta = 0.0;
+        float motionCompensatedSourceDelta = 0.0;
         float localMotionGate = 0.0;
         float hardwareMotionGate = 0.0;
         float diagGlobalFlowGate = 0.0;
@@ -19,6 +20,7 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
             const float3 previousSourceSame = PreviousSource.SampleLevel(
                 LinearClamp, i.uv, 0.0).rgb;
             sourceDelta = SourceMatchError(rawSourceColor, previousSourceSame);
+            motionCompensatedSourceDelta = sourceDelta;
 
             // NVIDIA Optical Flow SDK path.
             //
@@ -67,6 +69,10 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                         hardwareMotionGate = max(
                             hardwareMotionGate, globalMotionGate);
                         localMotionGate = max(localMotionGate, globalMotionGate);
+                        motionCompensatedSourceDelta = lerp(
+                            motionCompensatedSourceDelta,
+                            min(motionCompensatedSourceDelta, globalError),
+                            globalMotionGate);
                     }
                 }
 
@@ -79,6 +85,10 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
 
                 if (insidePrevious && flowMagnitude > 0.10)
                 {
+                    const float3 previousWarped = PreviousSource.SampleLevel(
+                        LinearClamp, previousUv, 0.0).rgb;
+                    const float currentSurfaceResidual =
+                        SourceMatchError(rawSourceColor, previousWarped);
                     const float2 backwardPixels = LoadOpticalFlow(
                         BackwardOpticalFlow, previousUv);
                     const float roundTripError = length(forwardPixels + backwardPixels);
@@ -153,6 +163,10 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                     diagCurrentSurfaceGate = max(
                         diagCurrentSurfaceGate, transportGate);
 
+                    motionCompensatedSourceDelta = lerp(
+                        motionCompensatedSourceDelta,
+                        min(motionCompensatedSourceDelta, currentSurfaceResidual),
+                        transportGate);
                     hardwareMotionGate = max(hardwareMotionGate, transportGate);
                     if (transportGate > localMotionGate)
                     {
@@ -218,6 +232,12 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                         vacatedEvidence > 0.34 ? 1.0 :
                         smoothstep(0.18, 0.34, vacatedEvidence);
                     diagVacatedGate = max(diagVacatedGate, vacatedGate);
+
+                    // A verified previous->current round trip proves that the old
+                    // surface left this pixel. There is no same-surface sample for
+                    // the newly revealed background, so classify the raw delta as
+                    // motion-explained rather than as an intrinsic luminance change.
+                    motionCompensatedSourceDelta *= (1.0 - vacatedGate);
 
                     // Do NOT transport history for a vacated pixel: the previous
                     // history here belongs to the object that left. We only need the

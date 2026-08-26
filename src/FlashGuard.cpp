@@ -671,6 +671,16 @@ R"HLSL(
         const float previousDisplayedL = Luma(previousDisplayed);
         const float displayedDelta = abs(candidateL - previousDisplayedL);
 
+        // Validate a CURRENT luminance transition against optical transport before
+        // treating it as a flash. A translating surface compares against its
+        // motion-compensated raw predecessor; a verified disocclusion is already
+        // explained by geometry. A moving object that truly changes luminance still
+        // leaves a large compensated residual and therefore remains protectable.
+        // Keep displayedDelta as a second localization bound so analyzer cells can
+        // never create visible protection blocks where the output itself did not move.
+        const float validatedEventDelta = P7.z > 0.5 ?
+            min(displayedDelta, motionCompensatedSourceDelta) : displayedDelta;
+
         // A broad motion-gated transition, an active local analyzer cell, global
         // protection, or the overload fallback may authorize filtering. The
         // actual full-resolution luma delta localizes the surface, so analyzer
@@ -715,7 +725,7 @@ R"HLSL(
         // Small ordinary changes should not drag filtered history around. A
         // CURRENT hazard gets a sensitive localization gate; MEMORY-only release
         // requires a much larger outstanding displayed difference.
-        const float eventDeltaGate = smoothstep(0.008, 0.035, displayedDelta);
+        const float eventDeltaGate = smoothstep(0.008, 0.035, validatedEventDelta);
         const float holdDeltaGate = smoothstep(0.028, 0.085, displayedDelta);
 
         // During MEMORY-only release, source history is the crucial discriminator:
@@ -774,20 +784,22 @@ R"HLSL(
         const float repeatedMemoryGate = smoothstep(0.34, 0.62, repeatedRisk);
         const float repeatedHoldAuthorization =
             repeatedMemoryGate * max(eventGate, holdGate * stableSourceGate);
-        // A current hazardous transition with neither scene-level motion nor
-        // strong verified local transport is stationary enough to hold immediately.
-        // Do not use rawEffectiveMotionGate here: it also contains global/portable
-        // evidence, which a stationary regional flash can sparsely excite. Current-
-        // surface transport is already patch/round-trip/cost verified. Vacated and
-        // infill evidence is more ambiguous, so require local analyzer-space motion
-        // as independent support before it can cancel the exact current-event hold.
+        // The primary discriminator is now validatedEventDelta above: motion must
+        // explain the raw luminance change, rather than merely coexist with it.
+        // These verified transport gates are retained as a second authorization
+        // path at exact-hold boundaries. Current-surface and vacated transport are
+        // both forward/backward + photometrically verified; conservative infill
+        // remains dependent on independent analyzer-space motion.
         const float verifiedCurrentSurfaceTransport =
             smoothstep(0.45, 0.75, diagCurrentSurfaceGate);
-        const float verifiedTrailingTransport =
-            smoothstep(0.45, 0.75, max(diagVacatedGate, diagInfillGate)) *
+        const float verifiedVacatedTransport =
+            smoothstep(0.45, 0.75, diagVacatedGate);
+        const float verifiedInfillTransport =
+            smoothstep(0.45, 0.75, diagInfillGate) *
             coarseMotionGate;
         const float verifiedLocalTransportGate = max(
-            verifiedCurrentSurfaceTransport, verifiedTrailingTransport);
+            verifiedCurrentSurfaceTransport,
+            max(verifiedVacatedTransport, verifiedInfillTransport));
         const float stationaryCurrentHoldAuthorization =
             eventGate * eventDeltaGate *
             (1.0 - smoothstep(0.02, 0.12, corroboratedMotionGate)) *
