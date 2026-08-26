@@ -2,6 +2,20 @@
 
 All notable public changes are documented here. FlashGuard follows Semantic Versioning for software releases. Test protocols and archived experiment runs are versioned independently; see `docs/VERSIONING.md`.
 
+## [0.2.0-alpha.6] - 2026-08-26
+
+Motion-corroborated stable-hold and residual red-flash correction.
+
+### Fixed
+
+- Stable repeated-flash authority is now suppressed by independent scene-level/coarse motion corroboration, so real pans and coherent object motion can keep the alpha.3 motion bypass while stationary flashes retain half-cycle protection.
+- Saturated-red protection now receives a post-correspondence full-resolution authority path: compensated intrinsic residual or stable repeated intrinsic authority can desaturate the hazardous red component without treating ordinary translating red content as a flash.
+
+### Validation
+
+- Geometry estimation and the REPLAY/6 corpus remain unchanged.
+- Targeted GPU replay and flash sweep determine whether motion regressions from alpha.5 are removed and the remaining 12/15/25 Hz red-flash failures are eliminated.
+
 ## [0.2.0-alpha.5] - 2026-08-26
 
 Stable-half-cycle protection continuity correction.

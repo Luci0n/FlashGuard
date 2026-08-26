@@ -766,8 +766,11 @@ R"HLSL(
         // coordinate keeps changing as content moves through it.
         const float repeatedCurrentIntrinsicAuthority =
             repeatedMemoryGate * eventMask * intrinsicResidualGate;
+        const float stableMotionConflict =
+            smoothstep(0.10, 0.45, corroboratedMotionGate);
         const float repeatedStableIntrinsicAuthority =
-            repeatedMemoryGate * holdGate * stableSourceGate;
+            repeatedMemoryGate * holdGate * stableSourceGate *
+            (1.0 - stableMotionConflict);
         const float repeatedIntrinsicAuthority = max(
             repeatedCurrentIntrinsicAuthority, repeatedStableIntrinsicAuthority);
         const float motionProtectionAuthority = max(
@@ -787,6 +790,20 @@ R"HLSL(
         const float effectiveMotionGate = max(
             explicitDisocclusionGate * (1.0 - repeatedIntrinsicAuthority),
             correspondenceGate * (1.0 - motionProtectionAuthority));
+
+        // Red safety gets the same geometry-independent intrinsic authority.
+        // Ordinary translating red content has a small compensated residual and
+        // therefore remains untouched; a true red appearance change is clamped
+        // immediately and stays desaturated through a stable repeated half-cycle.
+        const float residualRedAuthority =
+            saturate(max(intrinsicResidualGate, repeatedStableIntrinsicAuthority));
+        if (isolatedRed > 0.001 && residualRedAuthority > 0.001)
+        {
+            const float residualGray = Luma(cur);
+            cur = lerp(cur, residualGray.xxx,
+                isolatedRed * residualRedAuthority);
+            candidateL = Luma(cur);
+        }
 
         // Once a pixel has accumulated repeated-flash memory, keep the output
         // truly stationary between opposing transitions. Merely shrinking each
