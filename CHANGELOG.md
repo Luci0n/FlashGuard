@@ -2,6 +2,20 @@
 
 All notable public changes are documented here. FlashGuard follows Semantic Versioning for software releases. Test protocols and archived experiment runs are versioned independently; see `docs/VERSIONING.md`.
 
+## [0.2.0-alpha.8] - 2026-08-26
+
+Final-display saturated-red feedback correction.
+
+### Fixed
+
+- Hazardous red is now re-evaluated after temporal RGB feedback, immediately before the filtered display state is written to history, so `PreviousOutput` cannot reintroduce saturated red after the source-side clamp.
+- Final red authority is suppressed by verified ordinary motion, while compensated intrinsic residual or stable repeated intrinsic evidence can still override correspondence. Raw source history remains unmodified.
+
+### Validation
+
+- Alpha.7 showed that increasing the pre-temporal red clamp strength alone left the 12/15/25 Hz failures unchanged while preserving the alpha.6 motion metrics.
+- Geometry, luminance protection, and REPLAY/6 stimuli remain unchanged; the targeted GPU run checks red-flash suppression and motion regression together.
+
 ## [0.2.0-alpha.7] - 2026-08-26
 
 Intrinsic saturated-red authority correction.

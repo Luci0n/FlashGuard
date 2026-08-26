@@ -638,6 +638,7 @@ MainOutput PSMain(VSOut i)
         smoothstep(0.06, 0.42, coarseRisk),
         smoothstep(0.06, 0.42, temporalRisk));
     const float redMitigationGate = max(redEventGate, redMemoryGate);
+    float finalRedSafetyAuthority = redMitigationGate;
     // The normal profile desaturation is intentionally moderate, but once a red
     // transition is part of an accumulated flash sequence the residual chroma
     // itself can keep forming WCAG saturated-red pairs. Ramp only the hazardous
@@ -797,6 +798,9 @@ R"HLSL(
         // immediately and stays desaturated through a stable repeated half-cycle.
         const float residualRedAuthority =
             saturate(max(intrinsicResidualGate, repeatedStableIntrinsicAuthority));
+        finalRedSafetyAuthority = max(
+            residualRedAuthority,
+            redMitigationGate * (1.0 - effectiveMotionGate));
         const float intrinsicRedDesat =
             residualRedAuthority * smoothstep(0.05, 0.35, isolatedRed);
         if (intrinsicRedDesat > 0.001)
@@ -911,6 +915,19 @@ R"HLSL(
             candidateL = Luma(cur);
         }
     }
+)HLSL" R"HLSL(
+
+    // Temporal RGB feedback can reintroduce hazardous red from PreviousOutput
+    // after the pre-temporal source clamp. Neutralize the final display/history
+    // state when red hazard authority survives motion correspondence.
+    const float finalOutputGray = Luma(cur);
+    const float finalOutputIsolatedRed = saturate(
+        (cur.r - max(cur.g, cur.b) - redThreshold) /
+        max(1.0 - redThreshold, 0.01));
+    const float finalOutputRedDesat =
+        smoothstep(0.04, 0.22, finalRedSafetyAuthority) *
+        smoothstep(0.05, 0.35, finalOutputIsolatedRed);
+    cur = lerp(cur, finalOutputGray.xxx, finalOutputRedDesat);
 
     // Save filtered content color BEFORE debug/hotkey/shield-label overlays so
     // UI pixels never contaminate the temporal feedback state.
