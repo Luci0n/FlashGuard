@@ -758,11 +758,19 @@ R"HLSL(
             max(eventGate * eventDeltaGate, directIntrinsicEvent);
         const float holdMask = holdGate * holdContentGate * holdDeltaGate;
         const float repeatedRisk = temporalRisk;
+        const float repeatedMemoryGate = smoothstep(0.34, 0.62, repeatedRisk);
+        // Repetition can strengthen intrinsic-change authority only when the
+        // compensated residual still says appearance changed on the surface.
+        // This deliberately prevents stale risk alone from reintroducing scroll
+        // trails on well-compensated motion.
+        const float repeatedIntrinsicAuthority =
+            repeatedMemoryGate * eventMask * intrinsicResidualGate;
 
         // Correspondence and appearance are independent. Ordinary verified
         // correspondence bypasses old displayed history only while its compensated
-        // residual is small. Vacated/disoccluded pixels are explicit geometry:
-        // their old history belongs to a surface that left this screen position.
+        // residual is small. Vacated/disoccluded pixels normally drop the history
+        // of the surface that left, but repeated intrinsic evidence may conservatively
+        // override that drop when geometry and flash evidence conflict.
         const float explicitDisocclusionGate =
             saturate(max(diagVacatedGate, diagInfillGate));
         const float correspondenceGate =
@@ -770,18 +778,17 @@ R"HLSL(
         const float verifiedFlashOverride =
             hardwareMotionGate * intrinsicResidualGate;
         const float effectiveMotionGate = max(
-            explicitDisocclusionGate,
+            explicitDisocclusionGate * (1.0 - repeatedIntrinsicAuthority),
             correspondenceGate * (1.0 - intrinsicResidualGate));
 
         // Once a pixel has accumulated repeated-flash memory, keep the output
         // truly stationary between opposing transitions. Merely shrinking each
         // excursion leaves tiny reversals that still count in a strict one-second
-        // transition test. Verified motion still cancels this hold immediately.
-        const float repeatedMemoryGate = smoothstep(0.34, 0.62, repeatedRisk);
+        // transition test. Geometry remains valid, but current-surface transport
+        // cannot veto a hold when its own compensated residual says the surface
+        // changed intrinsically.
         const float repeatedHoldAuthorization =
             repeatedMemoryGate * max(eventMask, holdGate * stableSourceGate);
-        // These transport gates remain useful only at exact-hold boundaries.
-        // They no longer participate in deciding whether geometry itself is valid.
         const float verifiedCurrentSurfaceTransport =
             smoothstep(0.45, 0.75, diagCurrentSurfaceGate);
         const float verifiedVacatedTransport =
@@ -789,9 +796,13 @@ R"HLSL(
         const float verifiedInfillTransport =
             smoothstep(0.45, 0.75, diagInfillGate) *
             coarseMotionGate;
-        const float verifiedLocalTransportGate = max(
-            verifiedCurrentSurfaceTransport,
-            max(verifiedVacatedTransport, verifiedInfillTransport));
+        const float currentSurfaceHoldVeto =
+            verifiedCurrentSurfaceTransport * (1.0 - intrinsicResidualGate);
+        const float disocclusionHoldVeto =
+            max(verifiedVacatedTransport, verifiedInfillTransport) *
+            (1.0 - repeatedIntrinsicAuthority);
+        const float verifiedLocalTransportGate =
+            max(currentSurfaceHoldVeto, disocclusionHoldVeto);
         const float stationaryCurrentHoldAuthorization =
             eventMask *
             (1.0 - smoothstep(0.02, 0.12, corroboratedMotionGate)) *

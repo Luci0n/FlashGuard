@@ -2,6 +2,21 @@
 
 All notable public changes are documented here. FlashGuard follows Semantic Versioning for software releases. Test protocols and archived experiment runs are versioned independently; see `docs/VERSIONING.md`.
 
+## [0.2.0-alpha.4] - 2026-08-26
+
+Intrinsic-flash authority correction for the geometry-separated motion path.
+
+### Fixed
+
+- Current-surface optical-flow correspondence can no longer veto an exact temporal hold when the independent motion-compensated source residual still indicates an intrinsic appearance change.
+- Repeated intrinsic evidence may conservatively override vacated/disocclusion history dropping, but only while both repeated-risk memory and the current intrinsic event remain present.
+- Stale repeated-risk memory by itself still cannot suppress well-compensated scrolling or ordinary motion.
+
+### Validation
+
+- This experiment retains the `0.2.0-alpha.3` geometry estimator unchanged and changes only the handoff from intrinsic residual evidence to temporal protection authority.
+- The targeted GPU replay and flash sweep on this commit determine whether flash protection is restored without sacrificing the large scrolling/ghosting improvements from alpha.3.
+
 ## [0.2.0-alpha.3] - 2026-08-26
 
 Motion/flash correspondence architecture experiment.
