@@ -45,6 +45,8 @@ Reported metrics include static MAE, flash modulation reduction, legacy whole-ba
 
 `FLASHGUARD_SCREENING_PROBES/3` adds four cheap threshold probes near the configured full-screen and small-source sensitivity boundaries. The full-screen probes disable competing compact/coherent/pattern paths so the global-delta threshold is the discriminating gate; the small-source probes disable broad/global paths. The 3x redundant irrelevant-axis combinations are also a consistency check.
 
+The full-screen probes use an sRGB code-96 background with code 139 (~0.141 linear-luminance delta) and code 148 (~0.179), bracketing the configured 0.12/0.16/0.20 global-delta thresholds. The compact probes use code 168 (~0.275 linear-luminance delta) at 0.6% and 1.1% target area, bracketing the configured 0.4%/0.8%/1.5% small-source area thresholds.
+
 The matrix emits `screening_probe_contract`. Probe data is rankable only when every candidate produced the v3 schema, full-probe values remain invariant across the small-sensitivity axis, small-probe values remain invariant across the full-sensitivity axis, and both probe families show the expected threshold ordering. A failed probe contract keeps the raw diagnostics but removes probe values from selection automatically.
 
 Candidate selection first requires a valid replay, then retains the Pareto frontier across flash attenuation, moving-flash attenuation, vacated-trail p99/peak, small-object trail p99, pan MAE, static MAE, low-contrast perceptual behavior, and contract-valid screening probes when available. A worst relative regression against the production default is used only to choose among Pareto candidates; the old weighted magic score is not used.
