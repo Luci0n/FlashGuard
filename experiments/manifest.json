@@ -35,7 +35,8 @@
     "FLASHGUARD_PERCEPTUAL_SWEEP/1",
     "FLASHGUARD_REPLAY_BATCH/1",
     "FLASHGUARD_MATRIX/3",
-    "FLASHGUARD_SCREENING_PROBES/1"
+    "FLASHGUARD_SCREENING_PROBES/1",
+    "FLASHGUARD_SCREENING_PROBES/2"
   ],
   "runs": [
     {
@@ -96,6 +97,11 @@
     {
       "run_id": "2026-08-26_153e1b91_threshold-probe-cross-coupling",
       "commit": "153e1b91515d4146f9ae140692446e6d20e70de7",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_2e5cc660_isolated-threshold-probes",
+      "commit": "2e5cc66077a241db0755b69b75d6d83bcab8aa6f",
       "result": "SUCCESS"
     }
   ]

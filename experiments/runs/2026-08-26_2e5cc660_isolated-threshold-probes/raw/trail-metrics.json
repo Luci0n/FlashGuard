@@ -1,0 +1,21 @@
+{
+  "schema": "FLASHGUARD_TRAIL_METRICS/1",
+  "status": "SUCCESS",
+  "test_scope": "full",
+  "width": 640,
+  "height": 360,
+  "fps": 60,
+  "motion_scale": 1.000,
+  "metric_sample_stride": 4,
+  "moving_square_vacated_mean_mae": 0.22727899,
+  "moving_square_vacated_p95_max": 0.82726907,
+  "moving_square_vacated_p99_max": 0.82726907,
+  "moving_square_vacated_peak": 0.82726907,
+  "moving_square_vacated_area_above_0_02_max": 0.55468750,
+  "moving_square_vacated_area_above_0_05_max": 0.55468750,
+  "moving_square_clear_to_0_01_ms": 83.333,
+  "moving_square_clear_to_0_02_ms": 83.333,
+  "moving_square_clear_to_0_05_ms": 83.333,
+  "small_moving_square_vacated_p99_max": 0.30553767,
+  "small_moving_square_vacated_peak": 0.30553767
+}
