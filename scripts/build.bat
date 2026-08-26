@@ -22,30 +22,28 @@ if /I "%MODE%"=="fast" (
   exit /b 2
 )
 
-rem Allow this script to run from Explorer, cmd, PowerShell, or a VS prompt.
-rem If cl.exe is already in PATH, skip Visual Studio environment startup entirely.
-where cl.exe >nul 2>nul
+rem Always initialize the complete Visual Studio developer environment. A
+rem persistent runner can retain cl.exe in PATH after the companion MSVC DLL
+rem paths are gone, which makes cl fail later with missing mspdbcore.dll.
+set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if not exist "!VSWHERE!" set "VSWHERE=%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe"
+if not exist "!VSWHERE!" (
+  echo ERROR: vswhere.exe was not found.
+  echo Install Visual Studio 2022 or Build Tools with Desktop development with C++.
+  exit /b 2
+)
+
+for /f "usebackq tokens=*" %%I in (`"!VSWHERE!" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%I"
+if not defined VSINSTALL (
+  echo ERROR: MSVC C++ build tools were not found.
+  echo Add Desktop development with C++ in Visual Studio Installer.
+  exit /b 2
+)
+
+call "!VSINSTALL!\Common7\Tools\VsDevCmd.bat" -arch=amd64 -host_arch=amd64 >nul
 if errorlevel 1 (
-  set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-  if not exist "!VSWHERE!" set "VSWHERE=%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe"
-  if not exist "!VSWHERE!" (
-    echo ERROR: vswhere.exe was not found.
-    echo Install Visual Studio 2022 or Build Tools with Desktop development with C++.
-    exit /b 2
-  )
-
-  for /f "usebackq tokens=*" %%I in (`"!VSWHERE!" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%I"
-  if not defined VSINSTALL (
-    echo ERROR: MSVC C++ build tools were not found.
-    echo Add Desktop development with C++ in Visual Studio Installer.
-    exit /b 2
-  )
-
-  call "!VSINSTALL!\Common7\Tools\VsDevCmd.bat" -arch=amd64 -host_arch=amd64 >nul
-  if errorlevel 1 (
-    echo ERROR: Visual Studio build environment setup failed.
-    exit /b 2
-  )
+  echo ERROR: Visual Studio build environment setup failed.
+  exit /b 2
 )
 
 set "ROOT=%~dp0.."
