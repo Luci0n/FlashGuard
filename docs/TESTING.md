@@ -51,6 +51,8 @@ The matrix emits `screening_probe_contract`. Probe data is rankable only when ev
 
 Candidate selection first requires a valid replay, then retains the Pareto frontier across flash attenuation, moving-flash attenuation, vacated-trail p99/peak, small-object trail p99, pan MAE, static MAE, low-contrast perceptual behavior, and contract-valid screening probes when available. A worst relative regression against the production default is used only to choose among Pareto candidates; the old weighted magic score is not used.
 
+If GitHub's self-hosted Actions `acquirejob` endpoint returns HTTP 500 and the runner later reports `MissingKey`, no FlashBench step has executed. Treat that as an infrastructure failure: keep the runner connected and trigger a fresh push/run rather than archiving it as benchmark evidence.
+
 Visual replay is available with `-VisualReplay`; sampled frames are rendered as `SOURCE | FILTERED | 6x AMPLIFIED DIFFERENCE` and indexed by an HTML viewer.
 
 ### 5-30 Hz WCAG-oriented flash sweep
