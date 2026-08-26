@@ -17,10 +17,13 @@ $logPath = Join-Path $OutputDir 'flashbench.log'
 $smokeReportPath = Join-Path $OutputDir 'nvof-smoke.json'
 $replayReportPath = Join-Path $OutputDir 'synthetic-replay.json'
 $flashSweepPath = Join-Path $OutputDir 'flash-sweep.json'
+$trailMetricsPath = Join-Path $OutputDir 'trail-metrics.json'
+$perceptualSweepPath = Join-Path $OutputDir 'perceptual-sweep.json'
+$matrixReportPath = Join-Path $OutputDir 'matrix/matrix.json'
 $visualDir = Join-Path $OutputDir 'visual'
 
 $summary = [ordered]@{
-    schema = 'FLASHBENCH/5'
+    schema = 'FLASHBENCH/6'
     mode = $Mode
     test_tier = $TestTier
     commit = $env:GITHUB_SHA
@@ -168,6 +171,8 @@ try {
         if ($TestTier -eq 'quick') {
             $summary.replay_status = 'SKIPPED'
             $summary.flash_sweep_status = 'SKIPPED'
+            $summary['trail_metrics_status'] = 'SKIPPED'
+            $summary['perceptual_sweep_status'] = 'SKIPPED'
             $summary.status = 'SUCCESS'
             return
         }
@@ -242,17 +247,64 @@ try {
                 Write-Host $table
             }
         }
-        if ($TuneMatrix -or $TestTier -eq 'full') {
+        if (Test-Path $trailMetricsPath) {
+            $trail = Get-Content -Raw $trailMetricsPath | ConvertFrom-Json
+            $summary['trail_metrics_status'] = $trail.status
+            $summary['trail_metrics_protocol'] = $trail.schema
+            $summary['replay_moving_vacated_mean_mae'] = $trail.moving_square_vacated_mean_mae
+            $summary['replay_moving_vacated_p95_max'] = $trail.moving_square_vacated_p95_max
+            $summary['replay_moving_vacated_p99_max'] = $trail.moving_square_vacated_p99_max
+            $summary['replay_moving_vacated_peak'] = $trail.moving_square_vacated_peak
+            $summary['replay_moving_vacated_area_02_max'] = $trail.moving_square_vacated_area_above_0_02_max
+            $summary['replay_moving_vacated_area_05_max'] = $trail.moving_square_vacated_area_above_0_05_max
+            $summary['replay_moving_clear_01_ms'] = $trail.moving_square_clear_to_0_01_ms
+            $summary['replay_moving_clear_02_ms'] = $trail.moving_square_clear_to_0_02_ms
+            $summary['replay_moving_clear_05_ms'] = $trail.moving_square_clear_to_0_05_ms
+            $summary['replay_small_moving_vacated_p99_max'] = $trail.small_moving_square_vacated_p99_max
+            $summary['replay_small_moving_vacated_peak'] = $trail.small_moving_square_vacated_peak
+        }
+
+        if (Test-Path $perceptualSweepPath) {
+            $perceptual = Get-Content -Raw $perceptualSweepPath | ConvertFrom-Json
+            $summary['perceptual_sweep_status'] = $perceptual.status
+            $summary['perceptual_sweep_protocol'] = $perceptual.schema
+            $summary['perceptual_sweep_case_count'] = @($perceptual.cases).Count
+            if (@($perceptual.cases).Count -gt 0) {
+                $summary['perceptual_sweep_min_reduction'] =
+                    ($perceptual.cases | Measure-Object -Property reduction -Minimum).Minimum
+                $summary['perceptual_sweep_max_output_delta'] =
+                    ($perceptual.cases | Measure-Object -Property peak_output_delta -Maximum).Maximum
+            }
+        }
+
+        # Targeted runs screen all 27 profile/full/small combinations using one
+        # persistent 320x180 GPU session. Full/tuning runs additionally verify
+        # only the Pareto-selected candidate and production default at 640x360.
+        if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v2.ps1') `
-                -Executable (Join-Path $root 'FlashGuard.exe') `
-                -OutputDir $matrixDir
+            if ($TestTier -eq 'targeted' -and -not $TuneMatrix) {
+                & (Join-Path $PSScriptRoot 'matrix-v3.ps1') `
+                    -Executable (Join-Path $root 'FlashGuard.exe') `
+                    -OutputDir $matrixDir -ScreenOnly
+            } else {
+                & (Join-Path $PSScriptRoot 'matrix-v3.ps1') `
+                    -Executable (Join-Path $root 'FlashGuard.exe') `
+                    -OutputDir $matrixDir
+            }
             $matrixExit = $LASTEXITCODE
             if ($matrixExit -ne 0) {
+                $summary['matrix_status'] = 'FAILED'
                 "WARN: tuning matrix failed with exit code $matrixExit" |
                     Add-Content -Encoding utf8 $logPath
             } else {
+                $summary['matrix_status'] = 'SUCCESS'
                 "Tuning matrix: $matrixDir" | Add-Content -Encoding utf8 $logPath
+                if (Test-Path $matrixReportPath) {
+                    $matrix = Get-Content -Raw $matrixReportPath | ConvertFrom-Json
+                    $summary['matrix_protocol'] = $matrix.schema
+                    $summary['matrix_candidate_count'] = @($matrix.screen_candidates).Count
+                    if ($matrix.selected) { $summary['matrix_selected'] = $matrix.selected.name }
+                }
             }
         }
 

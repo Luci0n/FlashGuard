@@ -26,7 +26,24 @@ A release MSVC build verifies the Windows application compiles. `FlashGuard.exe 
 - saturated-red translation
 - a translating object with intrinsic 10 Hz flashing
 
-Reported metrics include static MAE, flash modulation reduction, trailing-ghost MAE, inside-object MAE, edge MAE, pan and scroll MAE, scroll-stop recovery time, saturated-red motion error, moving-flash reduction, full-resolution motion-classification statistics, realized motion coordinates, and NVOFA execution counts.
+Reported metrics include static MAE, flash modulation reduction, legacy whole-background ghost MAE, inside-object MAE, edge MAE, pan and scroll MAE, scroll-stop recovery time, saturated-red motion error, moving-flash reduction, full-resolution motion-classification statistics, realized motion coordinates, and NVOFA execution counts.
+
+`FLASHGUARD_TRAIL_METRICS/1` records the exact pixels vacated by a moving synthetic object at full pixel resolution in `trail-metrics.json`. It reports mean residual error, worst-frame p95/p99 and peak residual, the maximum fraction of vacated pixels above 2% and 5% error, and time for the final footprint to clear below 1%, 2%, and 5% p99 error. These metrics are initially calibration evidence rather than hard pass/fail gates. They were added because a thin visible trail can be strongly diluted by whole-frame or whole-background averages.
+
+### Low-contrast perceptual flash sweep
+
+`FLASHGUARD_PERCEPTUAL_SWEEP/1` measures static lower-contrast flashing separately from normative WCAG evaluation. The current calibration grid uses source-code deltas `4, 8, 12, 16, 24, 32`, frequencies `5, 10, 15 Hz`, and two half-frame phase offsets on a mid-dark background. It records modulation reduction and peak output delta. These cases are not WCAG pass/fail claims; they detect protection discontinuities that can still be visually obvious.
+
+### Batched parameter screening
+
+`FLASHGUARD_REPLAY_BATCH/1` keeps one replay window, D3D11 device, shader set, and NVOFA session alive while applying multiple runtime configurations. Temporal/filter state is reset between replay cases. A TSV plan supplies `name`, profile, full-screen sensitivity, small-source sensitivity, FPS, and motion scale.
+
+`FLASHGUARD_MATRIX/3` uses two stages:
+
+1. screen all 27 independent profile/full/small sensitivity combinations at 320x180 and 30 FPS with shorter cases and an 8-pixel general metric stride
+2. on full runs, rerun only the screening winner and production default at canonical 640x360 and 60 FPS
+
+Candidate selection first requires the available WCAG cases to pass, then retains the Pareto frontier across flash attenuation, moving-flash attenuation, vacated-trail p99/peak, small-object trail p99, pan MAE, and static MAE. A worst relative regression against the production default is used only to choose among Pareto candidates; the old weighted magic score is not used.
 
 Visual replay is available with `-VisualReplay`; sampled frames are rendered as `SOURCE | FILTERED | 6x AMPLIFIED DIFFERENCE` and indexed by an HTML viewer.
 
@@ -97,6 +114,9 @@ summary.json
 nvof-smoke.json
 synthetic-replay.json
 flash-sweep.json
+trail-metrics.json
+perceptual-sweep.json
+matrix/matrix.json
 motion-diagnostics.json
 motion-realization.json
 flashbench.log

@@ -28,6 +28,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
 #include <cwctype>
 #include <deque>
 #include <filesystem>
@@ -1503,7 +1504,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         bool RunSyntheticReplay(const std::wstring& reportPath,
                                 const std::wstring& visualDir = L"",
                                 int replayFps = 60,
-                                float motionScale = 1.0f)
+                                float motionScale = 1.0f,
+                                bool replayScreening = false)
         {
             if (!m_replayMode || !m_device || !m_context || !m_replayReadback ||
                 !m_motionDiagnosticTextures[0] || !m_motionDiagnosticReadbacks[0] ||
@@ -1516,14 +1518,20 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const double motionFrameScale =
                 60.0 / static_cast<double>(replayFps) *
                 static_cast<double>(motionScale);
-            const int warmupFrames = std::max(8, replayFps / 3);
-            const int settleFrames = std::max(12, replayFps / 2);
+            // Screening is deliberately cheap: lower-duration cases and a sparser
+            // general metric grid. Finalists still run the canonical full replay.
+            const int warmupFrames = replayScreening ?
+                std::max(4, replayFps / 8) : std::max(8, replayFps / 3);
+            const int settleFrames = replayScreening ?
+                std::max(6, replayFps / 4) : std::max(12, replayFps / 2);
             const UINT width = m_outputWidth;
             const UINT height = m_outputHeight;
+            const UINT sampleStride = replayScreening ? 8u : 4u;
             std::vector<uint32_t> pixels(static_cast<size_t>(width) * height);
             std::vector<uint32_t> previousDiagnosticSource(pixels.size());
             bool previousDiagnosticSourceValid = false;
-            const int diagnosticSampleInterval = std::max(1, replayFps / 30);
+            const int diagnosticSampleInterval = replayScreening ?
+                std::max(1, replayFps / 6) : std::max(1, replayFps / 30);
             uint64_t diagnosticRequestCount = 0;
             const bool writeVisuals = !visualDir.empty();
             if (writeVisuals)
@@ -1913,6 +1921,16 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 double outsideMae = 0.0;
                 double insideMae = 0.0;
                 double edgeMae = 0.0;
+                // Full-pixel measurements over only the pixels vacated by the
+                // moving object. These are intentionally not diluted by the rest
+                // of the frame, unlike outsideMae.
+                double vacatedMean = 0.0;
+                double vacatedP95 = 0.0;
+                double vacatedP99 = 0.0;
+                double vacatedPeak = 0.0;
+                double vacatedAreaAbove02 = 0.0;
+                double vacatedAreaAbove05 = 0.0;
+                uint64_t vacatedSamples = 0;
             };
 
             uint64_t flowFrames = 0;
@@ -1921,7 +1939,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                                              int visualFrame = -1,
                                              MotionDiagnosticAggregate* motionDiagnostics = nullptr,
                                              std::vector<uint32_t>* sourceDisplayCodes = nullptr,
-                                             std::vector<uint32_t>* outputDisplayCodes = nullptr) {
+                                             std::vector<uint32_t>* outputDisplayCodes = nullptr,
+                                             const RECT* previousRect = nullptr) {
                 m_context->UpdateSubresource(source.get(), 0, nullptr,
                     pixels.data(), width * 4u, 0);
                 QueueCapturedFrame(source.get(), dt);
@@ -1938,12 +1957,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 uint64_t outsideCount = 0;
                 uint64_t insideCount = 0;
                 uint64_t edgeCount = 0;
+                std::vector<double> vacatedErrors;
+                if (previousRect) vacatedErrors.reserve(4096);
                 const auto quantizeUnorm8Code = [](float value) {
                     return static_cast<uint32_t>(std::lround(
                         std::clamp(value, 0.0f, 1.0f) * 255.0f));
                 };
                 const size_t sampledPixelCount =
-                    static_cast<size_t>((width + 3u) / 4u) * ((height + 3u) / 4u);
+                    static_cast<size_t>((width + sampleStride - 1u) / sampleStride) *
+                    ((height + sampleStride - 1u) / sampleStride);
                 if (sourceDisplayCodes) {
                     sourceDisplayCodes->clear();
                     sourceDisplayCodes->reserve(sampledPixelCount);
@@ -1952,7 +1974,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     outputDisplayCodes->clear();
                     outputDisplayCodes->reserve(sampledPixelCount);
                 }
-                constexpr UINT stride = 4;
+                const UINT stride = sampleStride;
                 for (UINT y = 0; y < height; y += stride)
                 {
                     const auto* row = reinterpret_cast<const uint16_t*>(
@@ -2059,6 +2081,74 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         }
                     }
                 }
+
+                // Revisit only the just-vacated source footprint at full pixel
+                // resolution. A 1-3 px bright trail can be obvious to a person yet
+                // nearly disappear from a 4 px grid and whole-background MAE.
+                if (previousRect)
+                {
+                    const LONG left = std::max<LONG>(0, previousRect->left);
+                    const LONG top = std::max<LONG>(0, previousRect->top);
+                    const LONG right = std::min<LONG>(static_cast<LONG>(width),
+                        previousRect->right);
+                    const LONG bottom = std::min<LONG>(static_cast<LONG>(height),
+                        previousRect->bottom);
+                    for (LONG y = top; y < bottom; ++y)
+                    {
+                        const auto* row = reinterpret_cast<const uint16_t*>(
+                            static_cast<const uint8_t*>(mapped.pData) +
+                            static_cast<size_t>(y) * mapped.RowPitch);
+                        for (LONG x = left; x < right; ++x)
+                        {
+                            const bool stillOccupied = activeRect &&
+                                x >= activeRect->left && x < activeRect->right &&
+                                y >= activeRect->top && y < activeRect->bottom;
+                            if (stillOccupied) continue;
+                            const float r = std::clamp(halfToFloat(
+                                row[static_cast<size_t>(x) * 4 + 0]), 0.0f, 1.0f);
+                            const float g = std::clamp(halfToFloat(
+                                row[static_cast<size_t>(x) * 4 + 1]), 0.0f, 1.0f);
+                            const float b = std::clamp(halfToFloat(
+                                row[static_cast<size_t>(x) * 4 + 2]), 0.0f, 1.0f);
+                            const double outputLuma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                            const uint32_t packed = pixels[
+                                static_cast<size_t>(y) * width + static_cast<UINT>(x)];
+                            const float sb = static_cast<float>(packed & 0xFFu) / 255.0f;
+                            const float sg = static_cast<float>((packed >> 8) & 0xFFu) / 255.0f;
+                            const float sr = static_cast<float>((packed >> 16) & 0xFFu) / 255.0f;
+                            const double sourceLuma = 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
+                            vacatedErrors.push_back(std::fabs(outputLuma - sourceLuma));
+                        }
+                    }
+                }
+                if (!vacatedErrors.empty())
+                {
+                    std::sort(vacatedErrors.begin(), vacatedErrors.end());
+                    double sum = 0.0;
+                    uint64_t above02 = 0;
+                    uint64_t above05 = 0;
+                    for (double error : vacatedErrors)
+                    {
+                        sum += error;
+                        above02 += error > 0.02 ? 1u : 0u;
+                        above05 += error > 0.05 ? 1u : 0u;
+                    }
+                    const auto percentile = [&](double q) {
+                        const size_t index = std::min(vacatedErrors.size() - 1,
+                            static_cast<size_t>(std::ceil(
+                                q * static_cast<double>(vacatedErrors.size()))) - 1);
+                        return vacatedErrors[index];
+                    };
+                    sample.vacatedSamples = static_cast<uint64_t>(vacatedErrors.size());
+                    sample.vacatedMean = sum / static_cast<double>(vacatedErrors.size());
+                    sample.vacatedP95 = percentile(0.95);
+                    sample.vacatedP99 = percentile(0.99);
+                    sample.vacatedPeak = vacatedErrors.back();
+                    sample.vacatedAreaAbove02 = static_cast<double>(above02) /
+                        static_cast<double>(vacatedErrors.size());
+                    sample.vacatedAreaAbove05 = static_cast<double>(above05) /
+                        static_cast<double>(vacatedErrors.size());
+                }
                 writeVisualBmp(visualCase, visualFrame, mapped);
                 m_context->Unmap(m_replayReadback.get(), 0);
                 if (motionDiagnostics)
@@ -2118,7 +2208,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             fillGray(96);
             for (int i = 0; i < warmupFrames; ++i) renderAndSample(nullptr);
             double staticMae = 0.0;
-            const int staticFrames = std::max(20, replayFps * 2 / 3);
+            const int staticFrames = replayScreening ?
+                std::max(8, replayFps / 4) : std::max(20, replayFps * 2 / 3);
             for (int i = 0; i < staticFrames; ++i)
                 staticMae += renderAndSample(nullptr).mae;
             staticMae /= static_cast<double>(staticFrames);
@@ -2131,7 +2222,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 previous = renderAndSample(nullptr);
             double rawVariation = 0.0;
             double outputVariation = 0.0;
-            const int flashFrames = replayFps * 2;
+            const int flashFrames = replayFps * (replayScreening ? 1 : 2);
             for (int i = 0; i < flashFrames; ++i)
             {
                 const double phase = std::fmod(
@@ -2194,9 +2285,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             MotionDiagnosticAggregate smallMovingDiagnostics{};
             MotionDiagnosticAggregate smoothScrollDiagnostics{};
             MotionDiagnosticAggregate snappedScrollDiagnostics{};
-            constexpr std::array<double, 8> sweepFrequencies{
-                5.0, 7.5, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0
-            };
+            const std::vector<double> sweepFrequencies = replayScreening ?
+                std::vector<double>{ 5.0, 10.0, 15.0 } :
+                std::vector<double>{
+                    5.0, 7.5, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0 };
             struct SweepCase
             {
                 const char* name;
@@ -2208,7 +2300,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 { "luminance_quarter", 2 }
             }};
             const int sweepFps = replayFps;
-            const int sweepFrames = sweepFps * 2;
+            const int sweepFrames = sweepFps * (replayScreening ? 1 : 2);
             const double sweepSeconds =
                 static_cast<double>(sweepFrames) / static_cast<double>(sweepFps);
 
@@ -2740,6 +2832,120 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             std::fputs("  ]\n}\n", flashSweepReport);
             std::fclose(flashSweepReport);
 
+            // Perceptual calibration sweep for the lower-contrast static flashes
+            // reported manually. It is deliberately separate from WCAG pass/fail:
+            // these cases measure attenuation continuity below normative thresholds.
+            double perceptualMinReduction = 0.0;
+            double perceptualMaxOutputDelta = 0.0;
+            int perceptualCaseCount = 0;
+            if (!replayScreening)
+            {
+                // Uniform perceptual flash cases do not need a full CPU traversal of
+                // the mapped frame. Sample the center pixel after the real render/NVOFA
+                // path so broad low-contrast sweeps remain cheap.
+                const auto renderCenterLuma = [&]() {
+                    m_context->UpdateSubresource(source.get(), 0, nullptr,
+                        pixels.data(), width * 4u, 0);
+                    QueueCapturedFrame(source.get(), dt);
+                    if (m_nvofFlowValid) ++flowFrames;
+                    m_context->CopyResource(m_replayReadback.get(),
+                        m_outputHistoryTextures[m_outputHistoryIndex].get());
+                    D3D11_MAPPED_SUBRESOURCE mapped{};
+                    ThrowIfFailed(m_context->Map(
+                        m_replayReadback.get(), 0, D3D11_MAP_READ, 0, &mapped));
+                    const UINT x = width / 2u;
+                    const UINT y = height / 2u;
+                    const auto* row = reinterpret_cast<const uint16_t*>(
+                        static_cast<const uint8_t*>(mapped.pData) +
+                        static_cast<size_t>(y) * mapped.RowPitch);
+                    const float r = std::clamp(halfToFloat(row[x * 4 + 0]), 0.0f, 1.0f);
+                    const float g = std::clamp(halfToFloat(row[x * 4 + 1]), 0.0f, 1.0f);
+                    const float b = std::clamp(halfToFloat(row[x * 4 + 2]), 0.0f, 1.0f);
+                    const double outputLuma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                    const uint32_t packed = pixels[static_cast<size_t>(y) * width + x];
+                    const float sb = static_cast<float>(packed & 0xFFu) / 255.0f;
+                    const float sg = static_cast<float>((packed >> 8) & 0xFFu) / 255.0f;
+                    const float sr = static_cast<float>((packed >> 16) & 0xFFu) / 255.0f;
+                    const double sourceLuma = 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
+                    m_context->Unmap(m_replayReadback.get(), 0);
+                    return std::pair<double, double>{ sourceLuma, outputLuma };
+                };
+                const auto perceptualPath =
+                    std::filesystem::path(reportPath).parent_path() /
+                    L"perceptual-sweep.json";
+                FILE* perceptualReport = nullptr;
+                if (_wfopen_s(&perceptualReport, perceptualPath.c_str(), L"wb") != 0 ||
+                    !perceptualReport)
+                    return false;
+                std::fputs(
+                    "{\n  \"schema\": \"FLASHGUARD_PERCEPTUAL_SWEEP/1\",\n"
+                    "  \"status\": \"SUCCESS\",\n"
+                    "  \"calibration_only\": true,\n"
+                    "  \"background_code\": 96,\n"
+                    "  \"cases\": [\n", perceptualReport);
+                constexpr std::array<int, 6> deltas{ 4, 8, 12, 16, 24, 32 };
+                constexpr std::array<double, 3> frequencies{ 5.0, 10.0, 15.0 };
+                constexpr std::array<double, 2> phaseFrames{ 0.0, 0.5 };
+                bool firstPerceptual = true;
+                perceptualMinReduction = 1.0;
+                for (int deltaCode : deltas)
+                {
+                    const int lowCode = 96 - deltaCode / 2;
+                    const int highCode = 96 + (deltaCode + 1) / 2;
+                    for (double frequencyHz : frequencies)
+                    {
+                        if (frequencyHz > static_cast<double>(replayFps) * 0.5)
+                            continue;
+                        for (double phaseFrame : phaseFrames)
+                        {
+                            resetCase();
+                            fillGray(static_cast<uint8_t>(lowCode));
+                            std::pair<double, double> previousCenter{};
+                            for (int i = 0; i < std::max(4, replayFps / 10); ++i)
+                                previousCenter = renderCenterLuma();
+                            double sourceVariation = 0.0;
+                            double filteredVariation = 0.0;
+                            double peakOutputDelta = 0.0;
+                            const int caseFrames = std::max(30, replayFps);
+                            for (int i = 0; i < caseFrames; ++i)
+                            {
+                                const double phase = std::fmod(
+                                    (static_cast<double>(i) + 0.5 + phaseFrame) *
+                                    frequencyHz / static_cast<double>(replayFps), 1.0);
+                                fillGray(static_cast<uint8_t>(
+                                    phase < 0.5 ? highCode : lowCode));
+                                const auto currentCenter = renderCenterLuma();
+                                sourceVariation += std::fabs(
+                                    currentCenter.first - previousCenter.first);
+                                const double outputDelta = std::fabs(
+                                    currentCenter.second - previousCenter.second);
+                                filteredVariation += outputDelta;
+                                peakOutputDelta = std::max(peakOutputDelta, outputDelta);
+                                previousCenter = currentCenter;
+                            }
+                            const double reduction = sourceVariation > 1e-9 ?
+                                1.0 - filteredVariation / sourceVariation : 0.0;
+                            perceptualMinReduction = std::min(
+                                perceptualMinReduction, reduction);
+                            perceptualMaxOutputDelta = std::max(
+                                perceptualMaxOutputDelta, peakOutputDelta);
+                            ++perceptualCaseCount;
+                            std::fprintf(perceptualReport,
+                                "%s    {\"delta_code\":%d,\"low_code\":%d,"
+                                "\"high_code\":%d,\"frequency_hz\":%.2f,"
+                                "\"phase_frames\":%.2f,\"reduction\":%.8f,"
+                                "\"peak_output_delta\":%.8f}",
+                                firstPerceptual ? "" : ",\n",
+                                deltaCode, lowCode, highCode, frequencyHz,
+                                phaseFrame, reduction, peakOutputDelta);
+                            firstPerceptual = false;
+                        }
+                    }
+                }
+                std::fputs("\n  ]\n}\n", perceptualReport);
+                std::fclose(perceptualReport);
+            }
+
             const uint64_t movingFlowStart = flowFrames;
 
             resetCase();
@@ -2748,8 +2954,16 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             double movingGhostMae = 0.0;
             double movingInsideMae = 0.0;
             double movingEdgeMae = 0.0;
+            double movingVacatedMean = 0.0;
+            double movingVacatedP95Max = 0.0;
+            double movingVacatedP99Max = 0.0;
+            double movingVacatedPeak = 0.0;
+            double movingVacatedArea02Max = 0.0;
+            double movingVacatedArea05Max = 0.0;
+            int movingVacatedFrames = 0;
             constexpr int squareSize = 64;
-            const int movingFrames = std::max(45, replayFps * 3 / 2);
+            const int movingFrames = replayScreening ?
+                std::max(18, replayFps / 2) : std::max(45, replayFps * 3 / 2);
             const int settledX0 = 20;
             const int settledY0 = static_cast<int>(height) / 2 - squareSize / 2;
             for (int i = 0; i < settleFrames; ++i)
@@ -2762,6 +2976,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         pixels[static_cast<size_t>(y) * width + x] = grayPixel(235);
                 renderAndSample(nullptr);
             }
+            RECT previousMovingRect{
+                settledX0, settledY0,
+                std::min(settledX0 + squareSize, static_cast<int>(width)),
+                std::min(settledY0 + squareSize, static_cast<int>(height))
+            };
             for (int i = 0; i < movingFrames; ++i)
             {
                 fillGray(24);
@@ -2778,14 +2997,60 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 const RECT square{ x0, y0, x1, y1 };
                 const FrameSample sample = renderAndSample(&square,
                     (writeVisuals && i % 10 == 0) ? L"bright_motion" : nullptr,
-                    i, &movingDiagnostics);
+                    i, &movingDiagnostics, nullptr, nullptr, &previousMovingRect);
                 movingGhostMae += sample.outsideMae;
                 movingInsideMae += sample.insideMae;
                 movingEdgeMae += sample.edgeMae;
+                if (sample.vacatedSamples > 0)
+                {
+                    movingVacatedMean += sample.vacatedMean;
+                    movingVacatedP95Max = std::max(
+                        movingVacatedP95Max, sample.vacatedP95);
+                    movingVacatedP99Max = std::max(
+                        movingVacatedP99Max, sample.vacatedP99);
+                    movingVacatedPeak = std::max(
+                        movingVacatedPeak, sample.vacatedPeak);
+                    movingVacatedArea02Max = std::max(
+                        movingVacatedArea02Max, sample.vacatedAreaAbove02);
+                    movingVacatedArea05Max = std::max(
+                        movingVacatedArea05Max, sample.vacatedAreaAbove05);
+                    ++movingVacatedFrames;
+                }
+                previousMovingRect = square;
             }
             movingGhostMae /= static_cast<double>(movingFrames);
             movingInsideMae /= static_cast<double>(movingFrames);
             movingEdgeMae /= static_cast<double>(movingFrames);
+            if (movingVacatedFrames > 0)
+                movingVacatedMean /= static_cast<double>(movingVacatedFrames);
+
+            // Clear the final object footprint and measure how many frames its
+            // visible residual survives. These thresholds are calibration data,
+            // not pass/fail gates until several real experiments are archived.
+            const int trailRecoveryFrames = replayScreening ?
+                std::max(6, replayFps / 4) : std::max(12, replayFps / 2);
+            int trailClear01 = -1;
+            int trailClear02 = -1;
+            int trailClear05 = -1;
+            for (int i = 0; i < trailRecoveryFrames; ++i)
+            {
+                fillGray(24);
+                const FrameSample recovery = renderAndSample(
+                    nullptr, nullptr, -1, nullptr, nullptr, nullptr,
+                    &previousMovingRect);
+                if (trailClear01 < 0 && recovery.vacatedP99 <= 0.01) trailClear01 = i;
+                if (trailClear02 < 0 && recovery.vacatedP99 <= 0.02) trailClear02 = i;
+                if (trailClear05 < 0 && recovery.vacatedP99 <= 0.05) trailClear05 = i;
+                if (trailClear01 >= 0 && trailClear02 >= 0 && trailClear05 >= 0) break;
+            }
+            const auto trailFramesToMs = [&](int frame) {
+                const int measured = frame >= 0 ? frame + 1 : trailRecoveryFrames;
+                return 1000.0 * static_cast<double>(measured) /
+                    static_cast<double>(replayFps);
+            };
+            const double trailClear01Ms = trailFramesToMs(trailClear01);
+            const double trailClear02Ms = trailFramesToMs(trailClear02);
+            const double trailClear05Ms = trailFramesToMs(trailClear05);
             const uint64_t movingFlowFrames = flowFrames - movingFlowStart;
 
             // Bright oblique motion: real game objects rarely move on an exact
@@ -2845,8 +3110,13 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             fillGray(72);
             for (int i = 0; i < warmupFrames; ++i) renderAndSample(nullptr);
             double smallMovingGhostMae = 0.0;
+            double smallMovingVacatedP99Max = 0.0;
+            double smallMovingVacatedPeak = 0.0;
             constexpr int smallSquareSize = 24;
-            const int smallMovingFrames = std::max(45, replayFps * 3 / 2);
+            const int smallMovingFrames = replayScreening ?
+                std::max(18, replayFps / 2) : std::max(45, replayFps * 3 / 2);
+            RECT previousSmallRect{};
+            bool havePreviousSmallRect = false;
             for (int i = 0; i < smallMovingFrames; ++i)
             {
                 fillGray(72);
@@ -2861,9 +3131,17 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     for (int x = std::max(x0, 0); x < x1; ++x)
                         pixels[static_cast<size_t>(y) * width + x] = grayPixel(150);
                 const RECT square{ x0, y0, x1, y1 };
-                smallMovingGhostMae += renderAndSample(&square,
+                const FrameSample sample = renderAndSample(&square,
                     (writeVisuals && i % 10 == 0) ? L"small_motion" : nullptr,
-                    i, &smallMovingDiagnostics).outsideMae;
+                    i, &smallMovingDiagnostics, nullptr, nullptr,
+                    havePreviousSmallRect ? &previousSmallRect : nullptr);
+                smallMovingGhostMae += sample.outsideMae;
+                smallMovingVacatedP99Max = std::max(
+                    smallMovingVacatedP99Max, sample.vacatedP99);
+                smallMovingVacatedPeak = std::max(
+                    smallMovingVacatedPeak, sample.vacatedPeak);
+                previousSmallRect = square;
+                havePreviousSmallRect = true;
             }
             smallMovingGhostMae /= static_cast<double>(smallMovingFrames);
             const uint64_t smallMovingFlowFrames =
@@ -3181,6 +3459,39 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "integer_snapped_scroll", snappedScrollDiagnostics, false);
             std::fputs("  }\n}\n", diagnosticReport);
             std::fclose(diagnosticReport);
+
+            const auto trailMetricsPath =
+                std::filesystem::path(reportPath).parent_path() / L"trail-metrics.json";
+            FILE* trailMetricsReport = nullptr;
+            if (_wfopen_s(&trailMetricsReport, trailMetricsPath.c_str(), L"wb") != 0 ||
+                !trailMetricsReport)
+                return false;
+            std::fprintf(trailMetricsReport,
+                "{\n"
+                "  \"schema\": \"FLASHGUARD_TRAIL_METRICS/1\",\n"
+                "  \"status\": \"SUCCESS\",\n"
+                "  \"test_scope\": \"%s\",\n"
+                "  \"width\": %u,\n  \"height\": %u,\n  \"fps\": %d,\n"
+                "  \"motion_scale\": %.3f,\n  \"metric_sample_stride\": %u,\n"
+                "  \"moving_square_vacated_mean_mae\": %.8f,\n"
+                "  \"moving_square_vacated_p95_max\": %.8f,\n"
+                "  \"moving_square_vacated_p99_max\": %.8f,\n"
+                "  \"moving_square_vacated_peak\": %.8f,\n"
+                "  \"moving_square_vacated_area_above_0_02_max\": %.8f,\n"
+                "  \"moving_square_vacated_area_above_0_05_max\": %.8f,\n"
+                "  \"moving_square_clear_to_0_01_ms\": %.3f,\n"
+                "  \"moving_square_clear_to_0_02_ms\": %.3f,\n"
+                "  \"moving_square_clear_to_0_05_ms\": %.3f,\n"
+                "  \"small_moving_square_vacated_p99_max\": %.8f,\n"
+                "  \"small_moving_square_vacated_peak\": %.8f\n"
+                "}\n",
+                replayScreening ? "screening" : "full",
+                width, height, replayFps, motionScale, static_cast<unsigned>(sampleStride),
+                movingVacatedMean, movingVacatedP95Max, movingVacatedP99Max,
+                movingVacatedPeak, movingVacatedArea02Max, movingVacatedArea05Max,
+                trailClear01Ms, trailClear02Ms, trailClear05Ms,
+                smallMovingVacatedP99Max, smallMovingVacatedPeak);
+            std::fclose(trailMetricsReport);
 
             FILE* report = nullptr;
             if (_wfopen_s(&report, reportPath.c_str(), L"wb") != 0 || !report)
@@ -6758,7 +7069,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         return hwnd;
     }
 
-    HWND CreateReplayWindow(HINSTANCE instance, HMONITOR mon)
+    HWND CreateReplayWindow(HINSTANCE instance, HMONITOR mon,
+                            int replayWidth = 640, int replayHeight = 360)
     {
         WNDCLASSEXW wc{};
         wc.cbSize = sizeof(wc);
@@ -6771,9 +7083,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
         MONITORINFO mi{ sizeof(mi) };
         if (!GetMonitorInfoW(mon, &mi)) return nullptr;
+        replayWidth = std::clamp(replayWidth, 160, 1920);
+        replayHeight = std::clamp(replayHeight, 90, 1080);
         return CreateWindowExW(WS_EX_TOOLWINDOW, kWindowClass,
             L"FlashGuard Synthetic Replay", WS_POPUP,
-            mi.rcMonitor.left, mi.rcMonitor.top, 640, 360,
+            mi.rcMonitor.left, mi.rcMonitor.top, replayWidth, replayHeight,
             nullptr, nullptr, instance, nullptr);
     }
 }
@@ -6802,6 +7116,154 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             ParseArgumentValue(L"--replay-full-sensitivity");
         const std::wstring replaySmallSensitivityArg =
             ParseArgumentValue(L"--replay-small-sensitivity");
+        const std::wstring replayBatchPlan =
+            ParseArgumentValue(L"--synthetic-replay-batch");
+        const std::wstring replayBatchOutput =
+            ParseArgumentValue(L"--synthetic-replay-batch-output");
+        const std::wstring replayWidthArg = ParseArgumentValue(L"--replay-width");
+        const std::wstring replayHeightArg = ParseArgumentValue(L"--replay-height");
+        const bool replayScreening = HasCommandLineFlag(L"--replay-screening");
+        const int replayWidth = replayWidthArg.empty() ? (replayScreening ? 320 : 640) :
+            std::clamp(_wtoi(replayWidthArg.c_str()), 160, 1920);
+        const int replayHeight = replayHeightArg.empty() ? (replayScreening ? 180 : 360) :
+            std::clamp(_wtoi(replayHeightArg.c_str()), 90, 1080);
+        if (!replayBatchPlan.empty() && !replayBatchOutput.empty())
+        {
+            POINT origin{ 0, 0 };
+            HMONITOR monitor = MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY);
+            HWND replayWindow = CreateReplayWindow(
+                instance, monitor, replayWidth, replayHeight);
+            if (!replayWindow) return 6;
+            try
+            {
+                FILE* plan = nullptr;
+                if (_wfopen_s(&plan, replayBatchPlan.c_str(), L"rt, ccs=UTF-8") != 0 || !plan)
+                {
+                    DestroyWindow(replayWindow);
+                    return 10;
+                }
+                struct BatchResult
+                {
+                    std::string name;
+                    bool passed = false;
+                    long long elapsedMs = 0;
+                };
+                std::vector<std::array<std::wstring, 6>> specs;
+                wchar_t line[1024]{};
+                while (std::fgetws(line, static_cast<int>(std::size(line)), plan))
+                {
+                    std::wstring text(line);
+                    while (!text.empty() && (text.back() == L'\r' || text.back() == L'\n'))
+                        text.pop_back();
+                    if (!text.empty() && text.front() == 0xFEFF) text.erase(text.begin());
+                    if (text.empty() || text.front() == L'#') continue;
+                    std::vector<std::wstring> fields;
+                    size_t start = 0;
+                    for (;;)
+                    {
+                        const size_t tab = text.find(L'\t', start);
+                        fields.push_back(text.substr(start,
+                            tab == std::wstring::npos ? std::wstring::npos : tab - start));
+                        if (tab == std::wstring::npos) break;
+                        start = tab + 1;
+                    }
+                    if (fields.size() != 6)
+                    {
+                        std::fclose(plan);
+                        DestroyWindow(replayWindow);
+                        return 10;
+                    }
+                    std::array<std::wstring, 6> spec{};
+                    for (size_t i = 0; i < spec.size(); ++i) spec[i] = fields[i];
+                    const bool safeName = !spec[0].empty() && spec[0].size() <= 80 &&
+                        std::all_of(spec[0].begin(), spec[0].end(), [](wchar_t c) {
+                            return (c >= L'a' && c <= L'z') ||
+                                (c >= L'A' && c <= L'Z') ||
+                                (c >= L'0' && c <= L'9') || c == L'_' || c == L'-';
+                        });
+                    if (!safeName)
+                    {
+                        std::fclose(plan);
+                        DestroyWindow(replayWindow);
+                        return 10;
+                    }
+                    specs.push_back(std::move(spec));
+                }
+                std::fclose(plan);
+                if (specs.empty())
+                {
+                    DestroyWindow(replayWindow);
+                    return 10;
+                }
+
+                std::filesystem::create_directories(replayBatchOutput);
+                FlashGuardApp app;
+                RuntimeOptions replayOptions{};
+                replayOptions.contrastReduction = 0.0f;
+                replayOptions.latencyMs = 0;
+                replayOptions.debugOverlay = false;
+                app.ApplyRuntimeOptions(replayOptions);
+                app.InitializeReplay(replayWindow, monitor);
+                std::vector<BatchResult> results;
+                bool infrastructureOk = true;
+                for (const auto& spec : specs)
+                {
+                    replayOptions.profilePreset = std::clamp(_wtoi(spec[1].c_str()), 0, 2);
+                    replayOptions.fullScreenSensitivity = std::clamp(_wtoi(spec[2].c_str()), 0, 2);
+                    replayOptions.smallSourceSensitivity = std::clamp(_wtoi(spec[3].c_str()), 0, 2);
+                    const int fps = std::clamp(_wtoi(spec[4].c_str()), 30, 240);
+                    const float scale = std::clamp(
+                        static_cast<float>(_wtof(spec[5].c_str())), 0.25f, 4.0f);
+                    app.ApplyRuntimeOptions(replayOptions);
+                    const auto caseDir = std::filesystem::path(replayBatchOutput) / spec[0];
+                    std::filesystem::create_directories(caseDir);
+                    const auto caseReport = caseDir / L"synthetic-replay.json";
+                    const auto started = std::chrono::steady_clock::now();
+                    const bool passed = app.RunSyntheticReplay(
+                        caseReport.wstring(), L"", fps, scale, replayScreening);
+                    const long long elapsedMs = std::chrono::duration_cast<
+                        std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+                    infrastructureOk = infrastructureOk && std::filesystem::exists(caseReport);
+                    std::string name;
+                    name.reserve(spec[0].size());
+                    for (wchar_t c : spec[0]) name.push_back(static_cast<char>(c));
+                    results.push_back({ name, passed, elapsedMs });
+                }
+
+                const auto batchReportPath =
+                    std::filesystem::path(replayBatchOutput) / L"batch.json";
+                FILE* batchReport = nullptr;
+                if (_wfopen_s(&batchReport, batchReportPath.c_str(), L"wb") != 0 ||
+                    !batchReport)
+                    infrastructureOk = false;
+                else
+                {
+                    std::fprintf(batchReport,
+                        "{\n  \"schema\": \"FLASHGUARD_REPLAY_BATCH/1\",\n"
+                        "  \"status\": \"%s\",\n  \"screening\": %s,\n"
+                        "  \"width\": %d,\n  \"height\": %d,\n  \"cases\": [\n",
+                        infrastructureOk ? "SUCCESS" : "FAILED",
+                        replayScreening ? "true" : "false", replayWidth, replayHeight);
+                    for (size_t i = 0; i < results.size(); ++i)
+                        std::fprintf(batchReport,
+                            "    {\"name\":\"%s\",\"behavior_pass\":%s,"
+                            "\"elapsed_ms\":%lld}%s\n",
+                            results[i].name.c_str(), results[i].passed ? "true" : "false",
+                            results[i].elapsedMs, i + 1 < results.size() ? "," : "");
+                    std::fputs("  ]\n}\n", batchReport);
+                    std::fclose(batchReport);
+                }
+                app.Stop();
+                DestroyWindow(replayWindow);
+                return infrastructureOk ? 0 : 10;
+            }
+            catch (...)
+            {
+                DestroyWindow(replayWindow);
+                std::fprintf(stderr, "synthetic replay batch exception\n");
+                return 10;
+            }
+        }
         if (!replayReport.empty())
         {
             const int replayFps = replayFpsArg.empty() ? 60 :
