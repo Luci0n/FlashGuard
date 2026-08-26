@@ -919,15 +919,21 @@ R"HLSL(
 
     // Temporal RGB feedback can reintroduce hazardous red from PreviousOutput
     // after the pre-temporal source clamp. Neutralize the final display/history
-    // state when red hazard authority survives motion correspondence.
+    // state when red hazard authority survives motion correspondence. This gate
+    // must use chromatic dominance rather than absolute red amplitude: temporal
+    // filtering can make a dim pixel remain fully saturated red while its sRGB R
+    // value falls below the detector's source-amplitude redThreshold.
     const float finalOutputGray = Luma(cur);
-    const float finalOutputIsolatedRed = saturate(
-        (cur.r - max(cur.g, cur.b) - redThreshold) /
-        max(1.0 - redThreshold, 0.01));
+    const float3 finalOutputLinear = SrgbToLinear(cur);
+    const float finalOutputLinearSum =
+        finalOutputLinear.r + finalOutputLinear.g + finalOutputLinear.b;
+    const float finalOutputRedRatio = finalOutputLinearSum > 0.0001 ?
+        finalOutputLinear.r / finalOutputLinearSum : 0.0;
     const float finalOutputRedDesat =
         smoothstep(0.04, 0.22, finalRedSafetyAuthority) *
-        smoothstep(0.05, 0.35, finalOutputIsolatedRed);
-    cur = lerp(cur, finalOutputGray.xxx, finalOutputRedDesat);
+        smoothstep(0.68, 0.80, finalOutputRedRatio);
+    const float3 finalOutputGraySrgb = LinearToSrgb(finalOutputGray.xxx);
+    cur = lerp(cur, finalOutputGraySrgb, finalOutputRedDesat);
 
     // Save filtered content color BEFORE debug/hotkey/shield-label overlays so
     // UI pixels never contaminate the temporal feedback state.
