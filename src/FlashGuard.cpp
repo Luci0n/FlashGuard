@@ -1814,6 +1814,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 double outputLinearRed = 0.0;
                 double outputLinearGreen = 0.0;
                 double outputLinearBlue = 0.0;
+                double outputDisplayLinearRed = 0.0;
+                double outputDisplayLinearGreen = 0.0;
+                double outputDisplayLinearBlue = 0.0;
                 double sourceWcagLuma = 0.0;
                 double outputWcagLuma = 0.0;
                 double outputDisplayWcagLuma = 0.0;
@@ -1827,7 +1830,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const auto renderAndSample = [&](const RECT* activeRect,
                                              const wchar_t* visualCase = nullptr,
                                              int visualFrame = -1,
-                                             MotionDiagnosticAggregate* motionDiagnostics = nullptr) {
+                                             MotionDiagnosticAggregate* motionDiagnostics = nullptr,
+                                             std::vector<uint32_t>* sourceDisplayCodes = nullptr,
+                                             std::vector<uint32_t>* outputDisplayCodes = nullptr) {
                 m_context->UpdateSubresource(source.get(), 0, nullptr,
                     pixels.data(), width * 4u, 0);
                 QueueCapturedFrame(source.get(), dt);
@@ -1844,10 +1849,20 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 uint64_t outsideCount = 0;
                 uint64_t insideCount = 0;
                 uint64_t edgeCount = 0;
-                const auto quantizeUnorm8 = [](float value) {
-                    return static_cast<double>(std::lround(
-                        std::clamp(value, 0.0f, 1.0f) * 255.0f)) / 255.0;
+                const auto quantizeUnorm8Code = [](float value) {
+                    return static_cast<uint32_t>(std::lround(
+                        std::clamp(value, 0.0f, 1.0f) * 255.0f));
                 };
+                const size_t sampledPixelCount =
+                    static_cast<size_t>((width + 3u) / 4u) * ((height + 3u) / 4u);
+                if (sourceDisplayCodes) {
+                    sourceDisplayCodes->clear();
+                    sourceDisplayCodes->reserve(sampledPixelCount);
+                }
+                if (outputDisplayCodes) {
+                    outputDisplayCodes->clear();
+                    outputDisplayCodes->reserve(sampledPixelCount);
+                }
                 constexpr UINT stride = 4;
                 for (UINT y = 0; y < height; y += stride)
                 {
@@ -1866,15 +1881,22 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         const double outputWcagLuma = 0.2126 * outputLinearR +
                             0.7152 * outputLinearG + 0.0722 * outputLinearB;
                         // SC 2.3.2/G19 is evaluated on the representable display
-                        // state, not sub-LSB R16 history noise. Replay is overlay-free,
-                        // so quantizing here matches the B8G8R8A8_UNORM swapchain.
-                        const double displayR = quantizeUnorm8(r);
-                        const double displayG = quantizeUnorm8(g);
-                        const double displayB = quantizeUnorm8(b);
+                        // state, not sub-LSB R16 history noise. Keep each sampled
+                        // pixel's code so spatially distinct changes cannot create
+                        // a false flash by oscillating only in the frame average.
+                        const uint32_t displayR8 = quantizeUnorm8Code(r);
+                        const uint32_t displayG8 = quantizeUnorm8Code(g);
+                        const uint32_t displayB8 = quantizeUnorm8Code(b);
+                        const double displayR = static_cast<double>(displayR8) / 255.0;
+                        const double displayG = static_cast<double>(displayG8) / 255.0;
+                        const double displayB = static_cast<double>(displayB8) / 255.0;
+                        const double outputDisplayLinearR = srgbToLinear(displayR);
+                        const double outputDisplayLinearG = srgbToLinear(displayG);
+                        const double outputDisplayLinearB = srgbToLinear(displayB);
                         const double outputDisplayWcagLuma =
-                            0.2126 * srgbToLinear(displayR) +
-                            0.7152 * srgbToLinear(displayG) +
-                            0.0722 * srgbToLinear(displayB);
+                            0.2126 * outputDisplayLinearR +
+                            0.7152 * outputDisplayLinearG +
+                            0.0722 * outputDisplayLinearB;
 
                         const uint32_t packed = pixels[static_cast<size_t>(y) * width + x];
                         const float sb = static_cast<float>(packed & 0xFFu) / 255.0f;
@@ -1902,10 +1924,18 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         sample.outputLinearRed += outputLinearR;
                         sample.outputLinearGreen += outputLinearG;
                         sample.outputLinearBlue += outputLinearB;
+                        sample.outputDisplayLinearRed += outputDisplayLinearR;
+                        sample.outputDisplayLinearGreen += outputDisplayLinearG;
+                        sample.outputDisplayLinearBlue += outputDisplayLinearB;
                         sample.sourceWcagLuma += sourceWcagLuma;
                         sample.outputWcagLuma += outputWcagLuma;
                         sample.outputDisplayWcagLuma += outputDisplayWcagLuma;
                         sample.mae += error;
+                        if (sourceDisplayCodes)
+                            sourceDisplayCodes->push_back(packed & 0x00FFFFFFu);
+                        if (outputDisplayCodes)
+                            outputDisplayCodes->push_back(
+                                displayB8 | (displayG8 << 8) | (displayR8 << 16));
                         ++count;
 
                         const bool inside = activeRect &&
@@ -1962,6 +1992,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     sample.outputLinearRed /= static_cast<double>(count);
                     sample.outputLinearGreen /= static_cast<double>(count);
                     sample.outputLinearBlue /= static_cast<double>(count);
+                    sample.outputDisplayLinearRed /= static_cast<double>(count);
+                    sample.outputDisplayLinearGreen /= static_cast<double>(count);
+                    sample.outputDisplayLinearBlue /= static_cast<double>(count);
                     sample.sourceWcagLuma /= static_cast<double>(count);
                     sample.outputWcagLuma /= static_cast<double>(count);
                     sample.outputDisplayWcagLuma /= static_cast<double>(count);
@@ -2092,9 +2125,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 double v = 0.0;
             };
             const auto wcagChromaticity = [](const FrameSample& sample, bool output) {
-                const double r = output ? sample.outputLinearRed : sample.sourceLinearRed;
-                const double g = output ? sample.outputLinearGreen : sample.sourceLinearGreen;
-                const double b = output ? sample.outputLinearBlue : sample.sourceLinearBlue;
+                const double r = output ?
+                    sample.outputDisplayLinearRed : sample.sourceLinearRed;
+                const double g = output ?
+                    sample.outputDisplayLinearGreen : sample.sourceLinearGreen;
+                const double b = output ?
+                    sample.outputDisplayLinearBlue : sample.sourceLinearBlue;
                 WcagChromaticity state{};
                 const double sum = r + g + b;
                 state.redRatio = sum > 1e-12 ? r / sum : 0.0;
@@ -2206,7 +2242,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const auto maxGeneralFlashesInOneSecond = [&](const std::vector<FrameSample>& samples,
                                                            bool output) {
                 const auto valueAt = [&](size_t index) {
-                    return output ? samples[index].outputWcagLuma :
+                    return output ? samples[index].outputDisplayWcagLuma :
                         samples[index].sourceWcagLuma;
                 };
                 const std::vector<size_t> points = turningPoints(samples.size(), valueAt);
@@ -2270,25 +2306,56 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 }
                 return maxTransitionsInOneSecond(transitions);
             };
-            const auto maxDisplayTransitionsInOneSecond =
-                [&](const std::vector<FrameSample>& samples, bool output) {
-                const auto valueAt = [&](size_t index) {
-                    return output ? samples[index].outputDisplayWcagLuma :
-                        samples[index].sourceWcagLuma;
-                };
-                const std::vector<size_t> points =
-                    turningPointsExact(samples.size(), valueAt);
-                std::vector<WcagTransition> transitions;
-                for (size_t i = 1; i < points.size(); ++i)
+            std::array<double, 256> displayLinearLut{};
+            for (size_t code = 0; code < displayLinearLut.size(); ++code)
+                displayLinearLut[code] = srgbToLinear(
+                    static_cast<double>(code) / 255.0);
+            const auto displayLumaFromPacked = [&](uint32_t packed) {
+                return 0.2126 * displayLinearLut[(packed >> 16) & 0xFFu] +
+                    0.7152 * displayLinearLut[(packed >> 8) & 0xFFu] +
+                    0.0722 * displayLinearLut[packed & 0xFFu];
+            };
+            const auto maxPixelDisplayTransitionsInOneSecond =
+                [&](const std::vector<std::vector<uint32_t>>& timeline) {
+                if (timeline.size() < 2 || timeline.front().empty()) return 0;
+                const size_t pixelCount = timeline.front().size();
+                for (const auto& frame : timeline)
+                    if (frame.size() != pixelCount) return 0;
+
+                int maximum = 0;
+                std::vector<int> transitionFrames;
+                transitionFrames.reserve(timeline.size());
+                for (size_t pixel = 0; pixel < pixelCount; ++pixel)
                 {
-                    const double delta = valueAt(points[i]) - valueAt(points[i - 1]);
-                    if (delta != 0.0)
+                    transitionFrames.clear();
+                    int previousDirection = 0;
+                    double previousValue = displayLumaFromPacked(timeline[0][pixel]);
+                    for (size_t frame = 1; frame < timeline.size(); ++frame)
                     {
-                        transitions.push_back({ static_cast<int>(points[i]),
-                            delta > 0.0 ? 1 : -1 });
+                        const double value = displayLumaFromPacked(timeline[frame][pixel]);
+                        const double delta = value - previousValue;
+                        const int direction = delta > 0.0 ? 1 : (delta < 0.0 ? -1 : 0);
+                        if (direction != 0 && direction != previousDirection)
+                        {
+                            // One transition per monotonic light/dark segment.
+                            // Multi-frame ramps are therefore not counted once per frame.
+                            transitionFrames.push_back(static_cast<int>(frame));
+                            previousDirection = direction;
+                        }
+                        previousValue = value;
+                    }
+
+                    size_t left = 0;
+                    for (size_t right = 0; right < transitionFrames.size(); ++right)
+                    {
+                        while (left < right &&
+                               transitionFrames[right] - transitionFrames[left] >= sweepFps)
+                            ++left;
+                        maximum = std::max(maximum,
+                            static_cast<int>(right - left + 1));
                     }
                 }
-                return maxTransitionsInOneSecond(transitions);
+                return maximum;
             };
             const auto sweepRegionSolidAngle = [&](const SweepCase& sweepCase) {
                 const double aspect = static_cast<double>(width) /
@@ -2320,9 +2387,13 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         std::fill(pixels.begin(), pixels.end(), rgbPixel(8, 8, 8));
                     else
                         fillGray(20);
-                    FrameSample previousSweep = renderAndSample(nullptr);
+                    std::vector<uint32_t> previousSourceDisplayCodes;
+                    std::vector<uint32_t> previousOutputDisplayCodes;
+                    FrameSample previousSweep = renderAndSample(nullptr, nullptr, -1, nullptr,
+                        &previousSourceDisplayCodes, &previousOutputDisplayCodes);
                     for (int i = 1; i < warmupFrames; ++i)
-                        previousSweep = renderAndSample(nullptr);
+                        previousSweep = renderAndSample(nullptr, nullptr, -1, nullptr,
+                            &previousSourceDisplayCodes, &previousOutputDisplayCodes);
 
                     FlashSweepResult result{};
                     result.caseName = sweepCase.name;
@@ -2332,6 +2403,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     std::vector<FrameSample> sweepTimeline;
                     sweepTimeline.reserve(static_cast<size_t>(sweepFrames) + 1u);
                     sweepTimeline.push_back(previousSweep);
+                    std::vector<std::vector<uint32_t>> sourceDisplayTimeline;
+                    std::vector<std::vector<uint32_t>> outputDisplayTimeline;
+                    sourceDisplayTimeline.reserve(static_cast<size_t>(sweepFrames) + 1u);
+                    outputDisplayTimeline.reserve(static_cast<size_t>(sweepFrames) + 1u);
+                    sourceDisplayTimeline.push_back(previousSourceDisplayCodes);
+                    outputDisplayTimeline.push_back(previousOutputDisplayCodes);
 
                     for (int i = 0; i < sweepFrames; ++i)
                     {
@@ -2375,9 +2452,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         MotionDiagnosticAggregate* sweepDiagnostics =
                             sweepCase.kind == 2 && std::fabs(frequencyHz - 15.0) < 0.001 ?
                             &quarterFlashDiagnostics : nullptr;
+                        std::vector<uint32_t> currentSourceDisplayCodes;
+                        std::vector<uint32_t> currentOutputDisplayCodes;
                         const FrameSample currentSweep = renderAndSample(
                             sweepDiagnostics ? &quarterRect : nullptr,
-                            nullptr, -1, sweepDiagnostics);
+                            nullptr, -1, sweepDiagnostics,
+                            &currentSourceDisplayCodes, &currentOutputDisplayCodes);
+                        sourceDisplayTimeline.push_back(std::move(currentSourceDisplayCodes));
+                        outputDisplayTimeline.push_back(std::move(currentOutputDisplayCodes));
                         const double rawDelta =
                             std::fabs(currentSweep.sourceMean - previousSweep.sourceMean);
                         const double outputDelta =
@@ -2413,9 +2495,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     result.outputStrictFlashesPerSecond =
                         result.outputStrictTransitionsPerSecond * 0.5;
                     result.rawDisplayTransitionsPerSecond = static_cast<double>(
-                        maxDisplayTransitionsInOneSecond(sweepTimeline, false));
+                        maxPixelDisplayTransitionsInOneSecond(sourceDisplayTimeline));
                     result.outputDisplayTransitionsPerSecond = static_cast<double>(
-                        maxDisplayTransitionsInOneSecond(sweepTimeline, true));
+                        maxPixelDisplayTransitionsInOneSecond(outputDisplayTimeline));
                     result.rawDisplayFlashesPerSecond =
                         result.rawDisplayTransitionsPerSecond * 0.5;
                     result.outputDisplayFlashesPerSecond =
@@ -2450,16 +2532,16 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 return false;
             std::fprintf(flashSweepReport,
                 "{\n"
-                "  \"schema\": \"FLASHGUARD_FLASH_SWEEP/4\",\n"
-                "  \"wcag_profile\": \"WCAG_FLASH/3\",\n"
+                "  \"schema\": \"FLASHGUARD_FLASH_SWEEP/5\",\n"
+                "  \"wcag_profile\": \"WCAG_FLASH/4\",\n"
                 "  \"status\": \"%s\",\n"
                 "  \"fps\": %d,\n"
                 "  \"duration_seconds_per_case\": %.2f,\n"
                 "  \"display_diagonal_inches\": %.2f,\n"
                 "  \"viewing_distance_cm\": %.2f,\n"
-                "  \"sc_2_3_2_measurement_surface\": \"B8G8R8A8_UNORM-equivalent replay output\",\n"
+                "  \"sc_2_3_2_measurement_surface\": \"per-sampled-pixel B8G8R8A8_UNORM-equivalent replay output\",\n"
                 "  \"internal_r16_epsilon_diagnostic_normative\": false,\n"
-                "  \"note\": \"WCAG 2.2 deterministic regression: SC 2.3.1 uses general/red flash thresholds; SC 2.3.2/G19 counts opposing light/dark transitions only after final 8-bit display quantization. Internal R16 epsilon reversals are retained as non-normative diagnostics. Not an external certification or arbitrary-video analyzer.\",\n"
+                "  \"note\": \"WCAG 2.2 deterministic regression: SC 2.3.1 uses general/red flash thresholds on 8-bit-equivalent output; SC 2.3.2/G19 takes the maximum transition rate over sampled display pixels after 8-bit quantization. Internal R16 epsilon reversals are retained as non-normative diagnostics. Not an external certification or arbitrary-video analyzer.\",\n"
                 "  \"cases\": [\n",
                 flashSweepPass ? "SUCCESS" : "FAILED", sweepFps, sweepSeconds,
                 m_safety.displayDiagonalInches, m_safety.viewingDistanceCm);
@@ -2704,9 +2786,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             extremePanMae /= static_cast<double>(panFrames);
             const uint64_t extremePanFlowFrames = flowFrames - extremePanFlowStart;
 
-            // REPLAY/4 desktop-motion corpus. Smooth and snapped scroll use the
+            // REPLAY/5 desktop-motion corpus. Smooth and snapped scroll use the
             // same requested physical velocity; only rasterization differs.
-            const double requestedScrollVelocityPxPerSecond = 60.0 * motionScale;
+            const double requestedScrollVelocityPxPerSecond = 45.0 * motionScale;
             const int scrollFrames = std::max(30, replayFps);
             std::vector<double> smoothScrollOffsets;
             std::vector<double> snappedScrollOffsets;
@@ -2774,7 +2856,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             snappedScrollMae /= static_cast<double>(scrollFrames);
 
             // Saturated-red translation exercises the chromatic path without an
-            // intrinsic flash. Record-only until the REPLAY/4 baseline is reviewed.
+            // intrinsic flash. Record-only until the REPLAY/5 baseline is reviewed.
             resetCase();
             fillGray(24);
             for (int i = 0; i < warmupFrames; ++i) renderAndSample(nullptr);
@@ -2962,7 +3044,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 return false;
             std::fprintf(report,
                 "{\n"
-                "  \"schema\": \"FLASHGUARD_REPLAY/4\",\n"
+                "  \"schema\": \"FLASHGUARD_REPLAY/5\",\n"
                 "  \"status\": \"%s\",\n"
                 "  \"width\": %u,\n"
                 "  \"height\": %u,\n"

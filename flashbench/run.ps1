@@ -20,7 +20,7 @@ $flashSweepPath = Join-Path $OutputDir 'flash-sweep.json'
 $visualDir = Join-Path $OutputDir 'visual'
 
 $summary = [ordered]@{
-    schema = 'FLASHBENCH/3'
+    schema = 'FLASHBENCH/4'
     mode = $Mode
     test_tier = $TestTier
     commit = $env:GITHUB_SHA

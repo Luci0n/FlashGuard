@@ -14,7 +14,7 @@ A release MSVC build verifies the Windows application compiles. `FlashGuard.exe 
 
 ### Synthetic replay
 
-`FLASHGUARD_REPLAY/4` feeds generated frames through the actual D3D11 analysis/safety/render path rather than a simplified CPU model. Current coverage includes:
+`FLASHGUARD_REPLAY/5` feeds generated frames through the actual D3D11 analysis/safety/render path rather than a simplified CPU model. Current coverage includes:
 
 - static gray control
 - 15 Hz full-screen dark/bright flash
@@ -32,7 +32,7 @@ Visual replay is available with `-VisualReplay`; sampled frames are rendered as 
 
 ### 5-30 Hz WCAG-oriented flash sweep
 
-`FLASHGUARD_FLASH_SWEEP/4` runs the same 24 deterministic two-second cases at 60 FPS and evaluates them through `WCAG_FLASH/3`.
+`FLASHGUARD_FLASH_SWEEP/5` runs the same 24 deterministic two-second cases at 60 FPS and evaluates them through `WCAG_FLASH/4`.
 
 Frequencies:
 
@@ -52,9 +52,11 @@ Each generated square wave uses a 50% phase duty cycle. The evaluator reduces ea
 
 General flashes use WCAG 2.2 relative luminance from linearized sRGB: an endpoint-to-endpoint change of at least `0.10` with the darker endpoint below `0.80`. Saturated-red flashes use linear RGB converted through CIE XYZ to CIE 1976 UCS; a transition qualifies when either endpoint has `R/(R+G+B) >= 0.8` and the u-prime/v-prime distance is greater than `0.2`.
 
-The synthetic rectangle's solid angle is calculated from the configured display diagonal and viewing distance. SC 2.3.1 keeps the general/red threshold and `0.006` steradian area branches.
+The synthetic rectangle's solid angle is calculated from the configured display diagonal and viewing distance. SC 2.3.1 keeps the general/red threshold and `0.006` steradian area branches. Output color is evaluated after B8G8R8A8_UNORM-equivalent quantization.
 
-SC 2.3.2 uses the simpler G19-style transition rule on the representable replay output. Each sampled output RGB value is first quantized to the same 8-bit UNORM channel precision used by FlashGuard's `B8G8R8A8_UNORM` swapchain, then the evaluator counts light/dark direction changes between temporal extrema. Seven transitions are 3.5 flashes, so more than six transitions in any one-second window fails. This branch has no brightness or area exemption. The historical R16 `1e-7` reversal count is still reported, but it is explicitly non-normative and cannot fail the suite.
+SC 2.3.2 uses the simpler G19-style transition rule on the representable replay output. Each sampled output pixel is tracked independently after 8-bit UNORM quantization; the reported rate is the maximum over the sampled spatial lattice. This avoids treating unrelated pixels that change at different moments as a flashing component merely because their frame-average luminance reverses. Seven transitions are 3.5 flashes, so more than six transitions in any one-second window fails. The historical R16 `1e-7` frame-average reversal count is still reported, but it is explicitly non-normative and cannot fail the suite.
+
+The G19 branch is deterministic regression evidence for the declared synthetic corpus, not a full-resolution arbitrary-video conformance analyzer. The replay output sampler currently uses a 4-pixel spatial stride for frame metrics.
 
 The current regression pass condition is:
 
