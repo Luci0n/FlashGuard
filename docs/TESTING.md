@@ -43,7 +43,11 @@ Reported metrics include static MAE, flash modulation reduction, legacy whole-ba
 1. screen all 27 independent profile/full/small sensitivity combinations at 320x180 and 30 FPS with shorter cases and an 8-pixel general metric stride
 2. on full runs, rerun only the screening winner and production default at canonical 640x360 and 60 FPS
 
-Candidate selection first requires the available WCAG cases to pass, then retains the Pareto frontier across flash attenuation, moving-flash attenuation, vacated-trail p99/peak, small-object trail p99, pan MAE, and static MAE. A worst relative regression against the production default is used only to choose among Pareto candidates; the old weighted magic score is not used.
+`FLASHGUARD_SCREENING_PROBES/3` adds four cheap threshold probes near the configured full-screen and small-source sensitivity boundaries. The full-screen probes disable competing compact/coherent/pattern paths so the global-delta threshold is the discriminating gate; the small-source probes disable broad/global paths. The 3x redundant irrelevant-axis combinations are also a consistency check.
+
+The matrix emits `screening_probe_contract`. Probe data is rankable only when every candidate produced the v3 schema, full-probe values remain invariant across the small-sensitivity axis, small-probe values remain invariant across the full-sensitivity axis, and both probe families show the expected threshold ordering. A failed probe contract keeps the raw diagnostics but removes probe values from selection automatically.
+
+Candidate selection first requires a valid replay, then retains the Pareto frontier across flash attenuation, moving-flash attenuation, vacated-trail p99/peak, small-object trail p99, pan MAE, static MAE, low-contrast perceptual behavior, and contract-valid screening probes when available. A worst relative regression against the production default is used only to choose among Pareto candidates; the old weighted magic score is not used.
 
 Visual replay is available with `-VisualReplay`; sampled frames are rendered as `SOURCE | FILTERED | 6x AMPLIFIED DIFFERENCE` and indexed by an HTML viewer.
 
