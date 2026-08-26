@@ -1,0 +1,42 @@
+{
+  "schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-26_d8320909_flashbench-v6-calibration",
+  "tested_commit": "d83209096b846bd05b55193f0cd473eb350f8249",
+  "software_version": "0.3.0-alpha.1",
+  "timestamp_utc": "2026-08-26T13:18:12Z",
+  "ci_run_id": 32970608954,
+  "ci_artifact_id": 9608462199,
+  "ci_artifact_sha256": "473f98a6e26dc653da0048b312c58e010c0704abfb11e424d274ef5ad20efb35",
+  "result": "SUCCESS",
+  "intervention": "FlashBench v6 testing-only calibration: persistent multi-configuration replay session, 27-configuration screen, full-pixel vacated-region trail metrics, low-contrast perceptual flash sweep, and Pareto candidate selection.",
+  "quantitative_observation": {
+    "legacy_moving_square_ghost_mae": 0.0002617,
+    "moving_square_vacated_mean_mae": 0.22703953,
+    "moving_square_vacated_p99_max": 0.82726907,
+    "moving_square_vacated_peak": 0.82726907,
+    "moving_square_vacated_area_above_0_05_max": 0.5546875,
+    "moving_square_clear_to_0_05_ms": 83.333,
+    "small_moving_square_vacated_p99_max": 0.30553767,
+    "moving_flash_reduction": 0.29151457,
+    "perceptual_sweep_min_reduction": -0.01165778,
+    "perceptual_sweep_max_output_delta": 0.12573242,
+    "matrix_candidate_count": 27,
+    "matrix_screen_elapsed_ms": 664756,
+    "matrix_selected": "profile_1_full_0_small_0"
+  },
+  "qualitative_observation": "New perceptual metrics validate the manual report that visible trailing was hidden by whole-background MAE. The current filter remains unsuitable as a behavioral baseline: vacated pixels can retain very large residuals for multiple frames, moving-flash attenuation remains weak, and low-contrast static flashing is barely attenuated in parts of the calibration sweep.",
+  "raw_file_sha256": {
+    "artifact.zip": "473f98a6e26dc653da0048b312c58e010c0704abfb11e424d274ef5ad20efb35",
+    "flash-sweep.json": "3059c0f396fdb98482a0c651af03980501e5bb731cee7d94f7365c8956d76cb9",
+    "matrix/matrix.json": "eff3e8f35fadfdbd00bf028d67e9d20e260682ea92c8307c97928638e3dcb0be",
+    "matrix/screen-batch.json": "1f0658b9b6bd1ed49d45dd4b30fbf228132c9b21f301fd20ec4b42a33b23ee14",
+    "motion-diagnostics.json": "e39b540aaa27a8ea8fef6d394e449724ef78bde9c88e14de5706804573e52726",
+    "motion-realization.json": "ddb0838b040af1e13e22b65699bd4952c782592f919e181c90de0a57bc8040ae",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "perceptual-sweep.json": "f3c96f3bdb083daaf7002bba9d98fe5433b6b9243f082e0957b97ced8fe31061",
+    "red-flash-trace-15hz.json": "0a96377010bac9d3df15eb41139bbfeb4e321b09dd326988c76bce12fcc63547",
+    "summary.json": "09696be08290fa45690659d6f20135c172fc2f472e4af34baa4f5d3cad63697e",
+    "synthetic-replay.json": "8372f6e139503bb52b5c7b13f45eaf3e35e9127f57c9e6a00bfb1198fcf4b94c",
+    "trail-metrics.json": "b3d9ec0c935368e02c435596461524e8950b11c339a6937dcba21050215836ec"
+  }
+}
