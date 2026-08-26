@@ -1,6 +1,8 @@
 param(
     [ValidateSet('compile', 'gpu-smoke')]
     [string]$Mode = 'compile',
+    [ValidateSet('quick', 'targeted', 'full')]
+    [string]$TestTier = 'targeted',
     [string]$OutputDir = 'flashbench/results',
     [switch]$VisualReplay,
     [switch]$TuneMatrix
@@ -20,6 +22,7 @@ $visualDir = Join-Path $OutputDir 'visual'
 $summary = [ordered]@{
     schema = 'FLASHBENCH/2'
     mode = $Mode
+    test_tier = $TestTier
     commit = $env:GITHUB_SHA
     machine = $env:COMPUTERNAME
     os = [Environment]::OSVersion.VersionString
@@ -67,6 +70,7 @@ if (-not $summary.commit) {
 
 try {
     "FlashBench mode: $Mode" | Set-Content -Encoding utf8 $logPath
+    "Test tier: $TestTier" | Add-Content -Encoding utf8 $logPath
     "Commit: $($summary.commit)" | Add-Content -Encoding utf8 $logPath
 
     $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -137,6 +141,13 @@ try {
         $summary.nvof_execute_status = 'SUCCESS'
         $summary.nvof_runtime_present = $true
 
+        if ($TestTier -eq 'quick') {
+            $summary.replay_status = 'SKIPPED'
+            $summary.flash_sweep_status = 'SKIPPED'
+            $summary.status = 'SUCCESS'
+            return
+        }
+
         Remove-Item $replayReportPath -ErrorAction SilentlyContinue
         if ($VisualReplay) {
             Remove-Item $visualDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -193,7 +204,7 @@ try {
                 Write-Host $table
             }
         }
-        if ($TuneMatrix) {
+        if ($TuneMatrix -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
             & (Join-Path $PSScriptRoot 'matrix-v2.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `

@@ -4638,15 +4638,22 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             m_outputHistoryValid = true;
             m_sourceHistoryIndex = sourceHistoryWriteIndex;
             m_sourceHistoryValid = true;
-            // Desktop Duplication already paces capture to desktop updates. Queue
-            // this frame immediately but do not discard it: DO_NOT_WAIT produced
-            // visible motion judder whenever the compositor was briefly busy.
-            const auto presentStart = std::chrono::steady_clock::now();
-            const HRESULT presentHr = m_swapChain->Present(0, 0);
-            m_presentCallMs.store(std::chrono::duration<float, std::milli>(
-                std::chrono::steady_clock::now() - presentStart).count(),
-                std::memory_order_release);
-            ThrowIfFailed(presentHr);
+            if (!m_replayMode)
+            {
+                // Desktop Duplication already paces capture to desktop updates. Queue
+                // this frame immediately but do not discard it: DO_NOT_WAIT produced
+                // visible motion judder whenever the compositor was briefly busy.
+                const auto presentStart = std::chrono::steady_clock::now();
+                const HRESULT presentHr = m_swapChain->Present(0, 0);
+                m_presentCallMs.store(std::chrono::duration<float, std::milli>(
+                    std::chrono::steady_clock::now() - presentStart).count(),
+                    std::memory_order_release);
+                ThrowIfFailed(presentHr);
+            }
+            else
+            {
+                m_presentCallMs.store(0.0f, std::memory_order_release);
+            }
         }
 
         void QueueCapturedFrame(ID3D11Texture2D* source, float dt)
@@ -4792,7 +4799,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_context->ClearRenderTargetView(m_motionDiagnosticRTV.get(), historyBlack);
             m_outputHistoryValid = false;
             m_sourceHistoryValid = false;
-            if (m_swapChain) m_swapChain->Present(1, 0);
+            if (m_swapChain && !m_replayMode) m_swapChain->Present(1, 0);
         }
 
         void RenderShieldStep()

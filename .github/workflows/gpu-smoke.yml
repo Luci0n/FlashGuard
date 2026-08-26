@@ -5,11 +5,15 @@ on:
     branches: [test]
   workflow_dispatch:
     inputs:
-      full_matrix:
-        description: Run the exhaustive tuning/FPS/motion matrix
+      test_tier:
+        description: Replay scope
         required: true
-        default: false
-        type: boolean
+        default: targeted
+        type: choice
+        options:
+          - quick
+          - targeted
+          - full
 
 concurrency:
   group: flashguard-gpu-test
@@ -30,15 +34,13 @@ jobs:
         continue-on-error: true
         shell: powershell
         env:
-          FULL_MATRIX: ${{ github.event_name == 'workflow_dispatch' && inputs.full_matrix }}
+          TEST_TIER: ${{ github.event_name == 'workflow_dispatch' && inputs.test_tier || 'targeted' }}
         run: |
           $arguments = @(
             '-Mode', 'gpu-smoke',
+            '-TestTier', $env:TEST_TIER,
             '-OutputDir', 'flashbench/results'
           )
-          if ($env:FULL_MATRIX -eq 'true') {
-            $arguments += '-TuneMatrix'
-          }
           & .\flashbench\run.ps1 @arguments
           exit $LASTEXITCODE
       - name: Upload GPU smoke report
