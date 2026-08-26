@@ -2,6 +2,16 @@
 
 All notable public changes are documented here. FlashGuard follows Semantic Versioning for software releases. Test protocols and archived experiment runs are versioned independently; see `docs/VERSIONING.md`.
 
+## [0.2.0-alpha.2] - 2026-08-25
+
+First behavioral experiment in the 0.2 development line.
+
+### Fixed
+
+- Repeated-flash risk accumulation is now integrated as a continuous per-second rate through the existing 0.55 s exponential decay, instead of adding the full event boost once per rendered frame.
+- Direction-reversal risk remains a discrete impulse, so higher refresh rates no longer weaken or multiply the reversal contribution.
+- Added a deterministic 30/60/120/240 Hz risk-integrator invariance check to FlashBench validation.
+
 ## [0.2.0-alpha.1] - 2026-08-25
 
 Current experimental development line. This version starts from the `05c2f09925b52beadc26c75604906a320b8bd671` implementation state and is not a claim that its current GPU replay passes.

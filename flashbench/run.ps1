@@ -30,6 +30,8 @@ $summary = [ordered]@{
     build_ms = 0
     shader_validation_status = 'NOT_RUN'
     shader_validation_ms = 0
+    risk_integrator_validation_status = 'NOT_RUN'
+    risk_integrator_validation_ms = 0
     nvof_smoke_build_status = 'NOT_RUN'
     nvof_execute_status = 'NOT_RUN'
     nvof_grid = $null
@@ -99,6 +101,16 @@ try {
         throw "embedded HLSL validation failed with exit code $shaderExit"
     }
     $summary.shader_validation_status = 'SUCCESS'
+
+    $sw.Restart()
+    & .\FlashGuard.exe --validate-risk-integrator
+    $riskIntegratorExit = $LASTEXITCODE
+    $sw.Stop()
+    $summary.risk_integrator_validation_ms = $sw.ElapsedMilliseconds
+    if ($riskIntegratorExit -ne 0) {
+        throw "risk integrator invariance validation failed with exit code $riskIntegratorExit"
+    }
+    $summary.risk_integrator_validation_status = 'SUCCESS'
 
     if ($Mode -eq 'gpu-smoke') {
         $smi = Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue

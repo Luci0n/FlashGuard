@@ -1134,9 +1134,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
     float anchorL = temporalHistory.r;
     // Flash memory bridges real repetitive reversals, but current-event/source
     // separation below prevents that memory from ghosting unrelated motion.
-    // Exponential decay makes the memory lifetime invariant from 30 through
-    // 240 FPS instead of accumulating small linear-step differences.
-    float riskEnergy = saturate(temporalHistory.g * exp(-dt / 0.55));
+    // Decay and sustained-event accumulation are both integrated in seconds.
+    // This prevents a 120/240 Hz stream from adding the same event energy two or
+    // four times as often as 60 Hz while preserving the existing decay lifetime.
+    const float riskDecayTau = 0.55;
+    const float riskDecay = exp(-dt / riskDecayTau);
+    float riskEnergy = saturate(temporalHistory.g * riskDecay);
     const float previousDirection = temporalHistory.b;
     float transitionAge = temporalHistory.a + dt;
     const bool meaningfulMotion = absDelta >= 0.002;
@@ -1172,10 +1175,16 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
     if (transitionEvent)
     {
-        float eventBoost = 0.24 + 0.44 * transitionStrength;
+        // The old boost was tuned as a 60 Hz per-frame increment. Treat it as a
+        // continuous rate and integrate it analytically through the same decay,
+        // so an equal wall-clock event produces the same memory at every FPS.
+        const float eventRate =
+            (0.24 + 0.44 * transitionStrength) * 60.0;
+        riskEnergy += eventRate * riskDecayTau * (1.0 - riskDecay);
+        // A direction reversal is a discrete physical event, not a rate.
         if (directionReversal && temporalHistory.g >= 0.10)
-            eventBoost += 0.36;
-        riskEnergy = saturate(riskEnergy + eventBoost);
+            riskEnergy += 0.36;
+        riskEnergy = saturate(riskEnergy);
     }
 
     // Repetitive flashes become progressively harder to pass. The risk energy
@@ -1261,6 +1270,58 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         CloseHandle(file);
                     }
                 }
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool ValidateRiskIntegrator()
+    {
+        // Two identical 1/30 s event windows separated by 4/30 s. The second
+        // begins with one discrete reversal impulse. All boundaries land exactly
+        // on frame boundaries at 30, 60, 120, and 240 Hz, so dt is the only
+        // variable and the final energy should be invariant.
+        const auto simulate = [](int fps) {
+            constexpr double tau = 0.55;
+            constexpr double rate = 0.24 * 60.0;
+            double risk = 0.0;
+            const double dt = 1.0 / static_cast<double>(fps);
+            const int frameCount = fps;
+            const int firstWindowFrames = fps / 30;
+            const int secondWindowStart = fps * 5 / 30;
+            const int secondWindowEnd = fps * 6 / 30;
+
+            for (int frame = 0; frame < frameCount; ++frame)
+            {
+                const double previousRisk = risk;
+                const double decay = std::exp(-dt / tau);
+                risk = previousRisk * decay;
+                const bool event =
+                    frame < firstWindowFrames ||
+                    (frame >= secondWindowStart && frame < secondWindowEnd);
+                if (event)
+                {
+                    risk += rate * tau * (1.0 - decay);
+                    const bool reversal = frame == secondWindowStart;
+                    if (reversal && previousRisk >= 0.10)
+                        risk += 0.36;
+                    risk = std::clamp(risk, 0.0, 1.0);
+                }
+            }
+            return risk;
+        };
+
+        const double baseline = simulate(60);
+        constexpr std::array<int, 4> frameRates{ 30, 60, 120, 240 };
+        for (const int fps : frameRates)
+        {
+            const double result = simulate(fps);
+            if (!std::isfinite(result) || std::fabs(result - baseline) > 1e-6)
+            {
+                std::fprintf(stderr,
+                    "risk integrator invariance failed at %d Hz: %.9f vs %.9f\n",
+                    fps, result, baseline);
                 return false;
             }
         }
@@ -6078,6 +6139,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         InitCommonControlsEx(&controls);
         if (HasCommandLineFlag(L"--validate-shaders"))
             return ValidateShaderSource() ? 0 : 2;
+        if (HasCommandLineFlag(L"--validate-risk-integrator"))
+            return ValidateRiskIntegrator() ? 0 : 9;
 
         const std::wstring replayReport = ParseArgumentValue(L"--synthetic-replay");
         const std::wstring replayVisualDir =
