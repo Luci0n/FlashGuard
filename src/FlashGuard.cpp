@@ -519,13 +519,17 @@ struct MainOutput
     float4 color : SV_TARGET0;
     float4 historyColor : SV_TARGET1;
     float4 sourceHistoryColor : SV_TARGET2;
-    float4 motionDiagnostics : SV_TARGET3;
+    float4 motionDiagnostics0 : SV_TARGET3;
+    float4 motionDiagnostics1 : SV_TARGET4;
+    float4 motionDiagnostics2 : SV_TARGET5;
 };
 
 MainOutput PSMain(VSOut i)
 {
     MainOutput output;
-    output.motionDiagnostics = float4(0.0, 0.0, 0.0, 0.0);
+    output.motionDiagnostics0 = float4(0.0, 0.0, 0.0, 0.0);
+    output.motionDiagnostics1 = float4(0.0, 0.0, 0.0, 0.0);
+    output.motionDiagnostics2 = float4(0.0, 0.0, 0.0, 0.0);
     float3 cur = CurrentFrame.Sample(LinearClamp, i.uv).rgb;
     // Keep a raw, unfiltered source history specifically for motion matching.
     // Candidate/output histories may intentionally lag during protection, so
@@ -819,22 +823,19 @@ R"HLSL(
         if (stationaryCurrentHoldAuthorization > 0.72)
             temporalMask = 1.0;
 
-        // Synthetic replay binds SV_TARGET3 and decodes these interleaved groups.
-        // Production rendering leaves the target unbound, so diagnostics cannot
-        // affect the displayed image or either temporal history.
-        const uint motionDiagnosticGroup = ((uint)i.pos.x) % 3u;
-        if (motionDiagnosticGroup == 0u)
-            output.motionDiagnostics = float4(
-                diagGlobalFlowGate, diagCurrentSurfaceGate,
-                diagVacatedGate, diagInfillGate);
-        else if (motionDiagnosticGroup == 1u)
-            output.motionDiagnostics = float4(
-                diagPortableGate, hardwareMotionGate,
-                effectiveMotionGate, repeatedRisk);
-        else
-            output.motionDiagnostics = float4(
-                verifiedFlashOverride, coarseMotionGate,
-                cpuCameraMotionGate, temporalMask);
+        // Replay binds three full-resolution diagnostic MRTs. Production binds
+        // only the display/history targets, so these outputs are discarded there.
+        // Keeping every metric at every pixel avoids the old x%3 + stride-4
+        // phase locking that badly undersampled small moving objects.
+        output.motionDiagnostics0 = float4(
+            diagGlobalFlowGate, diagCurrentSurfaceGate,
+            diagVacatedGate, diagInfillGate);
+        output.motionDiagnostics1 = float4(
+            diagPortableGate, hardwareMotionGate,
+            effectiveMotionGate, repeatedRisk);
+        output.motionDiagnostics2 = float4(
+            verifiedFlashOverride, coarseMotionGate,
+            cpuCameraMotionGate, temporalMask);
 
         if (temporalMask > 0.001)
         {
@@ -1384,24 +1385,31 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             ThrowIfFailed(m_device->CreateTexture2D(
                 &staging, nullptr, m_replayReadback.put()));
 
-            // One replay-only MRT carries motion-decision evidence. Three metric
-            // groups are interleaved by pixel X in the shader, avoiding three
-            // additional full-resolution render targets/readbacks.
+            // Replay-only full-resolution diagnostic planes. Spatial coverage is
+            // more important than replay render-target bandwidth: each of the 12
+            // decision metrics now exists at every output pixel.
             D3D11_TEXTURE2D_DESC diagnostic{};
             m_outputHistoryTextures[0]->GetDesc(&diagnostic);
             diagnostic.Usage = D3D11_USAGE_DEFAULT;
             diagnostic.BindFlags = D3D11_BIND_RENDER_TARGET;
             diagnostic.CPUAccessFlags = 0;
             diagnostic.MiscFlags = 0;
-            ThrowIfFailed(m_device->CreateTexture2D(
-                &diagnostic, nullptr, m_motionDiagnosticTexture.put()));
-            ThrowIfFailed(m_device->CreateRenderTargetView(
-                m_motionDiagnosticTexture.get(), nullptr, m_motionDiagnosticRTV.put()));
+            for (size_t group = 0; group < m_motionDiagnosticTextures.size(); ++group)
+            {
+                ThrowIfFailed(m_device->CreateTexture2D(
+                    &diagnostic, nullptr, m_motionDiagnosticTextures[group].put()));
+                ThrowIfFailed(m_device->CreateRenderTargetView(
+                    m_motionDiagnosticTextures[group].get(), nullptr,
+                    m_motionDiagnosticRTVs[group].put()));
+            }
             diagnostic.Usage = D3D11_USAGE_STAGING;
             diagnostic.BindFlags = 0;
             diagnostic.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-            ThrowIfFailed(m_device->CreateTexture2D(
-                &diagnostic, nullptr, m_motionDiagnosticReadback.put()));
+            for (size_t group = 0; group < m_motionDiagnosticReadbacks.size(); ++group)
+            {
+                ThrowIfFailed(m_device->CreateTexture2D(
+                    &diagnostic, nullptr, m_motionDiagnosticReadbacks[group].put()));
+            }
         }
 
         bool RunSyntheticReplay(const std::wstring& reportPath,
@@ -1410,7 +1418,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                                 float motionScale = 1.0f)
         {
             if (!m_replayMode || !m_device || !m_context || !m_replayReadback ||
-                !m_motionDiagnosticTexture || !m_motionDiagnosticReadback ||
+                !m_motionDiagnosticTextures[0] || !m_motionDiagnosticReadbacks[0] ||
                 m_outputWidth == 0 || m_outputHeight == 0)
                 return false;
 
@@ -1425,6 +1433,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const UINT width = m_outputWidth;
             const UINT height = m_outputHeight;
             std::vector<uint32_t> pixels(static_cast<size_t>(width) * height);
+            std::vector<uint32_t> previousDiagnosticSource(pixels.size());
+            bool previousDiagnosticSourceValid = false;
+            const int diagnosticSampleInterval = std::max(1, replayFps / 30);
+            uint64_t diagnosticRequestCount = 0;
             const bool writeVisuals = !visualDir.empty();
             if (writeVisuals)
             {
@@ -1490,6 +1502,93 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         uint8_t value = (((sx / 16u) ^ (y / 16u)) & 1u) ? 210u : 42u;
                         if (((sx / 7u) + (y / 11u)) % 9u == 0u) value = 126u;
                         pixels[static_cast<size_t>(y) * width + x] = grayPixel(value);
+                    }
+                }
+            };
+
+            // Render a real small-font desktop-text surface once, then translate
+            // that raster either smoothly at fractional-pixel offsets or through
+            // integer snapping. This separates optical-flow behavior from the
+            // artificial move/stall cadence caused by lround() in older cases.
+            std::vector<uint32_t> textPage(pixels.size(), grayPixel(244));
+            {
+                BITMAPINFO bmi{};
+                bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+                bmi.bmiHeader.biWidth = static_cast<LONG>(width);
+                bmi.bmiHeader.biHeight = -static_cast<LONG>(height);
+                bmi.bmiHeader.biPlanes = 1;
+                bmi.bmiHeader.biBitCount = 32;
+                bmi.bmiHeader.biCompression = BI_RGB;
+                void* bits = nullptr;
+                HDC dc = CreateCompatibleDC(nullptr);
+                HBITMAP bitmap = dc ? CreateDIBSection(
+                    dc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0) : nullptr;
+                if (dc && bitmap && bits)
+                {
+                    HGDIOBJ oldBitmap = SelectObject(dc, bitmap);
+                    RECT page{ 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
+                    HBRUSH background = CreateSolidBrush(RGB(244, 244, 244));
+                    FillRect(dc, &page, background);
+                    DeleteObject(background);
+                    HFONT font = CreateFontW(-18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                        CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
+                    HGDIOBJ oldFont = SelectObject(dc, font);
+                    SetBkMode(dc, TRANSPARENT);
+                    SetTextColor(dc, RGB(22, 22, 22));
+                    RECT textRect{ 18, 8, static_cast<LONG>(width) - 18,
+                        static_cast<LONG>(height) - 8 };
+                    DrawTextW(dc,
+                        L"FlashGuard scrolling text regression\r\n"
+                        L"small glyph edges should remain crisp while moving\r\n"
+                        L"0123456789  ABCDEFGHIJKLMNOPQRSTUVWXYZ\r\n"
+                        L"motion motion motion  contrast contrast contrast\r\n"
+                        L"The quick brown fox jumps over the lazy dog.\r\n"
+                        L"scroll stop recovery must not wait for cursor motion.",
+                        -1, &textRect, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+                    memcpy(textPage.data(), bits, textPage.size() * sizeof(uint32_t));
+                    for (uint32_t& pixel : textPage) pixel |= 0xFF000000u;
+                    SelectObject(dc, oldFont);
+                    SelectObject(dc, oldBitmap);
+                    DeleteObject(font);
+                    DeleteObject(bitmap);
+                    DeleteDC(dc);
+                }
+                else
+                {
+                    if (bitmap) DeleteObject(bitmap);
+                    if (dc) DeleteDC(dc);
+                }
+            }
+            const auto lerpPackedPixel = [](uint32_t a, uint32_t b, double t) {
+                uint32_t result = 0xFF000000u;
+                for (int shift : { 0, 8, 16 })
+                {
+                    const double av = static_cast<double>((a >> shift) & 0xFFu);
+                    const double bv = static_cast<double>((b >> shift) & 0xFFu);
+                    const uint32_t value = static_cast<uint32_t>(std::lround(
+                        av + (bv - av) * std::clamp(t, 0.0, 1.0)));
+                    result |= std::min(value, 255u) << shift;
+                }
+                return result;
+            };
+            const auto fillTextScroll = [&](double offsetPixels, bool smooth) {
+                double wrapped = std::fmod(offsetPixels, static_cast<double>(height));
+                if (wrapped < 0.0) wrapped += static_cast<double>(height);
+                const int base = smooth ? static_cast<int>(std::floor(wrapped)) :
+                    static_cast<int>(std::lround(wrapped)) % static_cast<int>(height);
+                const double fraction = smooth ? wrapped - std::floor(wrapped) : 0.0;
+                for (UINT y = 0; y < height; ++y)
+                {
+                    const UINT sy0 = static_cast<UINT>((base + static_cast<int>(y)) %
+                        static_cast<int>(height));
+                    const UINT sy1 = (sy0 + 1u) % height;
+                    for (UINT x = 0; x < width; ++x)
+                    {
+                        const uint32_t a = textPage[static_cast<size_t>(sy0) * width + x];
+                        const uint32_t b = textPage[static_cast<size_t>(sy1) * width + x];
+                        pixels[static_cast<size_t>(y) * width + x] =
+                            smooth ? lerpPackedPixel(a, b, fraction) : a;
                     }
                 }
             };
@@ -1614,62 +1713,89 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 std::array<double, 12> outsideMaximum{};
                 std::array<uint64_t, 12> outsideActive{};
                 std::array<uint64_t, 12> outsideCount{};
+                std::array<double, 12> changedSum{};
+                std::array<double, 12> changedMaximum{};
+                std::array<uint64_t, 12> changedActive{};
+                std::array<uint64_t, 12> changedCount{};
             };
 
             const auto collectMotionDiagnostics =
                 [&](MotionDiagnosticAggregate& aggregate, const RECT* activeRect)
             {
-                m_context->CopyResource(
-                    m_motionDiagnosticReadback.get(), m_motionDiagnosticTexture.get());
-                D3D11_MAPPED_SUBRESOURCE mapped{};
-                ThrowIfFailed(m_context->Map(
-                    m_motionDiagnosticReadback.get(), 0, D3D11_MAP_READ, 0, &mapped));
-                constexpr UINT stride = 4;
-                for (UINT y = 0; y < height; y += stride)
+                if (!previousDiagnosticSourceValid) return;
+                for (size_t group = 0; group < m_motionDiagnosticTextures.size(); ++group)
                 {
-                    const auto* row = reinterpret_cast<const uint16_t*>(
-                        static_cast<const uint8_t*>(mapped.pData) +
-                        static_cast<size_t>(y) * mapped.RowPitch);
-                    for (UINT x = 0; x < width; x += stride)
+                    m_context->CopyResource(
+                        m_motionDiagnosticReadbacks[group].get(),
+                        m_motionDiagnosticTextures[group].get());
+                    D3D11_MAPPED_SUBRESOURCE mapped{};
+                    ThrowIfFailed(m_context->Map(
+                        m_motionDiagnosticReadbacks[group].get(), 0,
+                        D3D11_MAP_READ, 0, &mapped));
+                    for (UINT y = 0; y < height; ++y)
                     {
-                        const size_t group = static_cast<size_t>(x % 3u);
-                        const bool inside = activeRect &&
-                            static_cast<LONG>(x) >= activeRect->left &&
-                            static_cast<LONG>(x) < activeRect->right &&
-                            static_cast<LONG>(y) >= activeRect->top &&
-                            static_cast<LONG>(y) < activeRect->bottom;
-                        for (size_t channel = 0; channel < 4; ++channel)
+                        const auto* row = reinterpret_cast<const uint16_t*>(
+                            static_cast<const uint8_t*>(mapped.pData) +
+                            static_cast<size_t>(y) * mapped.RowPitch);
+                        for (UINT x = 0; x < width; ++x)
                         {
-                            const size_t metric = group * 4 + channel;
-                            const double value = std::clamp(
-                                static_cast<double>(halfToFloat(
-                                    row[static_cast<size_t>(x) * 4 + channel])),
-                                0.0, 1.0);
-                            aggregate.sum[metric] += value;
-                            aggregate.maximum[metric] =
-                                std::max(aggregate.maximum[metric], value);
-                            aggregate.active[metric] += value > 0.5 ? 1u : 0u;
-                            ++aggregate.count[metric];
-                            if (inside)
+                            const size_t pixelIndex = static_cast<size_t>(y) * width + x;
+                            const uint32_t currentPacked = pixels[pixelIndex];
+                            const uint32_t previousPacked = previousDiagnosticSource[pixelIndex];
+                            const int sourceRgbDelta =
+                                std::abs(static_cast<int>(currentPacked & 0xFFu) -
+                                    static_cast<int>(previousPacked & 0xFFu)) +
+                                std::abs(static_cast<int>((currentPacked >> 8) & 0xFFu) -
+                                    static_cast<int>((previousPacked >> 8) & 0xFFu)) +
+                                std::abs(static_cast<int>((currentPacked >> 16) & 0xFFu) -
+                                    static_cast<int>((previousPacked >> 16) & 0xFFu));
+                            const bool changed = sourceRgbDelta >= 12;
+                            const bool inside = activeRect &&
+                                static_cast<LONG>(x) >= activeRect->left &&
+                                static_cast<LONG>(x) < activeRect->right &&
+                                static_cast<LONG>(y) >= activeRect->top &&
+                                static_cast<LONG>(y) < activeRect->bottom;
+                            for (size_t channel = 0; channel < 4; ++channel)
                             {
-                                aggregate.insideSum[metric] += value;
-                                aggregate.insideMaximum[metric] =
-                                    std::max(aggregate.insideMaximum[metric], value);
-                                aggregate.insideActive[metric] += value > 0.5 ? 1u : 0u;
-                                ++aggregate.insideCount[metric];
-                            }
-                            else
-                            {
-                                aggregate.outsideSum[metric] += value;
-                                aggregate.outsideMaximum[metric] =
-                                    std::max(aggregate.outsideMaximum[metric], value);
-                                aggregate.outsideActive[metric] += value > 0.5 ? 1u : 0u;
-                                ++aggregate.outsideCount[metric];
+                                const size_t metric = group * 4 + channel;
+                                const double value = std::clamp(
+                                    static_cast<double>(halfToFloat(
+                                        row[static_cast<size_t>(x) * 4 + channel])),
+                                    0.0, 1.0);
+                                aggregate.sum[metric] += value;
+                                aggregate.maximum[metric] =
+                                    std::max(aggregate.maximum[metric], value);
+                                aggregate.active[metric] += value > 0.5 ? 1u : 0u;
+                                ++aggregate.count[metric];
+                                if (inside)
+                                {
+                                    aggregate.insideSum[metric] += value;
+                                    aggregate.insideMaximum[metric] =
+                                        std::max(aggregate.insideMaximum[metric], value);
+                                    aggregate.insideActive[metric] += value > 0.5 ? 1u : 0u;
+                                    ++aggregate.insideCount[metric];
+                                }
+                                else
+                                {
+                                    aggregate.outsideSum[metric] += value;
+                                    aggregate.outsideMaximum[metric] =
+                                        std::max(aggregate.outsideMaximum[metric], value);
+                                    aggregate.outsideActive[metric] += value > 0.5 ? 1u : 0u;
+                                    ++aggregate.outsideCount[metric];
+                                }
+                                if (changed)
+                                {
+                                    aggregate.changedSum[metric] += value;
+                                    aggregate.changedMaximum[metric] =
+                                        std::max(aggregate.changedMaximum[metric], value);
+                                    aggregate.changedActive[metric] += value > 0.5 ? 1u : 0u;
+                                    ++aggregate.changedCount[metric];
+                                }
                             }
                         }
                     }
+                    m_context->Unmap(m_motionDiagnosticReadbacks[group].get(), 0);
                 }
-                m_context->Unmap(m_motionDiagnosticReadback.get(), 0);
             };
 
             struct FrameSample
@@ -1797,7 +1923,13 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 writeVisualBmp(visualCase, visualFrame, mapped);
                 m_context->Unmap(m_replayReadback.get(), 0);
                 if (motionDiagnostics)
-                    collectMotionDiagnostics(*motionDiagnostics, activeRect);
+                {
+                    const uint64_t request = diagnosticRequestCount++;
+                    if (request % static_cast<uint64_t>(diagnosticSampleInterval) == 0)
+                        collectMotionDiagnostics(*motionDiagnostics, activeRect);
+                }
+                previousDiagnosticSource = pixels;
+                previousDiagnosticSourceValid = true;
                 if (count)
                 {
                     sample.sourceMean /= static_cast<double>(count);
@@ -1835,6 +1967,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_lastGlobalHazardTime = -100.0f;
                 m_nextSequence = 0;
                 ClearAllToBlack();
+                previousDiagnosticSourceValid = false;
             };
 
             resetCase();
@@ -1909,6 +2042,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             MotionDiagnosticAggregate movingDiagnostics{};
             MotionDiagnosticAggregate obliqueDiagnostics{};
             MotionDiagnosticAggregate smallMovingDiagnostics{};
+            MotionDiagnosticAggregate smoothScrollDiagnostics{};
+            MotionDiagnosticAggregate snappedScrollDiagnostics{};
             constexpr std::array<double, 8> sweepFrequencies{
                 5.0, 7.5, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0
             };
@@ -2485,13 +2620,170 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             extremePanMae /= static_cast<double>(panFrames);
             const uint64_t extremePanFlowFrames = flowFrames - extremePanFlowStart;
 
+            // REPLAY/4 desktop-motion corpus. Smooth and snapped scroll use the
+            // same requested physical velocity; only rasterization differs.
+            const double requestedScrollVelocityPxPerSecond = 60.0 * motionScale;
+            const int scrollFrames = std::max(30, replayFps);
+            std::vector<double> smoothScrollOffsets;
+            std::vector<double> snappedScrollOffsets;
+            smoothScrollOffsets.reserve(scrollFrames);
+            snappedScrollOffsets.reserve(scrollFrames);
+
+            resetCase();
+            fillTextScroll(0.0, true);
+            for (int i = 0; i < warmupFrames; ++i) renderAndSample(nullptr);
+            double smoothScrollMae = 0.0;
+            double smoothFinalOffset = 0.0;
+            for (int i = 0; i < scrollFrames; ++i)
+            {
+                const double offset = static_cast<double>(i + 1) *
+                    requestedScrollVelocityPxPerSecond / static_cast<double>(replayFps);
+                smoothFinalOffset = offset;
+                smoothScrollOffsets.push_back(offset);
+                fillTextScroll(offset, true);
+                smoothScrollMae += renderAndSample(nullptr,
+                    (writeVisuals && i % std::max(1, replayFps / 10) == 0) ?
+                        L"smooth_subpixel_scroll" : nullptr,
+                    i, &smoothScrollDiagnostics).mae;
+            }
+            smoothScrollMae /= static_cast<double>(scrollFrames);
+
+            const int recoveryFrames = std::max(15, replayFps / 2);
+            int recoveryStableFrames = 0;
+            int recoveryFrame = -1;
+            double scrollStopPeakMae = 0.0;
+            for (int i = 0; i < recoveryFrames; ++i)
+            {
+                fillTextScroll(smoothFinalOffset, true);
+                const FrameSample sample = renderAndSample(nullptr);
+                scrollStopPeakMae = std::max(scrollStopPeakMae, sample.mae);
+                if (sample.mae < 0.003)
+                {
+                    if (++recoveryStableFrames >= 3 && recoveryFrame < 0)
+                        recoveryFrame = i - 2;
+                }
+                else
+                {
+                    recoveryStableFrames = 0;
+                }
+            }
+            const double scrollStopRecoveryMs = recoveryFrame >= 0 ?
+                1000.0 * static_cast<double>(recoveryFrame + 1) / replayFps :
+                1000.0 * static_cast<double>(recoveryFrames) / replayFps;
+
+            resetCase();
+            fillTextScroll(0.0, false);
+            for (int i = 0; i < warmupFrames; ++i) renderAndSample(nullptr);
+            double snappedScrollMae = 0.0;
+            for (int i = 0; i < scrollFrames; ++i)
+            {
+                const double requestedOffset = static_cast<double>(i + 1) *
+                    requestedScrollVelocityPxPerSecond / static_cast<double>(replayFps);
+                const double realizedOffset = std::lround(requestedOffset);
+                snappedScrollOffsets.push_back(realizedOffset);
+                fillTextScroll(realizedOffset, false);
+                snappedScrollMae += renderAndSample(nullptr,
+                    (writeVisuals && i % std::max(1, replayFps / 10) == 0) ?
+                        L"integer_snapped_scroll" : nullptr,
+                    i, &snappedScrollDiagnostics).mae;
+            }
+            snappedScrollMae /= static_cast<double>(scrollFrames);
+
+            // Saturated-red translation exercises the chromatic path without an
+            // intrinsic flash. Record-only until the REPLAY/4 baseline is reviewed.
+            resetCase();
+            fillGray(24);
+            for (int i = 0; i < warmupFrames; ++i) renderAndSample(nullptr);
+            constexpr int redSquareSize = 48;
+            const int redMotionFrames = std::max(30, replayFps);
+            double redMotionGhostMae = 0.0;
+            double redMotionInsideMae = 0.0;
+            for (int i = 0; i < redMotionFrames; ++i)
+            {
+                fillGray(24);
+                const int x0 = pingPongCoordinate(32,
+                    static_cast<double>(i + 1) * 2.0 * motionFrameScale,
+                    static_cast<int>(width) - redSquareSize);
+                const int y0 = static_cast<int>(height) / 2 - redSquareSize / 2;
+                const int x1 = x0 + redSquareSize;
+                const int y1 = y0 + redSquareSize;
+                for (int y = y0; y < y1; ++y)
+                    for (int x = x0; x < x1; ++x)
+                        pixels[static_cast<size_t>(y) * width + x] = rgbPixel(235, 0, 0);
+                const RECT square{ x0, y0, x1, y1 };
+                const FrameSample sample = renderAndSample(&square);
+                redMotionGhostMae += sample.outsideMae;
+                redMotionInsideMae += sample.insideMae;
+            }
+            redMotionGhostMae /= static_cast<double>(redMotionFrames);
+            redMotionInsideMae /= static_cast<double>(redMotionFrames);
+
+            // A translating object that genuinely flashes must still be attenuated;
+            // correspondence is not allowed to become a blanket motion exemption.
+            resetCase();
+            fillGray(24);
+            FrameSample previousMovingFlash = renderAndSample(nullptr);
+            for (int i = 1; i < warmupFrames; ++i)
+                previousMovingFlash = renderAndSample(nullptr);
+            const int movingFlashFrames = std::max(60, replayFps * 2);
+            double movingFlashRawVariation = 0.0;
+            double movingFlashOutputVariation = 0.0;
+            for (int i = 0; i < movingFlashFrames; ++i)
+            {
+                fillGray(24);
+                const int x0 = pingPongCoordinate(32,
+                    static_cast<double>(i + 1) * 2.0 * motionFrameScale,
+                    static_cast<int>(width) - redSquareSize);
+                const int y0 = static_cast<int>(height) / 2 - redSquareSize / 2;
+                const bool high = std::fmod((static_cast<double>(i) + 0.5) *
+                    10.0 / static_cast<double>(replayFps), 1.0) < 0.5;
+                const uint32_t value = grayPixel(high ? 235 : 45);
+                for (int y = y0; y < y0 + redSquareSize; ++y)
+                    for (int x = x0; x < x0 + redSquareSize; ++x)
+                        pixels[static_cast<size_t>(y) * width + x] = value;
+                const FrameSample currentMovingFlash = renderAndSample(nullptr);
+                movingFlashRawVariation += std::fabs(
+                    currentMovingFlash.sourceMean - previousMovingFlash.sourceMean);
+                movingFlashOutputVariation += std::fabs(
+                    currentMovingFlash.outputMean - previousMovingFlash.outputMean);
+                previousMovingFlash = currentMovingFlash;
+            }
+            const double movingFlashReduction = movingFlashRawVariation > 1e-9 ?
+                1.0 - movingFlashOutputVariation / movingFlashRawVariation : 0.0;
+
+            const auto realizationPath =
+                std::filesystem::path(reportPath).parent_path() / L"motion-realization.json";
+            FILE* realizationReport = nullptr;
+            if (_wfopen_s(&realizationReport, realizationPath.c_str(), L"wb") != 0 ||
+                !realizationReport)
+                return false;
+            std::fprintf(realizationReport,
+                "{\n  \"schema\": \"MOTION_REALIZATION/1\",\n"
+                "  \"fps\": %d,\n  \"motion_scale\": %.3f,\n"
+                "  \"requested_scroll_velocity_px_per_second\": %.6f,\n"
+                "  \"smooth_offsets_px\": [",
+                replayFps, motionScale, requestedScrollVelocityPxPerSecond);
+            for (size_t i = 0; i < smoothScrollOffsets.size(); ++i)
+                std::fprintf(realizationReport, "%.6f%s", smoothScrollOffsets[i],
+                    i + 1 < smoothScrollOffsets.size() ? "," : "");
+            std::fputs("],\n  \"snapped_offsets_px\": [", realizationReport);
+            for (size_t i = 0; i < snappedScrollOffsets.size(); ++i)
+                std::fprintf(realizationReport, "%.0f%s", snappedScrollOffsets[i],
+                    i + 1 < snappedScrollOffsets.size() ? "," : "");
+            std::fputs("]\n}\n", realizationReport);
+            std::fclose(realizationReport);
+
             const bool metricsFinite = std::isfinite(staticMae) &&
                 std::isfinite(flashReduction) && std::isfinite(movingGhostMae) &&
                 std::isfinite(movingInsideMae) && std::isfinite(movingEdgeMae) &&
                 std::isfinite(obliqueGhostMae) && std::isfinite(obliqueInsideMae) &&
                 std::isfinite(obliqueEdgeMae) &&
                 std::isfinite(smallMovingGhostMae) && std::isfinite(panMae) &&
-                std::isfinite(fastPanMae) && std::isfinite(extremePanMae);
+                std::isfinite(fastPanMae) && std::isfinite(extremePanMae) &&
+                std::isfinite(smoothScrollMae) && std::isfinite(snappedScrollMae) &&
+                std::isfinite(scrollStopRecoveryMs) &&
+                std::isfinite(redMotionGhostMae) && std::isfinite(redMotionInsideMae) &&
+                std::isfinite(movingFlashReduction);
             const bool pass = metricsFinite && staticMae < 0.005 &&
                 rawVariation > 0.10 && flashReduction > 0.90 &&
                 flashSweepPass &&
@@ -2514,13 +2806,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 return false;
             std::fprintf(diagnosticReport,
                 "{\n"
-                "  \"schema\": \"MOTION_DIAGNOSTICS/1\",\n"
+                "  \"schema\": \"MOTION_DIAGNOSTICS/2\",\n"
                 "  \"fps\": %d,\n"
                 "  \"motion_scale\": %.3f,\n"
                 "  \"activation_threshold\": 0.5,\n"
-                "  \"sampling_stride\": 4,\n"
+                "  \"sampling_stride\": 1,\n"
+                "  \"temporal_sampling_hz\": %d,\n"
+                "  \"layout\": \"three_full_resolution_mrts\",\n"
                 "  \"cases\": {\n",
-                replayFps, motionScale);
+                replayFps, motionScale, std::min(replayFps, 30));
             const auto writeMotionDiagnosticCase =
                 [&](const char* caseName,
                     const MotionDiagnosticAggregate& aggregate, bool trailingComma)
@@ -2540,7 +2834,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         "\"active_fraction\":%.8f,\"inside_mean\":%.8f,"
                         "\"inside_max\":%.8f,\"inside_active_fraction\":%.8f,"
                         "\"outside_mean\":%.8f,\"outside_max\":%.8f,"
-                        "\"outside_active_fraction\":%.8f}%s\n",
+                        "\"outside_active_fraction\":%.8f,"
+                        "\"changed_mean\":%.8f,\"changed_max\":%.8f,"
+                        "\"changed_active_fraction\":%.8f}%s\n",
                         motionDiagnosticNames[metric],
                         mean(aggregate.sum[metric], aggregate.count[metric]),
                         aggregate.maximum[metric],
@@ -2553,6 +2849,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         aggregate.outsideMaximum[metric],
                         fraction(aggregate.outsideActive[metric],
                             aggregate.outsideCount[metric]),
+                        mean(aggregate.changedSum[metric], aggregate.changedCount[metric]),
+                        aggregate.changedMaximum[metric],
+                        fraction(aggregate.changedActive[metric],
+                            aggregate.changedCount[metric]),
                         metric + 1 < 12 ? "," : "");
                 }
                 std::fprintf(diagnosticReport, "    }%s\n",
@@ -2565,7 +2865,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             writeMotionDiagnosticCase(
                 "bright_oblique", obliqueDiagnostics, true);
             writeMotionDiagnosticCase(
-                "small_moving_square", smallMovingDiagnostics, false);
+                "small_moving_square", smallMovingDiagnostics, true);
+            writeMotionDiagnosticCase(
+                "smooth_subpixel_scroll", smoothScrollDiagnostics, true);
+            writeMotionDiagnosticCase(
+                "integer_snapped_scroll", snappedScrollDiagnostics, false);
             std::fputs("  }\n}\n", diagnosticReport);
             std::fclose(diagnosticReport);
 
@@ -2574,7 +2878,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 return false;
             std::fprintf(report,
                 "{\n"
-                "  \"schema\": \"FLASHGUARD_REPLAY/3\",\n"
+                "  \"schema\": \"FLASHGUARD_REPLAY/4\",\n"
                 "  \"status\": \"%s\",\n"
                 "  \"width\": %u,\n"
                 "  \"height\": %u,\n"
@@ -2594,6 +2898,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "  \"pan_mae\": %.8f,\n"
                 "  \"fast_pan_mae\": %.8f,\n"
                 "  \"extreme_pan_mae\": %.8f,\n"
+                "  \"smooth_subpixel_scroll_mae\": %.8f,\n"
+                "  \"integer_snapped_scroll_mae\": %.8f,\n"
+                "  \"scroll_stop_peak_mae\": %.8f,\n"
+                "  \"scroll_stop_recovery_ms\": %.3f,\n"
+                "  \"saturated_red_motion_ghost_mae\": %.8f,\n"
+                "  \"saturated_red_motion_inside_mae\": %.8f,\n"
+                "  \"moving_flash_reduction\": %.8f,\n"
+                "  \"requested_scroll_velocity_px_per_second\": %.6f,\n"
                 "  \"pan_camera_motion_mean\": %.8f,\n"
                 "  \"pan_camera_motion_max\": %.8f,\n"
                 "  \"pan_affected_area_mean\": %.8f,\n"
@@ -2617,6 +2929,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 obliqueGhostMae, obliqueInsideMae, obliqueEdgeMae,
                 smallMovingGhostMae,
                 panMae, fastPanMae, extremePanMae,
+                smoothScrollMae, snappedScrollMae,
+                scrollStopPeakMae, scrollStopRecoveryMs,
+                redMotionGhostMae, redMotionInsideMae, movingFlashReduction,
+                requestedScrollVelocityPxPerSecond,
                 panCameraMotion, panCameraMotionMax,
                 panAffectedArea, panCoherence, panFlashEnergy,
                 static_cast<unsigned>(m_nvofGridSize),
@@ -4629,9 +4945,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_backBufferRTV.get(),
                 m_outputHistoryRTVs[historyWriteIndex].get(),
                 m_sourceHistoryRTVs[sourceHistoryWriteIndex].get(),
-                m_motionDiagnosticRTV.get()
+                m_motionDiagnosticRTVs[0].get(),
+                m_motionDiagnosticRTVs[1].get(),
+                m_motionDiagnosticRTVs[2].get()
             };
-            const UINT rtvCount = m_motionDiagnosticRTV ? 4u : 3u;
+            const UINT rtvCount = m_motionDiagnosticRTVs[0] ? 6u : 3u;
             m_context->OMSetRenderTargets(rtvCount, rtvs, nullptr);
             m_context->IASetInputLayout(nullptr);
             m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -4693,7 +5011,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             m_context->PSSetShaderResources(12, 2, nullCostSRVs);
             ID3D11ShaderResourceView* nullGlobalFlowSRV = nullptr;
             m_context->PSSetShaderResources(14, 1, &nullGlobalFlowSRV);
-            ID3D11RenderTargetView* nullRTVs[4] = { nullptr, nullptr, nullptr, nullptr };
+            ID3D11RenderTargetView* nullRTVs[6] = {
+                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
+            };
             m_context->OMSetRenderTargets(rtvCount, nullRTVs, nullptr);
             m_outputHistoryIndex = historyWriteIndex;
             m_outputHistoryValid = true;
@@ -4856,8 +5176,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 if (rtv) m_context->ClearRenderTargetView(rtv.get(), historyBlack);
             for (auto& rtv : m_sourceHistoryRTVs)
                 if (rtv) m_context->ClearRenderTargetView(rtv.get(), historyBlack);
-            if (m_motionDiagnosticRTV)
-                m_context->ClearRenderTargetView(m_motionDiagnosticRTV.get(), historyBlack);
+            for (auto& rtv : m_motionDiagnosticRTVs)
+                if (rtv) m_context->ClearRenderTargetView(rtv.get(), historyBlack);
             m_outputHistoryValid = false;
             m_sourceHistoryValid = false;
             if (m_swapChain && !m_replayMode) m_swapChain->Present(1, 0);
@@ -4935,9 +5255,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         bool m_replayMode = false;
         double m_replayClockSeconds = 0.0;
         winrt::com_ptr<ID3D11Texture2D> m_replayReadback;
-        winrt::com_ptr<ID3D11Texture2D> m_motionDiagnosticTexture;
-        winrt::com_ptr<ID3D11RenderTargetView> m_motionDiagnosticRTV;
-        winrt::com_ptr<ID3D11Texture2D> m_motionDiagnosticReadback;
+        std::array<winrt::com_ptr<ID3D11Texture2D>, 3> m_motionDiagnosticTextures;
+        std::array<winrt::com_ptr<ID3D11RenderTargetView>, 3> m_motionDiagnosticRTVs;
+        std::array<winrt::com_ptr<ID3D11Texture2D>, 3> m_motionDiagnosticReadbacks;
         std::array<winrt::com_ptr<ID3D11Texture2D>, 2> m_sourceHistoryTextures;
         std::array<winrt::com_ptr<ID3D11RenderTargetView>, 2> m_sourceHistoryRTVs;
         std::array<winrt::com_ptr<ID3D11ShaderResourceView>, 2> m_sourceHistorySRVs;
