@@ -72,6 +72,7 @@ function Read-Candidate {
     $sweepPath = Join-Path $caseDir 'flash-sweep.json'
     $trailPath = Join-Path $caseDir 'trail-metrics.json'
     $perceptualPath = Join-Path $caseDir 'perceptual-sweep.json'
+    $probePath = Join-Path $caseDir 'screening-probes.json'
     if (-not (Test-Path $replayPath) -or -not (Test-Path $sweepPath) -or
         -not (Test-Path $trailPath)) {
         throw "Missing replay/trail result for $($Spec.name)"
@@ -80,8 +81,13 @@ function Read-Candidate {
     $sweep = Get-Content -Raw $sweepPath | ConvertFrom-Json
     $trail = Get-Content -Raw $trailPath | ConvertFrom-Json
     $perceptualExecuted = Test-Path $perceptualPath
+    $probeExecuted = Test-Path $probePath
     $perceptualMin = 0.0
     $perceptualMax = 0.0
+    $fullHighOnlyResidual = 1.0
+    $fullMediumHighResidual = 1.0
+    $smallHighOnlyResidual = 1.0
+    $smallMediumHighResidual = 1.0
     if ($perceptualExecuted) {
         $perceptual = Get-Content -Raw $perceptualPath | ConvertFrom-Json
         if (@($perceptual.cases).Count -gt 0) {
@@ -90,6 +96,13 @@ function Read-Candidate {
             $perceptualMax = [double](
                 ($perceptual.cases | Measure-Object -Property peak_output_delta -Maximum).Maximum)
         }
+    }
+    if ($probeExecuted) {
+        $probe = Get-Content -Raw $probePath | ConvertFrom-Json
+        $fullHighOnlyResidual = [double]$probe.full_high_only_residual_ratio
+        $fullMediumHighResidual = [double]$probe.full_medium_high_residual_ratio
+        $smallHighOnlyResidual = [double]$probe.small_high_only_residual_ratio
+        $smallMediumHighResidual = [double]$probe.small_medium_high_residual_ratio
     }
     $sc231 = @($sweep.cases | Where-Object { $_.wcag_sc_2_3_1_pass -ne $true }).Count -eq 0
     $sc232 = @($sweep.cases | Where-Object { $_.wcag_sc_2_3_2_pass -ne $true }).Count -eq 0
@@ -126,6 +139,11 @@ function Read-Candidate {
         perceptual_sweep_executed = [bool]$perceptualExecuted
         perceptual_sweep_min_reduction = [double]$perceptualMin
         perceptual_sweep_max_output_delta = [double]$perceptualMax
+        screening_probes_executed = [bool]$probeExecuted
+        full_high_only_residual_ratio = [double]$fullHighOnlyResidual
+        full_medium_high_residual_ratio = [double]$fullMediumHighResidual
+        small_high_only_residual_ratio = [double]$smallHighOnlyResidual
+        small_medium_high_residual_ratio = [double]$smallMediumHighResidual
     }
 }
 
@@ -138,6 +156,13 @@ function Test-Dominates {
     $perceptualNoWorse = -not $perceptualComparable -or (
         $A.perceptual_sweep_min_reduction -ge $B.perceptual_sweep_min_reduction -and
         $A.perceptual_sweep_max_output_delta -le $B.perceptual_sweep_max_output_delta)
+    $probeComparable =
+        $A.screening_probes_executed -and $B.screening_probes_executed
+    $probeNoWorse = -not $probeComparable -or (
+        $A.full_high_only_residual_ratio -le $B.full_high_only_residual_ratio -and
+        $A.full_medium_high_residual_ratio -le $B.full_medium_high_residual_ratio -and
+        $A.small_high_only_residual_ratio -le $B.small_high_only_residual_ratio -and
+        $A.small_medium_high_residual_ratio -le $B.small_medium_high_residual_ratio)
     $noWorse =
         $A.flash_reduction -ge $B.flash_reduction -and
         $A.moving_flash_reduction -ge $B.moving_flash_reduction -and
@@ -146,7 +171,8 @@ function Test-Dominates {
         $A.small_vacated_p99_max -le $B.small_vacated_p99_max -and
         $A.pan_mae -le $B.pan_mae -and
         $A.static_mae -le $B.static_mae -and
-        $perceptualNoWorse
+        $perceptualNoWorse -and
+        $probeNoWorse
     if (-not $noWorse) { return $false }
     return (
         $A.flash_reduction -gt $B.flash_reduction -or
@@ -158,7 +184,12 @@ function Test-Dominates {
         $A.static_mae -lt $B.static_mae -or
         ($perceptualComparable -and (
             $A.perceptual_sweep_min_reduction -gt $B.perceptual_sweep_min_reduction -or
-            $A.perceptual_sweep_max_output_delta -lt $B.perceptual_sweep_max_output_delta))
+            $A.perceptual_sweep_max_output_delta -lt $B.perceptual_sweep_max_output_delta)) -or
+        ($probeComparable -and (
+            $A.full_high_only_residual_ratio -lt $B.full_high_only_residual_ratio -or
+            $A.full_medium_high_residual_ratio -lt $B.full_medium_high_residual_ratio -or
+            $A.small_high_only_residual_ratio -lt $B.small_high_only_residual_ratio -or
+            $A.small_medium_high_residual_ratio -lt $B.small_medium_high_residual_ratio))
     )
 }
 
@@ -195,12 +226,23 @@ function Add-RelativeRegret {
             (([double]$Baseline.moving_flash_reduction + $eps) / $candidateMovingFlash)
         )
         if ($candidate.perceptual_sweep_executed -and $Baseline.perceptual_sweep_executed) {
-            $candidatePerceptual = [Math]::Max(
-                $eps, [double]$candidate.perceptual_sweep_min_reduction)
-            $ratios += (([double]$Baseline.perceptual_sweep_min_reduction + $eps) /
-                $candidatePerceptual)
+            $candidatePerceptualResidual = [Math]::Max(
+                $eps, 1.0 - [double]$candidate.perceptual_sweep_min_reduction)
+            $baselinePerceptualResidual = [Math]::Max(
+                $eps, 1.0 - [double]$Baseline.perceptual_sweep_min_reduction)
+            $ratios += ($candidatePerceptualResidual / $baselinePerceptualResidual)
             $ratios += (([double]$candidate.perceptual_sweep_max_output_delta + $eps) /
                 ([double]$Baseline.perceptual_sweep_max_output_delta + $eps))
+        }
+        if ($candidate.screening_probes_executed -and $Baseline.screening_probes_executed) {
+            $ratios += (([double]$candidate.full_high_only_residual_ratio + $eps) /
+                ([double]$Baseline.full_high_only_residual_ratio + $eps))
+            $ratios += (([double]$candidate.full_medium_high_residual_ratio + $eps) /
+                ([double]$Baseline.full_medium_high_residual_ratio + $eps))
+            $ratios += (([double]$candidate.small_high_only_residual_ratio + $eps) /
+                ([double]$Baseline.small_high_only_residual_ratio + $eps))
+            $ratios += (([double]$candidate.small_medium_high_residual_ratio + $eps) /
+                ([double]$Baseline.small_medium_high_residual_ratio + $eps))
         }
         $candidate | Add-Member -NotePropertyName max_relative_regret `
             -NotePropertyValue (($ratios | Measure-Object -Maximum).Maximum) -Force

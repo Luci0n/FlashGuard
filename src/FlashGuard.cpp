@@ -2952,6 +2952,116 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 }
                 std::fputs("\n  ]\n}\n", perceptualReport);
                 std::fclose(perceptualReport);
+
+                if (replayScreening)
+                {
+                    struct ScreeningProbeResult
+                    {
+                        double sourceVariation = 0.0;
+                        double outputVariation = 0.0;
+                        double residualRatio = 1.0;
+                    };
+                    const auto runScreeningProbe =
+                        [&](int highCode, double targetAreaFraction)
+                    {
+                        const bool fullScreen = targetAreaFraction <= 0.0;
+                        const int side = fullScreen ? 0 : std::max(4,
+                            static_cast<int>(std::lround(std::sqrt(
+                                static_cast<double>(width) *
+                                static_cast<double>(height) *
+                                targetAreaFraction))));
+                        resetCase();
+                        fillGray(96);
+                        std::pair<double, double> previousCenter{};
+                        for (int i = 0; i < 3; ++i)
+                            previousCenter = renderCenterLuma();
+
+                        ScreeningProbeResult result{};
+                        constexpr int probeFrames = 12;
+                        for (int i = 0; i < probeFrames; ++i)
+                        {
+                            fillGray(96);
+                            const bool high = (i % 4) < 2;
+                            if (high)
+                            {
+                                if (fullScreen)
+                                {
+                                    fillGray(static_cast<uint8_t>(highCode));
+                                }
+                                else
+                                {
+                                    const int x0 = std::max(0,
+                                        static_cast<int>(width) / 2 - side / 2);
+                                    const int y0 = std::max(0,
+                                        static_cast<int>(height) / 2 - side / 2);
+                                    const int x1 = std::min(static_cast<int>(width),
+                                        x0 + side);
+                                    const int y1 = std::min(static_cast<int>(height),
+                                        y0 + side);
+                                    const uint32_t value =
+                                        grayPixel(static_cast<uint8_t>(highCode));
+                                    for (int y = y0; y < y1; ++y)
+                                        for (int x = x0; x < x1; ++x)
+                                            pixels[static_cast<size_t>(y) * width + x] =
+                                                value;
+                                }
+                            }
+                            const auto currentCenter = renderCenterLuma();
+                            result.sourceVariation += std::fabs(
+                                currentCenter.first - previousCenter.first);
+                            result.outputVariation += std::fabs(
+                                currentCenter.second - previousCenter.second);
+                            previousCenter = currentCenter;
+                        }
+                        if (result.sourceVariation > 1e-9)
+                            result.residualRatio =
+                                result.outputVariation / result.sourceVariation;
+                        return result;
+                    };
+
+                    // The full-screen probes straddle the 0.12/0.16/0.20
+                    // sensitivity thresholds in linear luminance. The small-source
+                    // probes use area fractions between the 0.4/0.8/1.5% gates and
+                    // a strong enough transition to isolate area sensitivity.
+                    const auto fullHighOnly =
+                        runScreeningProbe(139, 0.0);
+                    const auto fullMediumHigh =
+                        runScreeningProbe(148, 0.0);
+                    const auto smallHighOnly =
+                        runScreeningProbe(168, 0.006);
+                    const auto smallMediumHigh =
+                        runScreeningProbe(168, 0.011);
+
+                    const auto probePath =
+                        std::filesystem::path(reportPath).parent_path() /
+                        L"screening-probes.json";
+                    FILE* probeReport = nullptr;
+                    if (_wfopen_s(&probeReport, probePath.c_str(), L"wb") != 0 ||
+                        !probeReport)
+                        return false;
+                    std::fprintf(probeReport,
+                        "{\n"
+                        "  \"schema\": \"FLASHGUARD_SCREENING_PROBES/1\",\n"
+                        "  \"status\": \"SUCCESS\",\n"
+                        "  \"background_code\": 96,\n"
+                        "  \"fps\": %d,\n"
+                        "  \"full_high_only_high_code\": 139,\n"
+                        "  \"full_medium_high_high_code\": 148,\n"
+                        "  \"small_probe_high_code\": 168,\n"
+                        "  \"small_high_only_target_area_fraction\": 0.006,\n"
+                        "  \"small_medium_high_target_area_fraction\": 0.011,\n"
+                        "  \"full_high_only_residual_ratio\": %.8f,\n"
+                        "  \"full_medium_high_residual_ratio\": %.8f,\n"
+                        "  \"small_high_only_residual_ratio\": %.8f,\n"
+                        "  \"small_medium_high_residual_ratio\": %.8f\n"
+                        "}\n",
+                        replayFps,
+                        fullHighOnly.residualRatio,
+                        fullMediumHigh.residualRatio,
+                        smallHighOnly.residualRatio,
+                        smallMediumHigh.residualRatio);
+                    std::fclose(probeReport);
+                }
             }
 
             const uint64_t movingFlowStart = flowFrames;
