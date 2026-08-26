@@ -1,6 +1,6 @@
 {
   "archive_schema": "FLASHGUARD_EXPERIMENT_ARCHIVE/1",
-  "current_software_version": "0.2.0-alpha.4",
+  "current_software_version": "0.2.0-alpha.5",
   "protocols": [
     "FLASHBENCH/1",
     "FLASHGUARD_REPLAY/1",

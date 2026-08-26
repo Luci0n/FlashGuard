@@ -759,12 +759,19 @@ R"HLSL(
         const float holdMask = holdGate * holdContentGate * holdDeltaGate;
         const float repeatedRisk = temporalRisk;
         const float repeatedMemoryGate = smoothstep(0.34, 0.62, repeatedRisk);
-        // Repetition can strengthen intrinsic-change authority only when the
-        // compensated residual still says appearance changed on the surface.
-        // This deliberately prevents stale risk alone from reintroducing scroll
-        // trails on well-compensated motion.
-        const float repeatedIntrinsicAuthority =
+        // A repeated flash spends most of each half-cycle with near-zero
+        // frame-to-frame source delta. Keep intrinsic authority alive across that
+        // stable interval instead of letting noisy/global flow reopen the bypass.
+        // Scrolling does not satisfy this because the raw source at a screen
+        // coordinate keeps changing as content moves through it.
+        const float repeatedCurrentIntrinsicAuthority =
             repeatedMemoryGate * eventMask * intrinsicResidualGate;
+        const float repeatedStableIntrinsicAuthority =
+            repeatedMemoryGate * holdGate * stableSourceGate;
+        const float repeatedIntrinsicAuthority = max(
+            repeatedCurrentIntrinsicAuthority, repeatedStableIntrinsicAuthority);
+        const float motionProtectionAuthority = max(
+            intrinsicResidualGate, repeatedStableIntrinsicAuthority);
 
         // Correspondence and appearance are independent. Ordinary verified
         // correspondence bypasses old displayed history only while its compensated
@@ -779,7 +786,7 @@ R"HLSL(
             hardwareMotionGate * intrinsicResidualGate;
         const float effectiveMotionGate = max(
             explicitDisocclusionGate * (1.0 - repeatedIntrinsicAuthority),
-            correspondenceGate * (1.0 - intrinsicResidualGate));
+            correspondenceGate * (1.0 - motionProtectionAuthority));
 
         // Once a pixel has accumulated repeated-flash memory, keep the output
         // truly stationary between opposing transitions. Merely shrinking each
@@ -797,7 +804,7 @@ R"HLSL(
             smoothstep(0.45, 0.75, diagInfillGate) *
             coarseMotionGate;
         const float currentSurfaceHoldVeto =
-            verifiedCurrentSurfaceTransport * (1.0 - intrinsicResidualGate);
+            verifiedCurrentSurfaceTransport * (1.0 - motionProtectionAuthority);
         const float disocclusionHoldVeto =
             max(verifiedVacatedTransport, verifiedInfillTransport) *
             (1.0 - repeatedIntrinsicAuthority);

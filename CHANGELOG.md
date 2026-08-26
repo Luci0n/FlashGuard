@@ -2,6 +2,21 @@
 
 All notable public changes are documented here. FlashGuard follows Semantic Versioning for software releases. Test protocols and archived experiment runs are versioned independently; see `docs/VERSIONING.md`.
 
+## [0.2.0-alpha.5] - 2026-08-26
+
+Stable-half-cycle protection continuity correction.
+
+### Fixed
+
+- Repeated intrinsic hazard memory now keeps temporal authority across stable raw-source half-cycles, preventing noisy/global optical flow from reopening the motion bypass between opposing flash transitions.
+- The continuity requires both repeated-risk memory and same-coordinate raw-source stability; repeated risk alone still cannot suppress scrolling or other continuously changing motion.
+- Current-surface exact-hold veto uses the same combined intrinsic/stable protection authority.
+
+### Validation
+
+- Geometry estimation remains unchanged from alpha.3; this experiment changes only temporal authority continuity after an intrinsic flash has already been established.
+- Targeted GPU replay and flash sweep determine whether the 5-10 Hz regional/red regressions are restored without materially regressing scrolling or stop recovery.
+
 ## [0.2.0-alpha.4] - 2026-08-26
 
 Intrinsic-flash authority correction for the geometry-separated motion path.
