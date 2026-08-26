@@ -185,6 +185,25 @@ namespace
         bool debugOverlay = false;
     };
 
+    // Replay-batch-only overrides. Production/UI code never supplies these;
+    // negative values preserve the exact RuntimeOptions-derived defaults.
+    struct BenchmarkTuning
+    {
+        bool enabled = false;
+        float localDeltaThreshold = -1.0f;
+        float globalDeltaThreshold = -1.0f;
+        float affectedAreaThreshold = -1.0f;
+        float coherenceThreshold = -1.0f;
+        float smallFlashAreaThreshold = -1.0f;
+        float localGlobalSupportThreshold = -1.0f;
+        float flashEnergyThreshold = -1.0f;
+        float safeRiseRate = -1.0f;
+        float safeFallRate = -1.0f;
+        float minimumProtectionTime = -1.0f;
+        float releaseTime = -1.0f;
+        float cameraMotionSuppression = -1.0f;
+    };
+
     struct HotkeyBinding
     {
         UINT modifiers = 0;
@@ -3903,7 +3922,44 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_inputFormat = DXGI_FORMAT_UNKNOWN;
                 ResetDelayedPipeline();
             }
+            // This setting has no UI preset of its own. Reset it explicitly so
+            // benchmark overrides cannot leak into the next persistent-batch case.
+            m_safety.cameraMotionSuppression = 0.32f;
             m_debugEnabled.store(options.debugOverlay, std::memory_order_release);
+        }
+
+        void ApplyBenchmarkTuning(const BenchmarkTuning& tuning)
+        {
+            if (!tuning.enabled) return;
+            std::scoped_lock lock(m_mutex);
+            const auto apply = [](float& target, float value, float low, float high) {
+                if (std::isfinite(value) && value >= 0.0f)
+                    target = std::clamp(value, low, high);
+            };
+            apply(m_safety.localDeltaThreshold,
+                tuning.localDeltaThreshold, 0.02f, 0.30f);
+            apply(m_safety.globalDeltaThreshold,
+                tuning.globalDeltaThreshold, 0.04f, 0.40f);
+            apply(m_safety.affectedAreaThreshold,
+                tuning.affectedAreaThreshold, 0.02f, 0.60f);
+            apply(m_safety.coherenceThreshold,
+                tuning.coherenceThreshold, 0.30f, 0.98f);
+            apply(m_safety.smallFlashAreaThreshold,
+                tuning.smallFlashAreaThreshold, 0.001f, 0.05f);
+            apply(m_safety.localGlobalSupportThreshold,
+                tuning.localGlobalSupportThreshold, 0.005f, 0.15f);
+            apply(m_safety.flashEnergyThreshold,
+                tuning.flashEnergyThreshold, 0.005f, 0.12f);
+            apply(m_safety.safeRiseRate,
+                tuning.safeRiseRate, 0.25f, 4.0f);
+            apply(m_safety.safeFallRate,
+                tuning.safeFallRate, 0.25f, 4.0f);
+            apply(m_safety.minimumProtectionTime,
+                tuning.minimumProtectionTime, 0.05f, 0.80f);
+            apply(m_safety.releaseTime,
+                tuning.releaseTime, 0.10f, 1.50f);
+            apply(m_safety.cameraMotionSuppression,
+                tuning.cameraMotionSuppression, 0.05f, 0.90f);
         }
 
         bool ReadyToShow() const
@@ -7311,8 +7367,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     bool passed = false;
                     long long elapsedMs = 0;
                 };
-                std::vector<std::array<std::wstring, 6>> specs;
-                wchar_t line[1024]{};
+                // Six columns remains backward compatible. Matrix v4 appends
+                // twelve benchmark-only detector/temporal settings.
+                std::vector<std::array<std::wstring, 18>> specs;
+                wchar_t line[2048]{};
                 while (std::fgetws(line, static_cast<int>(std::size(line)), plan))
                 {
                     std::wstring text(line);
@@ -7330,14 +7388,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         if (tab == std::wstring::npos) break;
                         start = tab + 1;
                     }
-                    if (fields.size() != 6)
+                    if (fields.size() != 6 && fields.size() != 18)
                     {
                         std::fclose(plan);
                         DestroyWindow(replayWindow);
                         return 10;
                     }
-                    std::array<std::wstring, 6> spec{};
-                    for (size_t i = 0; i < spec.size(); ++i) spec[i] = fields[i];
+                    std::array<std::wstring, 18> spec{};
+                    for (size_t i = 0; i < fields.size(); ++i) spec[i] = fields[i];
                     const bool safeName = !spec[0].empty() && spec[0].size() <= 80 &&
                         std::all_of(spec[0].begin(), spec[0].end(), [](wchar_t c) {
                             return (c >= L'a' && c <= L'z') ||
@@ -7377,7 +7435,28 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     const int fps = std::clamp(_wtoi(spec[4].c_str()), 30, 240);
                     const float scale = std::clamp(
                         static_cast<float>(_wtof(spec[5].c_str())), 0.25f, 4.0f);
+                    BenchmarkTuning tuning{};
+                    const auto tune = [&](size_t index, float& target) {
+                        if (!spec[index].empty())
+                        {
+                            target = static_cast<float>(_wtof(spec[index].c_str()));
+                            tuning.enabled = true;
+                        }
+                    };
+                    tune(6, tuning.localDeltaThreshold);
+                    tune(7, tuning.globalDeltaThreshold);
+                    tune(8, tuning.affectedAreaThreshold);
+                    tune(9, tuning.coherenceThreshold);
+                    tune(10, tuning.smallFlashAreaThreshold);
+                    tune(11, tuning.localGlobalSupportThreshold);
+                    tune(12, tuning.flashEnergyThreshold);
+                    tune(13, tuning.safeRiseRate);
+                    tune(14, tuning.safeFallRate);
+                    tune(15, tuning.minimumProtectionTime);
+                    tune(16, tuning.releaseTime);
+                    tune(17, tuning.cameraMotionSuppression);
                     app.ApplyRuntimeOptions(replayOptions);
+                    app.ApplyBenchmarkTuning(tuning);
                     const auto caseDir = std::filesystem::path(replayBatchOutput) / spec[0];
                     std::filesystem::create_directories(caseDir);
                     const auto caseReport = caseDir / L"synthetic-replay.json";

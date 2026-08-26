@@ -277,17 +277,17 @@ try {
             }
         }
 
-        # Targeted runs screen all 27 profile/full/small combinations using one
+        # Targeted runs screen direct detector/temporal benchmark overrides in one
         # persistent 320x180 GPU session. Full/tuning runs additionally verify
         # only the Pareto-selected candidate and production default at 640x360.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
             if ($TestTier -eq 'targeted' -and -not $TuneMatrix) {
-                & (Join-Path $PSScriptRoot 'matrix-v3.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v4.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir -ScreenOnly
             } else {
-                & (Join-Path $PSScriptRoot 'matrix-v3.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v4.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir
             }
