@@ -774,6 +774,14 @@ R"HLSL(
         const float repeatedMemoryGate = smoothstep(0.34, 0.62, repeatedRisk);
         const float repeatedHoldAuthorization =
             repeatedMemoryGate * max(eventGate, holdGate * stableSourceGate);
+        // A current hazardous transition with no scene-level motion evidence is
+        // stationary enough to hold immediately. Waiting for reversal memory
+        // permits the first microscopic excursion, which a strict evaluator then
+        // counts on every subsequent reversal. Coherent translation cancels this
+        // authorization through the same CPU/coarse corroboration used above.
+        const float stationaryCurrentHoldAuthorization =
+            eventGate * eventDeltaGate *
+            (1.0 - smoothstep(0.02, 0.12, corroboratedMotionGate));
         const float repeatedHoldMask =
             repeatedHoldAuthorization * (1.0 - effectiveMotionGate);
         float temporalMask = max(
@@ -786,6 +794,8 @@ R"HLSL(
         if (eventSeed >= 0.12 && displayedDelta >= 0.018 &&
             (motionGate < 0.55 || repeatedEventGate > 0.45))
             temporalMask = max(temporalMask, 1.0 - effectiveMotionGate);
+        if (stationaryCurrentHoldAuthorization > 0.72)
+            temporalMask = 1.0;
 
         // Synthetic replay binds SV_TARGET3 and decodes these interleaved groups.
         // Production rendering leaves the target unbound, so diagnostics cannot
@@ -823,12 +833,12 @@ R"HLSL(
             const float3 candidateLinear = SrgbToLinear(cur);
             float3 temporallyFiltered = LinearToSrgb(
                 lerp(previousLinear, candidateLinear, alpha));
-            // Once several hazardous reversals have accumulated, amplitude-only
-            // smoothing still produces an opposing output change every half-cycle.
-            // Hold the already-filtered pixel through the complete repeated-flash
-            // memory window, not only on the exact event frame.
-            const float repeatedHoldGate = repeatedHoldAuthorization;
-            if (repeatedHoldGate > 0.72)
+            // Once a stationary hazardous transition or several reversals are
+            // authorized, amplitude-only smoothing is insufficient: hold the
+            // already-filtered pixel exactly to avoid residual reversals.
+            const float exactHoldGate = max(
+                repeatedHoldAuthorization, stationaryCurrentHoldAuthorization);
+            if (exactHoldGate > 0.72)
                 temporallyFiltered = previousDisplayed;
             float limitedL = Luma(temporallyFiltered);
 
@@ -841,7 +851,7 @@ R"HLSL(
             float maxStep = currentEvent ? min(profileStep, standardsStep) :
                 max(standardsStep, 2.60 * dt);
             maxStep *= currentEvent ? lerp(1.0, 0.72, severe) : 1.0;
-            if (repeatedHoldGate > 0.72)
+            if (exactHoldGate > 0.72)
                 maxStep = 0.0;
             const float slewLimitedL = clamp(limitedL,
                 previousDisplayedL - maxStep,
