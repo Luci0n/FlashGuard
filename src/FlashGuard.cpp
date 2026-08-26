@@ -3380,7 +3380,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             std::fputs("]\n}\n", realizationReport);
             std::fclose(realizationReport);
 
-            const bool metricsFinite = std::isfinite(staticMae) &&
+            const bool screeningMetricsFinite =
+                std::isfinite(staticMae) && std::isfinite(flashReduction) &&
+                std::isfinite(movingGhostMae) &&
+                std::isfinite(smallMovingGhostMae) &&
+                std::isfinite(panMae) && std::isfinite(movingFlashReduction) &&
+                std::isfinite(movingVacatedMean) &&
+                std::isfinite(smallMovingVacatedP99Max);
+            const bool fullMetricsFinite = std::isfinite(staticMae) &&
                 std::isfinite(flashReduction) && std::isfinite(movingGhostMae) &&
                 std::isfinite(movingInsideMae) && std::isfinite(movingEdgeMae) &&
                 std::isfinite(obliqueGhostMae) && std::isfinite(obliqueInsideMae) &&
@@ -3391,11 +3398,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 std::isfinite(scrollStopRecoveryMs) &&
                 std::isfinite(redMotionGhostMae) && std::isfinite(redMotionInsideMae) &&
                 std::isfinite(movingFlashReduction);
-            const bool pass = metricsFinite && staticMae < 0.005 &&
+            const bool commonPass = staticMae < 0.005 &&
                 rawVariation > 0.10 && flashReduction > 0.90 &&
                 movingGhostMae < 0.005 && smallMovingGhostMae < 0.003 &&
-                panMae < 0.010 && fastPanMae < 0.020 &&
-                extremePanMae < 0.030 && flowFrames > 0;
+                panMae < 0.010 && flowFrames > 0;
+            const bool pass = replayScreening ?
+                (screeningMetricsFinite && commonPass) :
+                (fullMetricsFinite && commonPass &&
+                    fastPanMae < 0.020 && extremePanMae < 0.030);
 
             constexpr const char* motionDiagnosticNames[12] = {
                 "global_flow", "current_surface", "vacated_surface",
