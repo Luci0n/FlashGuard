@@ -1,0 +1,44 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-26_d89ce9ab_full-surface-safety-state",
+  "tested_commit": "d89ce9ab64e20a510e2bf27ab682c5e24cc0ecd9",
+  "software_version": "0.3.0-alpha.1",
+  "timestamp_utc": "2026-08-26T10:45:29Z",
+  "ci_run_id": 32959250741,
+  "ci_artifact_id": 9603419237,
+  "ci_artifact_sha256": "a55507e5eae0ce5d82e97e349d77f6bb7a22531270df516be5fcbe36b2e3bdf4",
+  "source_artifact": "flashbench-gpu-d89ce9ab64e20a510e2bf27ab682c5e24cc0ecd9",
+  "result": "SUCCESS",
+  "protocols": [
+    "FLASHBENCH/5",
+    "FLASHGUARD_FLASH_SWEEP/6",
+    "WCAG_FLASH/5",
+    "FLASHGUARD_REPLAY/6",
+    "NVOF_SMOKE/1",
+    "MOTION_DIAGNOSTICS/2",
+    "MOTION_REALIZATION/1",
+    "RED_FLASH_TRACE/2"
+  ],
+  "environment": {
+    "machine": "CROW",
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "nvidia_driver": "561.09",
+    "replay_width": 640,
+    "replay_height": 360,
+    "replay_fps": 60
+  },
+  "intervention": "Transport dedicated full-resolution protected luminance, intrinsic-risk memory, and red-safety authority with verified optical correspondence and explicit disocclusion reset, while keeping displayed chroma current.",
+  "automated_observation": "Automated GPU validation passed SC 2.3.1 and SC 2.3.2, but this experiment is rejected as the next behavioral baseline. Moving-flash reduction was 0.28924819 versus 0.29455287 in alpha.10 and 0.60489436 in alpha.9; small-moving ghost MAE was 0.00014260; pan MAE was 0.00765287; 5 Hz quarter-screen luminance reduction fell to 0.83621016. The dedicated state architecture remains useful evidence, but it did not restore moving-flash memory and slightly worsened several motion metrics.",
+  "qualitative_observation": "Subsequent manual testing reported that visible trailing/ghosting remained heavy and that lower-contrast static flashing was more noticeable, reinforcing that the existing aggregate ghost MAE and standards gates are insufficient as perceptual regression targets.",
+  "preceded_by": "2026-08-26_539eee97_compact-protection-state",
+  "raw_file_sha256": {
+    "summary.json": "a8cd901c0a7c56099bed9dac00b5046675fbe1f4ad24def21419367a07f4a34b",
+    "flash-sweep.json": "0dd2d4cc95bf03b087214164719514957eae63ad26b3894c46ca0c4ffed65826",
+    "synthetic-replay.json": "432a9944758f948f4a06ffe2e472c2abcd26e4d5c6ad574616c97db1c5c87483",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "motion-diagnostics.json": "4f5bec71cc990305f19f497286986a3f9f70cc1786945287558be41eeadb21d0",
+    "motion-realization.json": "ddb0838b040af1e13e22b65699bd4952c782592f919e181c90de0a57bc8040ae",
+    "red-flash-trace-15hz.json": "6c8b29324cdf50d6b2c3e765c341cfe78122a974a1ebef4131bd9c893b5b0c53"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "NVOF_SMOKE/1",
+  "status": "SUCCESS",
+  "stage": "complete",
+  "code": 0,
+  "grid": 1,
+  "nonzero_vectors": 57589,
+  "total_vectors": 57600,
+  "mean_abs_flow_pixels": 8.145409
+}

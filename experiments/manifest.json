@@ -1,6 +1,6 @@
 {
   "archive_schema": "FLASHGUARD_EXPERIMENT_ARCHIVE/1",
-  "current_software_version": "0.2.0-alpha.10",
+  "current_software_version": "0.3.0-alpha.1",
   "protocols": [
     "FLASHBENCH/1",
     "FLASHGUARD_REPLAY/1",
@@ -65,6 +65,11 @@
     {
       "run_id": "2026-08-26_539eee97_compact-protection-state",
       "commit": "539eee97434f763b292878fd36e89b01060d1052",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_d89ce9ab_full-surface-safety-state",
+      "commit": "d89ce9ab64e20a510e2bf27ab682c5e24cc0ecd9",
       "result": "SUCCESS"
     }
   ]
