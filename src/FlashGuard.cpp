@@ -1816,6 +1816,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 double outputLinearBlue = 0.0;
                 double sourceWcagLuma = 0.0;
                 double outputWcagLuma = 0.0;
+                double outputDisplayWcagLuma = 0.0;
                 double mae = 0.0;
                 double outsideMae = 0.0;
                 double insideMae = 0.0;
@@ -1843,6 +1844,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 uint64_t outsideCount = 0;
                 uint64_t insideCount = 0;
                 uint64_t edgeCount = 0;
+                const auto quantizeUnorm8 = [](float value) {
+                    return static_cast<double>(std::lround(
+                        std::clamp(value, 0.0f, 1.0f) * 255.0f)) / 255.0;
+                };
                 constexpr UINT stride = 4;
                 for (UINT y = 0; y < height; y += stride)
                 {
@@ -1860,6 +1865,16 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         const double outputLinearB = srgbToLinear(b);
                         const double outputWcagLuma = 0.2126 * outputLinearR +
                             0.7152 * outputLinearG + 0.0722 * outputLinearB;
+                        // SC 2.3.2/G19 is evaluated on the representable display
+                        // state, not sub-LSB R16 history noise. Replay is overlay-free,
+                        // so quantizing here matches the B8G8R8A8_UNORM swapchain.
+                        const double displayR = quantizeUnorm8(r);
+                        const double displayG = quantizeUnorm8(g);
+                        const double displayB = quantizeUnorm8(b);
+                        const double outputDisplayWcagLuma =
+                            0.2126 * srgbToLinear(displayR) +
+                            0.7152 * srgbToLinear(displayG) +
+                            0.0722 * srgbToLinear(displayB);
 
                         const uint32_t packed = pixels[static_cast<size_t>(y) * width + x];
                         const float sb = static_cast<float>(packed & 0xFFu) / 255.0f;
@@ -1889,6 +1904,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         sample.outputLinearBlue += outputLinearB;
                         sample.sourceWcagLuma += sourceWcagLuma;
                         sample.outputWcagLuma += outputWcagLuma;
+                        sample.outputDisplayWcagLuma += outputDisplayWcagLuma;
                         sample.mae += error;
                         ++count;
 
@@ -1948,6 +1964,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     sample.outputLinearBlue /= static_cast<double>(count);
                     sample.sourceWcagLuma /= static_cast<double>(count);
                     sample.outputWcagLuma /= static_cast<double>(count);
+                    sample.outputDisplayWcagLuma /= static_cast<double>(count);
                     sample.mae /= static_cast<double>(count);
                 }
                 if (outsideCount)
@@ -2026,10 +2043,16 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 double outputGeneralFlashesPerSecond = 0.0;
                 double rawRedFlashesPerSecond = 0.0;
                 double outputRedFlashesPerSecond = 0.0;
+                // Legacy R16 epsilon counters remain diagnostics only.
                 double rawStrictTransitionsPerSecond = 0.0;
                 double outputStrictTransitionsPerSecond = 0.0;
                 double rawStrictFlashesPerSecond = 0.0;
                 double outputStrictFlashesPerSecond = 0.0;
+                // G19-style transition counting uses the final 8-bit display state.
+                double rawDisplayTransitionsPerSecond = 0.0;
+                double outputDisplayTransitionsPerSecond = 0.0;
+                double rawDisplayFlashesPerSecond = 0.0;
+                double outputDisplayFlashesPerSecond = 0.0;
                 double regionSolidAngleSr = 0.0;
                 bool areaBelowThreshold = false;
                 bool sc231StimulusValid = false;
@@ -2095,6 +2118,29 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 {
                     const double delta = valueAt(i) - valueAt(i - 1);
                     const int direction = delta > 1e-7 ? 1 : (delta < -1e-7 ? -1 : 0);
+                    if (direction == 0) continue;
+                    if (trend == 0)
+                    {
+                        trend = direction;
+                    }
+                    else if (direction != trend)
+                    {
+                        if (points.back() != i - 1) points.push_back(i - 1);
+                        trend = direction;
+                    }
+                }
+                if (points.back() != count - 1) points.push_back(count - 1);
+                return points;
+            };
+            const auto turningPointsExact = [](size_t count, const auto& valueAt) {
+                std::vector<size_t> points;
+                if (count == 0) return points;
+                points.push_back(0);
+                int trend = 0;
+                for (size_t i = 1; i < count; ++i)
+                {
+                    const double delta = valueAt(i) - valueAt(i - 1);
+                    const int direction = delta > 0.0 ? 1 : (delta < 0.0 ? -1 : 0);
                     if (direction == 0) continue;
                     if (trend == 0)
                     {
@@ -2224,6 +2270,26 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 }
                 return maxTransitionsInOneSecond(transitions);
             };
+            const auto maxDisplayTransitionsInOneSecond =
+                [&](const std::vector<FrameSample>& samples, bool output) {
+                const auto valueAt = [&](size_t index) {
+                    return output ? samples[index].outputDisplayWcagLuma :
+                        samples[index].sourceWcagLuma;
+                };
+                const std::vector<size_t> points =
+                    turningPointsExact(samples.size(), valueAt);
+                std::vector<WcagTransition> transitions;
+                for (size_t i = 1; i < points.size(); ++i)
+                {
+                    const double delta = valueAt(points[i]) - valueAt(points[i - 1]);
+                    if (delta != 0.0)
+                    {
+                        transitions.push_back({ static_cast<int>(points[i]),
+                            delta > 0.0 ? 1 : -1 });
+                    }
+                }
+                return maxTransitionsInOneSecond(transitions);
+            };
             const auto sweepRegionSolidAngle = [&](const SweepCase& sweepCase) {
                 const double aspect = static_cast<double>(width) /
                     std::max(1.0, static_cast<double>(height));
@@ -2346,6 +2412,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         result.rawStrictTransitionsPerSecond * 0.5;
                     result.outputStrictFlashesPerSecond =
                         result.outputStrictTransitionsPerSecond * 0.5;
+                    result.rawDisplayTransitionsPerSecond = static_cast<double>(
+                        maxDisplayTransitionsInOneSecond(sweepTimeline, false));
+                    result.outputDisplayTransitionsPerSecond = static_cast<double>(
+                        maxDisplayTransitionsInOneSecond(sweepTimeline, true));
+                    result.rawDisplayFlashesPerSecond =
+                        result.rawDisplayTransitionsPerSecond * 0.5;
+                    result.outputDisplayFlashesPerSecond =
+                        result.outputDisplayTransitionsPerSecond * 0.5;
 
                     result.regionSolidAngleSr = sweepRegionSolidAngle(sweepCase);
                     result.areaBelowThreshold = result.regionSolidAngleSr <= 0.006;
@@ -2353,14 +2427,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         result.rawGeneralFlashesPerSecond > 3.0 ||
                         result.rawRedFlashesPerSecond > 3.0;
                     result.sc232StimulusValid =
-                        result.rawStrictTransitionsPerSecond > 6.0;
+                        result.rawDisplayTransitionsPerSecond > 6.0;
                     const bool outputBelowSc231Threshold =
                         result.outputGeneralFlashesPerSecond <= 3.0 &&
                         result.outputRedFlashesPerSecond <= 3.0;
                     result.wcagSc231Pass =
                         outputBelowSc231Threshold || result.areaBelowThreshold;
                     result.wcagSc232Pass =
-                        result.outputStrictTransitionsPerSecond <= 6.0;
+                        result.outputDisplayTransitionsPerSecond <= 6.0;
                     flashSweepPass = flashSweepPass &&
                         result.sc231StimulusValid && result.sc232StimulusValid &&
                         result.wcagSc231Pass && result.wcagSc232Pass;
@@ -2376,14 +2450,16 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 return false;
             std::fprintf(flashSweepReport,
                 "{\n"
-                "  \"schema\": \"FLASHGUARD_FLASH_SWEEP/3\",\n"
-                "  \"wcag_profile\": \"WCAG_FLASH/2\",\n"
+                "  \"schema\": \"FLASHGUARD_FLASH_SWEEP/4\",\n"
+                "  \"wcag_profile\": \"WCAG_FLASH/3\",\n"
                 "  \"status\": \"%s\",\n"
                 "  \"fps\": %d,\n"
                 "  \"duration_seconds_per_case\": %.2f,\n"
                 "  \"display_diagonal_inches\": %.2f,\n"
                 "  \"viewing_distance_cm\": %.2f,\n"
-                "  \"note\": \"WCAG 2.2 deterministic regression using linear-sRGB luminance, temporal extrema, one-second windows, CIE 1976 u-prime/v-prime saturated-red transitions, and calibrated rectangular solid angle; not an external certification or arbitrary-video analyzer.\",\n"
+                "  \"sc_2_3_2_measurement_surface\": \"B8G8R8A8_UNORM-equivalent replay output\",\n"
+                "  \"internal_r16_epsilon_diagnostic_normative\": false,\n"
+                "  \"note\": \"WCAG 2.2 deterministic regression: SC 2.3.1 uses general/red flash thresholds; SC 2.3.2/G19 counts opposing light/dark transitions only after final 8-bit display quantization. Internal R16 epsilon reversals are retained as non-normative diagnostics. Not an external certification or arbitrary-video analyzer.\",\n"
                 "  \"cases\": [\n",
                 flashSweepPass ? "SUCCESS" : "FAILED", sweepFps, sweepSeconds,
                 m_safety.displayDiagonalInches, m_safety.viewingDistanceCm);
@@ -2398,10 +2474,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     "\"output_general_flashes_per_second\":%.3f,"
                     "\"raw_red_flashes_per_second\":%.3f,"
                     "\"output_red_flashes_per_second\":%.3f,"
-                    "\"raw_strict_transitions_per_second\":%.3f,"
-                    "\"output_strict_transitions_per_second\":%.3f,"
-                    "\"raw_strict_flashes_per_second\":%.3f,"
-                    "\"output_strict_flashes_per_second\":%.3f,"
+                    "\"raw_g19_display_transitions_per_second\":%.3f,"
+                    "\"output_g19_display_transitions_per_second\":%.3f,"
+                    "\"raw_g19_display_flashes_per_second\":%.3f,"
+                    "\"output_g19_display_flashes_per_second\":%.3f,"
+                    "\"raw_internal_r16_epsilon_transitions_per_second\":%.3f,"
+                    "\"output_internal_r16_epsilon_transitions_per_second\":%.3f,"
+                    "\"raw_internal_r16_epsilon_flashes_per_second\":%.3f,"
+                    "\"output_internal_r16_epsilon_flashes_per_second\":%.3f,"
                     "\"region_solid_angle_sr\":%.8f,"
                     "\"area_below_0_006_sr\":%s,"
                     "\"sc_2_3_1_stimulus_valid\":%s,"
@@ -2415,6 +2495,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     result.outputGeneralFlashesPerSecond,
                     result.rawRedFlashesPerSecond,
                     result.outputRedFlashesPerSecond,
+                    result.rawDisplayTransitionsPerSecond,
+                    result.outputDisplayTransitionsPerSecond,
+                    result.rawDisplayFlashesPerSecond,
+                    result.outputDisplayFlashesPerSecond,
                     result.rawStrictTransitionsPerSecond,
                     result.outputStrictTransitionsPerSecond,
                     result.rawStrictFlashesPerSecond,

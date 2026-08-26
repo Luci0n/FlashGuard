@@ -20,7 +20,7 @@ $flashSweepPath = Join-Path $OutputDir 'flash-sweep.json'
 $visualDir = Join-Path $OutputDir 'visual'
 
 $summary = [ordered]@{
-    schema = 'FLASHBENCH/2'
+    schema = 'FLASHBENCH/3'
     mode = $Mode
     test_tier = $TestTier
     commit = $env:GITHUB_SHA
@@ -51,6 +51,8 @@ $summary = [ordered]@{
     flash_sweep_min_reduction = $null
     flash_sweep_max_output_flashes_per_second = $null
     flash_sweep_max_output_red_flashes_per_second = $null
+    flash_sweep_max_output_g19_flashes_per_second = $null
+    flash_sweep_max_internal_r16_epsilon_flashes_per_second = $null
     flash_sweep_all_sc_2_3_1_pass = $null
     flash_sweep_all_sc_2_3_2_pass = $null
     replay_moving_ghost_mae = $null
@@ -58,6 +60,11 @@ $summary = [ordered]@{
     replay_moving_edge_mae = $null
     replay_small_moving_ghost_mae = $null
     replay_pan_mae = $null
+    replay_smooth_subpixel_scroll_mae = $null
+    replay_integer_snapped_scroll_mae = $null
+    replay_scroll_stop_recovery_ms = $null
+    replay_saturated_red_motion_ghost_mae = $null
+    replay_moving_flash_reduction = $null
     replay_nvof_flow_frames = $null
     replay_pan_camera_motion = $null
     replay_pan_affected_area = $null
@@ -175,6 +182,7 @@ try {
         $replay = $null
         if (Test-Path $replayReportPath) {
             $replay = Get-Content -Raw $replayReportPath | ConvertFrom-Json
+            $summary.replay_status = $replay.status
             $summary.replay_protocol = $replay.schema
             $summary.replay_static_mae = $replay.static_mae
             $summary.replay_flash_reduction = $replay.flash_reduction
@@ -183,6 +191,11 @@ try {
             $summary.replay_moving_edge_mae = $replay.moving_square_edge_mae
             $summary.replay_small_moving_ghost_mae = $replay.small_moving_square_ghost_mae
             $summary.replay_pan_mae = $replay.pan_mae
+            $summary.replay_smooth_subpixel_scroll_mae = $replay.smooth_subpixel_scroll_mae
+            $summary.replay_integer_snapped_scroll_mae = $replay.integer_snapped_scroll_mae
+            $summary.replay_scroll_stop_recovery_ms = $replay.scroll_stop_recovery_ms
+            $summary.replay_saturated_red_motion_ghost_mae = $replay.saturated_red_motion_ghost_mae
+            $summary.replay_moving_flash_reduction = $replay.moving_flash_reduction
             $summary.replay_nvof_flow_frames = $replay.nvof_flow_frames
             $summary.replay_pan_camera_motion = $replay.pan_camera_motion_mean
             $summary.replay_pan_affected_area = $replay.pan_affected_area_mean
@@ -202,6 +215,12 @@ try {
                 $summary.flash_sweep_max_output_red_flashes_per_second =
                     ($flashSweep.cases |
                         Measure-Object -Property output_red_flashes_per_second -Maximum).Maximum
+                $summary.flash_sweep_max_output_g19_flashes_per_second =
+                    ($flashSweep.cases |
+                        Measure-Object -Property output_g19_display_flashes_per_second -Maximum).Maximum
+                $summary.flash_sweep_max_internal_r16_epsilon_flashes_per_second =
+                    ($flashSweep.cases |
+                        Measure-Object -Property output_internal_r16_epsilon_flashes_per_second -Maximum).Maximum
                 $summary.flash_sweep_all_sc_2_3_1_pass =
                     @($flashSweep.cases | Where-Object { $_.wcag_sc_2_3_1_pass -ne $true }).Count -eq 0
                 $summary.flash_sweep_all_sc_2_3_2_pass =
@@ -209,6 +228,8 @@ try {
                 $table = $flashSweep.cases |
                     Select-Object case, frequency_hz, reduction, peak_output_delta,
                         output_general_flashes_per_second, output_red_flashes_per_second,
+                        output_g19_display_flashes_per_second,
+                        output_internal_r16_epsilon_flashes_per_second,
                         wcag_sc_2_3_1_pass, wcag_sc_2_3_2_pass |
                     Format-Table -AutoSize | Out-String
                 "Flash frequency sweep:`n$table" | Add-Content -Encoding utf8 $logPath
@@ -231,6 +252,9 @@ try {
         }
 
         $replayFailure = $null
+        if ($replayExit -ne 0 -and -not $replay) {
+            $summary.replay_status = 'FAILED'
+        }
         if ($replayExit -ne 0) {
             $replayStage = if ($replay) { $replay.status } else { 'no-report' }
             $replayFailure =

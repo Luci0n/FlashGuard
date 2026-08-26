@@ -31,12 +31,13 @@ Do not skip CI for changes to runtime code, shaders, build logic, replay/sweep g
 Test schemas have independent stable identifiers. The repository currently contains historical and active schema identifiers including:
 
 ```text
-FLASHBENCH/2
-FLASHGUARD_REPLAY/3
-FLASHGUARD_FLASH_SWEEP/3
-WCAG_FLASH/2
+FLASHBENCH/3
+FLASHGUARD_REPLAY/4
+FLASHGUARD_FLASH_SWEEP/4
+WCAG_FLASH/3
 NVOF_SMOKE/1
-MOTION_DIAGNOSTICS/1
+MOTION_DIAGNOSTICS/2
+MOTION_REALIZATION/1
 ```
 
 A protocol identifier is not considered fully documented merely because it appears in generated JSON or `experiments/manifest.json`; the matching protocol document must exist under `experiments/protocols/` before the protocol is treated as a stable comparison baseline.

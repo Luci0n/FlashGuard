@@ -35,4 +35,6 @@ After smooth scrolling stops, the source is held at the exact final position. `s
 
 ## Flash evaluator boundary
 
-REPLAY/4 does not redefine WCAG flash pass/fail semantics. `FLASHGUARD_FLASH_SWEEP/3` and the legacy strict internal-R16 epsilon transition diagnostic remain unchanged for this measurement commit. Evaluator semantics are revised separately so changing the ruler is not mixed with changing the motion corpus.
+REPLAY/4 is paired with `FLASHGUARD_FLASH_SWEEP/4` / `WCAG_FLASH/3` beginning with the first post-measurement baseline. SC 2.3.2/G19 transition counting is performed after B8G8R8A8_UNORM-equivalent output quantization so sub-LSB R16 feedback noise cannot become a standards failure. The historical R16 `1e-7` reversal count remains available only as a non-normative diagnostic.
+
+This change does not alter REPLAY/4 motion stimuli, motion thresholds, or runtime filtering behavior.

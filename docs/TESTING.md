@@ -14,22 +14,25 @@ A release MSVC build verifies the Windows application compiles. `FlashGuard.exe 
 
 ### Synthetic replay
 
-`FLASHGUARD_REPLAY/2` feeds generated frames through the actual D3D11 analysis/safety/render path rather than a simplified CPU model. Current coverage includes:
+`FLASHGUARD_REPLAY/4` feeds generated frames through the actual D3D11 analysis/safety/render path rather than a simplified CPU model. Current coverage includes:
 
 - static gray control
 - 15 Hz full-screen dark/bright flash
-- straight bright-object motion
-- shallow oblique bright-object motion
-- small slow local motion
+- straight, oblique, and small bright-object motion
 - procedural camera pans at multiple speeds
+- smooth fractional-pixel scrolling of rasterized small desktop text
+- integer-snapped scrolling with intentional move/stall cadence
+- scroll-stop recovery
+- saturated-red translation
+- a translating object with intrinsic 10 Hz flashing
 
-Reported metrics include static MAE, flash modulation reduction, trailing-ghost MAE, inside-object MAE, edge MAE, pan MAE, motion-classification statistics, and NVOFA execution counts.
+Reported metrics include static MAE, flash modulation reduction, trailing-ghost MAE, inside-object MAE, edge MAE, pan and scroll MAE, scroll-stop recovery time, saturated-red motion error, moving-flash reduction, full-resolution motion-classification statistics, realized motion coordinates, and NVOFA execution counts.
 
 Visual replay is available with `-VisualReplay`; sampled frames are rendered as `SOURCE | FILTERED | 6x AMPLIFIED DIFFERENCE` and indexed by an HTML viewer.
 
 ### 5-30 Hz WCAG-oriented flash sweep
 
-`FLASHGUARD_FLASH_SWEEP/2` runs the same 24 deterministic two-second cases at 60 FPS and evaluates them through `WCAG_FLASH/1`.
+`FLASHGUARD_FLASH_SWEEP/4` runs the same 24 deterministic two-second cases at 60 FPS and evaluates them through `WCAG_FLASH/3`.
 
 Frequencies:
 
@@ -49,7 +52,9 @@ Each generated square wave uses a 50% phase duty cycle. The evaluator reduces ea
 
 General flashes use WCAG 2.2 relative luminance from linearized sRGB: an endpoint-to-endpoint change of at least `0.10` with the darker endpoint below `0.80`. Saturated-red flashes use linear RGB converted through CIE XYZ to CIE 1976 UCS; a transition qualifies when either endpoint has `R/(R+G+B) >= 0.8` and the u-prime/v-prime distance is greater than `0.2`.
 
-The synthetic rectangle's solid angle is calculated from the configured display diagonal and viewing distance. The report records both SC 2.3.1's `0.006` steradian area branch and the stricter SC 2.3.2 result without an area exemption. FlashGuard's regression gate intentionally requires the stricter result for every case.
+The synthetic rectangle's solid angle is calculated from the configured display diagonal and viewing distance. SC 2.3.1 keeps the general/red threshold and `0.006` steradian area branches.
+
+SC 2.3.2 uses the simpler G19-style transition rule on the representable replay output. Each sampled output RGB value is first quantized to the same 8-bit UNORM channel precision used by FlashGuard's `B8G8R8A8_UNORM` swapchain, then the evaluator counts light/dark direction changes between temporal extrema. Seven transitions are 3.5 flashes, so more than six transitions in any one-second window fails. This branch has no brightness or area exemption. The historical R16 `1e-7` reversal count is still reported, but it is explicitly non-normative and cannot fail the suite.
 
 The current regression pass condition is:
 
@@ -57,6 +62,7 @@ The current regression pass condition is:
 source stimulus > 3 completed flashes in at least one one-second window
 filtered general flashes <= 3 in every one-second window
 filtered red flashes <= 3 in every one-second window
+SC 2.3.2 represented output transitions <= 6 in every one-second window
 ```
 
 This is WCAG-oriented regression evidence, not a complete WCAG conformance analyzer or a Harding FPA/PSE certificate. The synthetic area calculation does not scan arbitrary spatial masks within every possible 10-degree visual field, and the corpus still does not cover every waveform, display, or real game sequence.
@@ -89,6 +95,8 @@ summary.json
 nvof-smoke.json
 synthetic-replay.json
 flash-sweep.json
+motion-diagnostics.json
+motion-realization.json
 flashbench.log
 ```
 

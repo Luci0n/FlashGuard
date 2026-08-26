@@ -1,6 +1,6 @@
 {
   "archive_schema": "FLASHGUARD_EXPERIMENT_ARCHIVE/1",
-  "current_software_version": "0.2.0-alpha.1",
+  "current_software_version": "0.2.0-alpha.2",
   "protocols": [
     "FLASHBENCH/1",
     "FLASHGUARD_REPLAY/1",
@@ -13,7 +13,13 @@
     "WCAG_FLASH/1",
     "WCAG_FLASH/2",
     "NVOF_SMOKE/1",
-    "MOTION_DIAGNOSTICS/1"
+    "MOTION_DIAGNOSTICS/1",
+    "FLASHBENCH/3",
+    "FLASHGUARD_REPLAY/4",
+    "FLASHGUARD_FLASH_SWEEP/4",
+    "WCAG_FLASH/3",
+    "MOTION_DIAGNOSTICS/2",
+    "MOTION_REALIZATION/1"
   ],
   "runs": [
     {
