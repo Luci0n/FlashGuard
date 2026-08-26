@@ -133,6 +133,11 @@ function Test-Dominates {
     param([object]$A, [object]$B)
     # No scalar weighted score: retain candidates that are Pareto-optimal across
     # safety attenuation and perceptual motion damage.
+    $perceptualComparable =
+        $A.perceptual_sweep_executed -and $B.perceptual_sweep_executed
+    $perceptualNoWorse = -not $perceptualComparable -or (
+        $A.perceptual_sweep_min_reduction -ge $B.perceptual_sweep_min_reduction -and
+        $A.perceptual_sweep_max_output_delta -le $B.perceptual_sweep_max_output_delta)
     $noWorse =
         $A.flash_reduction -ge $B.flash_reduction -and
         $A.moving_flash_reduction -ge $B.moving_flash_reduction -and
@@ -140,7 +145,8 @@ function Test-Dominates {
         $A.moving_vacated_peak -le $B.moving_vacated_peak -and
         $A.small_vacated_p99_max -le $B.small_vacated_p99_max -and
         $A.pan_mae -le $B.pan_mae -and
-        $A.static_mae -le $B.static_mae
+        $A.static_mae -le $B.static_mae -and
+        $perceptualNoWorse
     if (-not $noWorse) { return $false }
     return (
         $A.flash_reduction -gt $B.flash_reduction -or
@@ -149,7 +155,10 @@ function Test-Dominates {
         $A.moving_vacated_peak -lt $B.moving_vacated_peak -or
         $A.small_vacated_p99_max -lt $B.small_vacated_p99_max -or
         $A.pan_mae -lt $B.pan_mae -or
-        $A.static_mae -lt $B.static_mae
+        $A.static_mae -lt $B.static_mae -or
+        ($perceptualComparable -and (
+            $A.perceptual_sweep_min_reduction -gt $B.perceptual_sweep_min_reduction -or
+            $A.perceptual_sweep_max_output_delta -lt $B.perceptual_sweep_max_output_delta))
     )
 }
 
@@ -174,14 +183,25 @@ function Add-RelativeRegret {
     param([object[]]$Candidates, [object]$Baseline)
     $eps = 1e-7
     foreach ($candidate in $Candidates) {
+        $candidateFlash = [Math]::Max($eps, [double]$candidate.flash_reduction)
+        $candidateMovingFlash = [Math]::Max(
+            $eps, [double]$candidate.moving_flash_reduction)
         $ratios = @(
             (([double]$candidate.moving_vacated_p99_max + $eps) / ([double]$Baseline.moving_vacated_p99_max + $eps)),
             (([double]$candidate.moving_vacated_peak + $eps) / ([double]$Baseline.moving_vacated_peak + $eps)),
             (([double]$candidate.small_vacated_p99_max + $eps) / ([double]$Baseline.small_vacated_p99_max + $eps)),
             (([double]$candidate.pan_mae + $eps) / ([double]$Baseline.pan_mae + $eps)),
-            (([double]$Baseline.flash_reduction + $eps) / ([double]$candidate.flash_reduction + $eps)),
-            (([double]$Baseline.moving_flash_reduction + $eps) / ([double]$candidate.moving_flash_reduction + $eps))
+            (([double]$Baseline.flash_reduction + $eps) / $candidateFlash),
+            (([double]$Baseline.moving_flash_reduction + $eps) / $candidateMovingFlash)
         )
+        if ($candidate.perceptual_sweep_executed -and $Baseline.perceptual_sweep_executed) {
+            $candidatePerceptual = [Math]::Max(
+                $eps, [double]$candidate.perceptual_sweep_min_reduction)
+            $ratios += (([double]$Baseline.perceptual_sweep_min_reduction + $eps) /
+                $candidatePerceptual)
+            $ratios += (([double]$candidate.perceptual_sweep_max_output_delta + $eps) /
+                ([double]$Baseline.perceptual_sweep_max_output_delta + $eps))
+        }
         $candidate | Add-Member -NotePropertyName max_relative_regret `
             -NotePropertyValue (($ratios | Measure-Object -Maximum).Maximum) -Force
     }
@@ -213,7 +233,9 @@ $screenBatch = Invoke-ReplayBatch -Name 'screen' -Specs $screenSpecs `
 $screenResults = @($screenSpecs | ForEach-Object {
     Read-Candidate -Spec $_ -BatchDir $screenBatch.directory
 })
-$screenEligible = @($screenResults | Where-Object { $_.sc231_pass -and $_.sc232_pass })
+$screenEligible = @($screenResults | Where-Object {
+    $_.replay_status -eq 'SUCCESS' -and $_.sc231_pass -and $_.sc232_pass
+})
 if ($screenEligible.Count -eq 0) { $screenEligible = $screenResults }
 $screenBaseline = $screenResults | Where-Object {
     $_.profile -eq 1 -and $_.full_sensitivity -eq 1 -and $_.small_sensitivity -eq 1
@@ -268,7 +290,9 @@ $verifyBaseline = $verifyResults | Where-Object {
 } | Select-Object -First 1
 if (-not $verifyBaseline) { $verifyBaseline = $verifyResults | Select-Object -First 1 }
 $verifyResults = @(Add-RelativeRegret -Candidates $verifyResults -Baseline $verifyBaseline)
-$verifyEligible = @($verifyResults | Where-Object { $_.sc231_pass -and $_.sc232_pass })
+$verifyEligible = @($verifyResults | Where-Object {
+    $_.replay_status -eq 'SUCCESS' -and $_.sc231_pass -and $_.sc232_pass
+})
 if ($verifyEligible.Count -eq 0) { $verifyEligible = $verifyResults }
 $verifyFrontier = @(Get-ParetoFrontier -Candidates $verifyEligible)
 $selected = $verifyFrontier | Sort-Object max_relative_regret | Select-Object -First 1
