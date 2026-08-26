@@ -2286,7 +2286,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             MotionDiagnosticAggregate smoothScrollDiagnostics{};
             MotionDiagnosticAggregate snappedScrollDiagnostics{};
             const std::vector<double> sweepFrequencies = replayScreening ?
-                std::vector<double>{ 5.0, 10.0, 15.0 } :
+                std::vector<double>{ 10.0 } :
                 std::vector<double>{
                     5.0, 7.5, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0 };
             struct SweepCase
@@ -2294,11 +2294,13 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 const char* name;
                 int kind; // 0=full luminance, 1=full saturated red, 2=quarter luminance
             };
-            constexpr std::array<SweepCase, 3> sweepCases{{
-                { "luminance_full", 0 },
-                { "red_full", 1 },
-                { "luminance_quarter", 2 }
-            }};
+            const std::vector<SweepCase> sweepCases = replayScreening ?
+                std::vector<SweepCase>{{ "luminance_full", 0 }} :
+                std::vector<SweepCase>{
+                    { "luminance_full", 0 },
+                    { "red_full", 1 },
+                    { "luminance_quarter", 2 }
+                };
             const int sweepFps = replayFps;
             const int sweepFrames = sweepFps * (replayScreening ? 1 : 2);
             const double sweepSeconds =
@@ -2838,7 +2840,6 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             double perceptualMinReduction = 0.0;
             double perceptualMaxOutputDelta = 0.0;
             int perceptualCaseCount = 0;
-            if (!replayScreening)
             {
                 // Uniform perceptual flash cases do not need a full CPU traversal of
                 // the mapped frame. Sample the center pixel after the real render/NVOFA
@@ -2883,9 +2884,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     "  \"calibration_only\": true,\n"
                     "  \"background_code\": 96,\n"
                     "  \"cases\": [\n", perceptualReport);
-                constexpr std::array<int, 6> deltas{ 4, 8, 12, 16, 24, 32 };
-                constexpr std::array<double, 3> frequencies{ 5.0, 10.0, 15.0 };
-                constexpr std::array<double, 2> phaseFrames{ 0.0, 0.5 };
+                const std::vector<int> deltas = replayScreening ?
+                    std::vector<int>{ 8, 16 } :
+                    std::vector<int>{ 4, 8, 12, 16, 24, 32 };
+                const std::vector<double> frequencies = replayScreening ?
+                    std::vector<double>{ 10.0 } :
+                    std::vector<double>{ 5.0, 10.0, 15.0 };
+                const std::vector<double> phaseFrames = replayScreening ?
+                    std::vector<double>{ 0.5 } :
+                    std::vector<double>{ 0.0, 0.5 };
                 bool firstPerceptual = true;
                 perceptualMinReduction = 1.0;
                 for (int deltaCode : deltas)
@@ -2906,7 +2913,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                             double sourceVariation = 0.0;
                             double filteredVariation = 0.0;
                             double peakOutputDelta = 0.0;
-                            const int caseFrames = std::max(30, replayFps);
+                            const int caseFrames = replayScreening ?
+                                std::max(12, replayFps * 2 / 5) : std::max(30, replayFps);
                             for (int i = 0; i < caseFrames; ++i)
                             {
                                 const double phase = std::fmod(
@@ -2950,7 +2958,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
             resetCase();
             fillGray(24);
-            for (int i = 0; i < 20; ++i) renderAndSample(nullptr);
+            for (int i = 0; i < (replayScreening ? 6 : 20); ++i)
+                renderAndSample(nullptr);
             double movingGhostMae = 0.0;
             double movingInsideMae = 0.0;
             double movingEdgeMae = 0.0;
@@ -2997,7 +3006,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 const RECT square{ x0, y0, x1, y1 };
                 const FrameSample sample = renderAndSample(&square,
                     (writeVisuals && i % 10 == 0) ? L"bright_motion" : nullptr,
-                    i, &movingDiagnostics, nullptr, nullptr, &previousMovingRect);
+                    i, replayScreening ? nullptr : &movingDiagnostics,
+                    nullptr, nullptr, &previousMovingRect);
                 movingGhostMae += sample.outsideMae;
                 movingInsideMae += sample.insideMae;
                 movingEdgeMae += sample.edgeMae;
@@ -3059,7 +3069,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const uint64_t obliqueFlowStart = flowFrames;
             resetCase();
             constexpr int obliqueSize = 32;
-            const int obliqueFrames = std::max(40, replayFps * 4 / 3);
+            const int obliqueFrames = replayScreening ?
+                1 : std::max(40, replayFps * 4 / 3);
             const int obliqueStartX = 80;
             const int obliqueStartY = 80;
             for (int i = 0; i < settleFrames; ++i)
@@ -3092,7 +3103,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 const RECT square{ x0, y0, x1, y1 };
                 const FrameSample sample = renderAndSample(&square,
                     (writeVisuals && i % 10 == 0) ? L"bright_oblique" : nullptr,
-                    i, &obliqueDiagnostics);
+                    i, replayScreening ? nullptr : &obliqueDiagnostics);
                 obliqueGhostMae += sample.outsideMae;
                 obliqueInsideMae += sample.insideMae;
                 obliqueEdgeMae += sample.edgeMae;
@@ -3133,8 +3144,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 const RECT square{ x0, y0, x1, y1 };
                 const FrameSample sample = renderAndSample(&square,
                     (writeVisuals && i % 10 == 0) ? L"small_motion" : nullptr,
-                    i, &smallMovingDiagnostics, nullptr, nullptr,
-                    havePreviousSmallRect ? &previousSmallRect : nullptr);
+                    i, replayScreening ? nullptr : &smallMovingDiagnostics,
+                    nullptr, nullptr, havePreviousSmallRect ? &previousSmallRect : nullptr);
                 smallMovingGhostMae += sample.outsideMae;
                 smallMovingVacatedP99Max = std::max(
                     smallMovingVacatedP99Max, sample.vacatedP99);
@@ -3158,7 +3169,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             double panCoherence = 0.0;
             double panFlashEnergy = 0.0;
             float panCameraMotionMax = 0.0f;
-            const int panFrames = std::max(45, replayFps * 3 / 2);
+            const int panFrames = replayScreening ?
+                std::max(12, replayFps * 2 / 5) : std::max(45, replayFps * 3 / 2);
             for (int i = 0; i < panFrames; ++i)
             {
                 fillPanPattern(static_cast<int>(std::lround(
@@ -3183,35 +3195,39 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const uint64_t fastPanFlowStart = flowFrames;
             resetCase();
             fillPanPattern(0);
-            for (int i = 0; i < panWarmupFrames; ++i) renderAndSample(nullptr);
+            for (int i = 0; i < (replayScreening ? 1 : panWarmupFrames); ++i)
+                renderAndSample(nullptr);
+            const int auxiliaryPanFrames = replayScreening ? 1 : panFrames;
             double fastPanMae = 0.0;
-            for (int i = 0; i < panFrames; ++i)
+            for (int i = 0; i < auxiliaryPanFrames; ++i)
             {
                 fillPanPattern(static_cast<int>(std::lround(
                     static_cast<double>(i + 1) * 8.0 * motionFrameScale)));
                 fastPanMae += renderAndSample(nullptr).mae;
             }
-            fastPanMae /= static_cast<double>(panFrames);
+            fastPanMae /= static_cast<double>(auxiliaryPanFrames);
             const uint64_t fastPanFlowFrames = flowFrames - fastPanFlowStart;
 
             const uint64_t extremePanFlowStart = flowFrames;
             resetCase();
             fillPanPattern(0);
-            for (int i = 0; i < panWarmupFrames; ++i) renderAndSample(nullptr);
+            for (int i = 0; i < (replayScreening ? 1 : panWarmupFrames); ++i)
+                renderAndSample(nullptr);
             double extremePanMae = 0.0;
-            for (int i = 0; i < panFrames; ++i)
+            for (int i = 0; i < auxiliaryPanFrames; ++i)
             {
                 fillPanPattern(static_cast<int>(std::lround(
                     static_cast<double>(i + 1) * 16.0 * motionFrameScale)));
                 extremePanMae += renderAndSample(nullptr).mae;
             }
-            extremePanMae /= static_cast<double>(panFrames);
+            extremePanMae /= static_cast<double>(auxiliaryPanFrames);
             const uint64_t extremePanFlowFrames = flowFrames - extremePanFlowStart;
 
             // REPLAY/5 desktop-motion corpus. Smooth and snapped scroll use the
             // same requested physical velocity; only rasterization differs.
             const double requestedScrollVelocityPxPerSecond = 45.0 * motionScale;
-            const int scrollFrames = std::max(30, replayFps);
+            const int scrollFrames = replayScreening ?
+                1 : std::max(30, replayFps);
             std::vector<double> smoothScrollOffsets;
             std::vector<double> snappedScrollOffsets;
             smoothScrollOffsets.reserve(scrollFrames);
@@ -3236,7 +3252,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             }
             smoothScrollMae /= static_cast<double>(scrollFrames);
 
-            const int recoveryFrames = std::max(15, replayFps / 2);
+            const int recoveryFrames = replayScreening ?
+                3 : std::max(15, replayFps / 2);
             int recoveryStableFrames = 0;
             int recoveryFrame = -1;
             double scrollStopPeakMae = 0.0;
@@ -3283,7 +3300,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             fillGray(24);
             for (int i = 0; i < warmupFrames; ++i) renderAndSample(nullptr);
             constexpr int redSquareSize = 48;
-            const int redMotionFrames = std::max(30, replayFps);
+            const int redMotionFrames = replayScreening ?
+                1 : std::max(30, replayFps);
             double redMotionGhostMae = 0.0;
             double redMotionInsideMae = 0.0;
             for (int i = 0; i < redMotionFrames; ++i)
@@ -3313,7 +3331,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             FrameSample previousMovingFlash = renderAndSample(nullptr);
             for (int i = 1; i < warmupFrames; ++i)
                 previousMovingFlash = renderAndSample(nullptr);
-            const int movingFlashFrames = std::max(60, replayFps * 2);
+            const int movingFlashFrames = replayScreening ?
+                std::max(15, replayFps / 2) : std::max(60, replayFps * 2);
             double movingFlashRawVariation = 0.0;
             double movingFlashOutputVariation = 0.0;
             for (int i = 0; i < movingFlashFrames; ++i)

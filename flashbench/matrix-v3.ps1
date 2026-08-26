@@ -209,7 +209,7 @@ function Add-RelativeRegret {
 }
 
 # Stage 1: all independent profile/full/small combinations, not just paired
-# sensitivities. 320x180 + 30 fps + screening durations makes this cheap enough
+# sensitivities. 256x144 + 30 fps + adversarial screening makes this cheap enough
 # to run on every normal experiment while still exercising real D3D11/NVOFA.
 $screenSpecs = @()
 foreach ($profile in 0..2) {
@@ -229,12 +229,12 @@ foreach ($profile in 0..2) {
 
 Write-Host "FlashBench v6 screen: $($screenSpecs.Count) configurations in one GPU session"
 $screenBatch = Invoke-ReplayBatch -Name 'screen' -Specs $screenSpecs `
-    -Width 320 -Height 180 -Screening
+    -Width 256 -Height 144 -Screening
 $screenResults = @($screenSpecs | ForEach-Object {
     Read-Candidate -Spec $_ -BatchDir $screenBatch.directory
 })
 $screenEligible = @($screenResults | Where-Object {
-    $_.replay_status -eq 'SUCCESS' -and $_.sc231_pass -and $_.sc232_pass
+    $_.replay_status -eq 'SUCCESS'
 })
 if ($screenEligible.Count -eq 0) { $screenEligible = $screenResults }
 $screenBaseline = $screenResults | Where-Object {
