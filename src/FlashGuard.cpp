@@ -3915,6 +3915,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 std::max(15, replayFps / 2) : std::max(60, replayFps * 2);
             double movingFlashRawVariation = 0.0;
             double movingFlashOutputVariation = 0.0;
+            AuthorityDiagnosticAggregate movingFlashAuthority{};
             for (int i = 0; i < movingFlashFrames; ++i)
             {
                 fillGray(24);
@@ -3928,7 +3929,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 for (int y = y0; y < y0 + redSquareSize; ++y)
                     for (int x = x0; x < x0 + redSquareSize; ++x)
                         pixels[static_cast<size_t>(y) * width + x] = value;
-                const FrameSample currentMovingFlash = renderAndSample(nullptr);
+                const RECT movingFlashRect{
+                    x0, y0, x0 + redSquareSize, y0 + redSquareSize };
+                const FrameSample currentMovingFlash = renderAndSample(
+                    nullptr, nullptr, -1, nullptr, nullptr, nullptr,
+                    &movingFlashRect, &movingFlashAuthority);
                 movingFlashRawVariation += std::fabs(
                     currentMovingFlash.sourceMean - previousMovingFlash.sourceMean);
                 movingFlashOutputVariation += std::fabs(
@@ -4148,12 +4153,13 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     trailingComma ? "," : "");
             };
             std::fputs(
-                "{\n  \"schema\":\"FLASHGUARD_AUTHORITY_DIAGNOSTICS/2\",\n"
-                "  \"scope\":\"grayscale moving-square trail pixels with absolute sRGB-luma error above 0.05\",\n"
+                "{\n  \"schema\":\"FLASHGUARD_AUTHORITY_DIAGNOSTICS/3\",\n"
+                "  \"scope\":\"risk-architecture error pixels above 0.05: moving-square trail/recovery plus the active moving-flash square\",\n"
                 "  \"delta_active_threshold\":0.01,\n"
                 "  \"strength_active_threshold\":0.05,\n"
                 "  \"cases\":{\n", authorityReport);
             writeAuthorityCase("moving_square", movingTrailAuthority, true);
+            writeAuthorityCase("moving_flash", movingFlashAuthority, true);
             writeAuthorityCase("moving_square_recovery", movingRecoveryAuthority, false);
             std::fputs("  }\n}\n", authorityReport);
             std::fclose(authorityReport);
