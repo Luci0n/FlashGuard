@@ -981,7 +981,9 @@ R"HLSL(
         // disocclusion from being mistaken for a fresh intrinsic flash.
         if (P16.x > 2.5)
         {
-            const bool eventOnlyArchitecture = P16.x > 5.5;
+            const bool eventOnlyArchitecture =
+                P16.x > 5.5 && P16.x < 6.5;
+            const bool repetitionGatedArchitecture = P16.x > 6.5;
             const float hardDisocclusion =
                 smoothstep(0.30, 0.60, explicitDisocclusionGate);
             const float surfaceContinuity = saturate(max(
@@ -1002,8 +1004,10 @@ R"HLSL(
             const float currentIntrinsicEvent =
                 max(directIntrinsicEvent, stationaryCurrentEvent) *
                 (1.0 - disocclusionEventVeto);
-            surfaceRiskStateSeed = eventOnlyArchitecture ?
-                0.0 : currentIntrinsicEvent;
+            const float persistentSeedAuthority = repetitionGatedArchitecture ?
+                repeatedMemoryGate : 1.0;
+            surfaceRiskStateSeed = eventOnlyArchitecture ? 0.0 :
+                currentIntrinsicEvent * persistentSeedAuthority;
             const float surfaceMemoryMitigation = eventOnlyArchitecture ?
                 0.0 : smoothstep(0.06, 0.45, transportedSurfaceRisk);
             authorityCurrentEventStrength = saturate(currentIntrinsicEvent);
@@ -1124,7 +1128,7 @@ R"HLSL(
         // analyzer's broader temporalRisk remains independent, while this state
         // follows moving geometry and therefore survives a genuine moving flash
         // without dragging stale RGB behind the object.
-        if (P16.x > 5.5)
+        if (P16.x > 5.5 && P16.x < 6.5)
             protectionStateRisk = 0.0;
         else if (P16.x > 3.5)
             protectionStateRisk = saturate(max(
@@ -4458,7 +4462,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 6);
+                    std::clamp(tuning.architectureMode, 0, 7);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
@@ -8065,7 +8069,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     if (!spec[42].empty())
                     {
                         tuning.architectureMode =
-                            std::clamp(_wtoi(spec[42].c_str()), 0, 6);
+                            std::clamp(_wtoi(spec[42].c_str()), 0, 7);
                         tuning.enabled = true;
                     }
                     tune(43, tuning.riskOnlyNeutralLuma);
