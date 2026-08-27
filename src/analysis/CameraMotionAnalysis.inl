@@ -104,5 +104,57 @@
                 }
 
                 if (sameError > 0.001f)
-                    stats.cameraMotionScore = std::clamp(
+                {
+                    const float rawCameraMotionScore = std::clamp(
                         1.0f - bestShiftError / sameError, 0.0f, 1.0f);
+                    stats.cameraMotionScore = rawCameraMotionScore;
+
+                    // Validate the luminance-derived shift against spatial
+                    // structure. Gradient magnitude ignores contrast polarity
+                    // and additive brightness changes, so a stationary flash
+                    // cannot earn camera authority merely because shifting its
+                    // bright/dark boundary reduces raw photometric error.
+                    const auto structuralShiftError =
+                        [&](float shiftX, float shiftY) {
+                        float error = 0.0f;
+                        uint32_t samples = 0;
+                        for (int y = motionMarginY + 1;
+                             y < analysisH - motionMarginY - 1; ++y)
+                        for (int x = motionMarginX + 1;
+                             x < analysisW - motionMarginX - 1; ++x)
+                        {
+                            const auto currentAt = [&](int sx, int sy) {
+                                return m_currentAnalysis[
+                                    static_cast<size_t>(sy) * kAnalysisWidth + sx];
+                            };
+                            const float currentGx =
+                                currentAt(x + 1, y) - currentAt(x - 1, y);
+                            const float currentGy =
+                                currentAt(x, y + 1) - currentAt(x, y - 1);
+                            const float previousGx =
+                                samplePrevious(x + shiftX + 1.0f, y + shiftY) -
+                                samplePrevious(x + shiftX - 1.0f, y + shiftY);
+                            const float previousGy =
+                                samplePrevious(x + shiftX, y + shiftY + 1.0f) -
+                                samplePrevious(x + shiftX, y + shiftY - 1.0f);
+                            const float currentMagnitude = std::sqrt(
+                                currentGx * currentGx + currentGy * currentGy);
+                            const float previousMagnitude = std::sqrt(
+                                previousGx * previousGx + previousGy * previousGy);
+                            error += std::fabs(currentMagnitude - previousMagnitude);
+                            ++samples;
+                        }
+                        return samples ? error / static_cast<float>(samples) : 0.0f;
+                    };
+                    const float sameStructuralError = structuralShiftError(0.0f, 0.0f);
+                    if (sameStructuralError > 0.0005f)
+                    {
+                        const float shiftedStructuralError =
+                            structuralShiftError(bestShiftX, bestShiftY);
+                        const float structuralImprovement = std::clamp(
+                            1.0f - shiftedStructuralError / sameStructuralError,
+                            0.0f, 1.0f);
+                        stats.structuralCameraMotionScore =
+                            rawCameraMotionScore * structuralImprovement;
+                    }
+                }

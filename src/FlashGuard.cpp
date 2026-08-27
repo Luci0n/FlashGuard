@@ -175,6 +175,7 @@ namespace
         float visualFieldAffectedArea = 0.0f;
         float flashEnergy = 0.0f;
         float cameraMotionScore = 0.0f;
+        float structuralCameraMotionScore = 0.0f;
         float patternScore = 0.0f;
         float dt = 1.0f / 60.0f;
         bool validDelta = false;
@@ -854,26 +855,26 @@ R"HLSL(
             coarseMotionGate, cpuMotionCorroboration);
 )HLSL"
 R"HLSL(
-        // Modes 16-21 keep mode 14's corrected current-pixel event semantics only
+        // Modes 16-22 keep mode 14's corrected current-pixel event semantics only
         // for LOCAL motion. During coherent whole-frame/camera motion, photometric
         // overlap is too permissive: blend the event interpretation back to raw
         // disocclusion so fast pans cannot be mistaken for intrinsic flashes.
         const bool cameraAwareEventDisocclusionArchitecture =
-            P16.x > 15.5 && P16.x < 21.5;
+            P16.x > 15.5 && P16.x < 22.5;
         // Matrix 25 showed a separate stationary sequence problem: 5 Hz flashes
         // lose protection because the 100 ms surface-risk state decays between
         // opposing half-cycles, while a 4-code reversal is too weak to establish
-        // useful opposition authority. Modes 17-21 change neither rule for moving
+        // useful opposition authority. Modes 17-22 change neither rule for moving
         // content. They extend already-qualified risk only when scene-level motion
         // is absent, and tiny changes still need an opposing signed reversal
         // before they are allowed to affect the display.
         const bool stationaryWeakRepetitionArchitecture =
-            P16.x > 16.5 && P16.x < 21.5;
+            P16.x > 16.5 && P16.x < 22.5;
         // Mode 18 preserves qualified state when CURRENT-surface geometry proves
         // continuity. Mode 19 attempted a textureless fallback, but Matrix 28
         // showed that max(localMotionGate, hardwareMotionGate) is itself polluted
         // by photometric reversals and that signed-prime continuity still used the
-        // same raw motion evidence. Modes 20/21 keep mode 18's geometric path and
+        // same raw motion evidence. Modes 20-22 keep mode 18's geometric path and
         // add a fallback only when scene motion is absent AND neither current-
         // surface nor global-flow coherence proves real displacement.
         const bool stationaryQualifiedStateArchitecture =
@@ -881,12 +882,13 @@ R"HLSL(
         const bool stationaryMotionOnlyStateArchitecture =
             P16.x > 18.5 && P16.x < 19.5;
         const bool texturelessStationaryPrimeStateArchitecture =
-            P16.x > 19.5 && P16.x < 21.5;
-        // Mode 21 makes the whole-frame translation score authoritative even
-        // during active protection, where the ordinary CPU prior is intentionally
-        // suppressed. This guard affects sequence state only.
+            P16.x > 19.5 && P16.x < 22.5;
+        // Modes 21/22 make the whole-frame translation score authoritative even
+        // during active protection. Mode 22 receives a structural/gradient-
+        // validated score in P6.y; mode 21 and production retain raw luminance.
+        // This guard still affects sequence state only.
         const bool qualifiedStationaryCameraGuardArchitecture =
-            P16.x > 20.5 && P16.x < 21.5;
+            P16.x > 20.5 && P16.x < 22.5;
         const float stationaryMotionGuardGate =
             qualifiedStationaryCameraGuardArchitecture ?
                 max(corroboratedMotionGate, unmaskedCpuCameraMotionGate) :
@@ -5012,7 +5014,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 21);
+                    std::clamp(tuning.architectureMode, 0, 22);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
@@ -6836,7 +6838,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             c.p5[1] = m_safety.redDeltaThreshold;
             c.p5[2] = m_instantHistoryValid ? 1.0f : 0.0f;
             c.p5[3] = m_instantFrameDt;
-            c.p6[1] = m_latestStats.validDelta ? m_latestStats.cameraMotionScore : 0.0f;
+            const float shaderCameraMotionScore =
+                m_benchmarkArchitectureMode == 22 ?
+                    m_latestStats.structuralCameraMotionScore :
+                    m_latestStats.cameraMotionScore;
+            c.p6[1] = m_latestStats.validDelta ? shaderCameraMotionScore : 0.0f;
             c.p6[2] = 1.0f / static_cast<float>(kAnalysisWidth);
             c.p6[3] = 1.0f / static_cast<float>(kAnalysisHeight);
             c.p6[0] = broadLocalTransition ? 1.0f : 0.0f;
@@ -8621,7 +8627,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         const int requestedArchitecture =
                             _wtoi(spec[42].c_str());
                         tuning.architectureMode =
-                            std::clamp(requestedArchitecture, 0, 21);
+                            std::clamp(requestedArchitecture, 0, 22);
                         if (tuning.architectureMode != requestedArchitecture)
                         {
                             DestroyWindow(replayWindow);
