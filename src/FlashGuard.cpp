@@ -1106,6 +1106,8 @@ R"HLSL(
                     propagatedEvent * step(1.5, propagatedSupportCount) *
                     (1.0 - hardDisocclusion));
             }
+)HLSL"
+R"HLSL(
 
             // Mode 8 keeps a short signed PRIME separately from display-active
             // risk. R encodes [-1,+1] around 0.5 only in this benchmark mode.
