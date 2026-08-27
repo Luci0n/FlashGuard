@@ -1,0 +1,34 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_2acf4cf0_bounded-risk-memory",
+  "source_commit": "2acf4cf06de1ac280136d496f9f155059f6d5ba8",
+  "workflow_run_id": 33054279102,
+  "artifact_id": 9639049495,
+  "artifact_digest": "sha256:04673a75d66929e706e00a8ef24512a7ba9aef2ae47c1d3f1286b675f0958249",
+  "result": "SUCCESS",
+  "purpose": "Probe whether a tightly bounded local surface-risk lifetime can preserve weak/repeated flash suppression without restoring long trail recovery.",
+  "matrix_schema": "FLASHGUARD_MATRIX/13",
+  "interpretation": {
+    "primary_gate_pass_count": 0,
+    "event_only_gain200_clear_05_ms": 66.667,
+    "event_only_gain200_perceptual_min_reduction": 0.65110777,
+    "event_only_gain200_moving_flash_reduction": 0.36197872,
+    "event_only_gain200_wcag_pass": false,
+    "bounded_tau010_gain160_clear_05_ms": 66.667,
+    "bounded_tau010_gain160_moving_flash_reduction": 0.38368716,
+    "bounded_tau010_gain160_wcag_pass": false,
+    "bounded_tau020_gain200_clear_05_ms": 100.0,
+    "bounded_tau020_gain200_perceptual_min_reduction": 0.66451007,
+    "bounded_tau020_gain200_moving_flash_reduction": 0.39964857,
+    "bounded_tau020_gain200_wcag_pass": true,
+    "bounded_tau075_gain160_clear_05_ms": 200.0,
+    "bounded_tau075_gain160_perceptual_min_reduction": 0.81928506,
+    "bounded_tau075_gain160_moving_flash_reduction": 0.40809042,
+    "bounded_tau075_gain160_wcag_pass": true,
+    "conclusion": "A scalar lifetime/gain compromise does not exist in this search. About 10 ms retains <=70 ms clearing but still fails the 10 Hz full-screen luminance WCAG case and moving-flash protection. Around 20 ms is enough to restore WCAG but already clears at 100 ms, while moving-flash reduction remains below 0.40. Longer memory recovers weak-flash suppression but plateaus near 0.408 moving-flash reduction and worsens recovery. The next test should gate persistent local-risk seeding on repeated-flash evidence rather than seeding it after isolated transitions."
+  },
+  "raw_file_sha256": {
+    "matrix.json": "d3d03dfa244a437d6f66e0247ec9f51027941aac4b6786936c7c9fcc22b98c20",
+    "summary.json": "5f2601b003afc035d0c36cd8a034da7e3a89544f86bc52a06fc6fdb3fe2082f3"
+  }
+}
