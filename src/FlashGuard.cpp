@@ -988,6 +988,7 @@ R"HLSL(
             const bool repetitionGatedArchitecture =
                 P16.x > 6.5 && P16.x < 7.5;
             const bool oppositionGatedArchitecture = P16.x > 7.5;
+            const bool surfacePropagationArchitecture = P16.x > 8.5;
             const float hardDisocclusion =
                 smoothstep(0.30, 0.60, explicitDisocclusionGate);
             const float surfaceContinuity = saturate(max(
@@ -1005,9 +1006,106 @@ R"HLSL(
                 eventGate * eventDeltaGate * (1.0 - correspondenceGate);
             const float disocclusionEventVeto = P16.x > 3.5 ?
                 smoothstep(0.08, 0.35, explicitDisocclusionGate) : 0.0;
-            const float currentIntrinsicEvent =
+            float currentIntrinsicEvent =
                 max(directIntrinsicEvent, stationaryCurrentEvent) *
                 (1.0 - disocclusionEventVeto);
+
+            // Mode 9 expands CURRENT intrinsic authority across the same moving
+            // surface without transporting neighbor RGB or display history. This
+            // fills uniform moving-flash interiors where optical flow is locally
+            // under-observable, while requiring at least two coherent moving
+            // neighbors with nearly identical current appearance. A one-frame
+            // propagation therefore cannot remain behind on vacated background.
+            if (surfacePropagationArchitecture && P7.z > 0.5 &&
+                hardwareFlowAvailable && hardDisocclusion < 0.5)
+            {
+                const float2 propagationOutputSize =
+                    max(float2(P2.z, P2.w), float2(1.0, 1.0));
+                const float2 propagationTexel = 1.0 / propagationOutputSize;
+                const float2 centerFlow =
+                    LoadOpticalFlow(ForwardOpticalFlow, i.uv);
+                const float centerFlowMagnitude = length(centerFlow);
+                float propagatedEvent = 0.0;
+                float propagatedSupportCount = 0.0;
+                [unroll]
+                for (int pri = 0; pri < 2; ++pri)
+                {
+                    const float radius = pri == 0 ? 6.0 : 14.0;
+                    [unroll]
+                    for (int ni = 0; ni < 4; ++ni)
+                    {
+                        const float2 direction = ni == 0 ? float2(-1.0, 0.0) :
+                            (ni == 1 ? float2(1.0, 0.0) :
+                            (ni == 2 ? float2(0.0, -1.0) : float2(0.0, 1.0)));
+                        const float2 neighborUv =
+                            i.uv + direction * propagationTexel * radius;
+                        const bool insideNeighbor =
+                            all(neighborUv >= float2(0.0, 0.0)) &&
+                            all(neighborUv <= float2(1.0, 1.0));
+                        if (insideNeighbor)
+                        {
+                            const float3 neighborCurrent = CurrentFrame.SampleLevel(
+                                LinearClamp, neighborUv, 0.0).rgb;
+                            const float sameCurrentSurface = 1.0 - smoothstep(
+                                0.004, 0.025,
+                                SourceMatchError(rawSourceColor, neighborCurrent));
+                            const float2 neighborFlow =
+                                LoadOpticalFlow(ForwardOpticalFlow, neighborUv);
+                            const float neighborFlowMagnitude = length(neighborFlow);
+                            if (sameCurrentSurface > 0.05 &&
+                                neighborFlowMagnitude > 0.10)
+                            {
+                                float flowCoherence = 1.0;
+                                if (centerFlowMagnitude > 0.10)
+                                {
+                                    const float directionAgreement =
+                                        dot(centerFlow, neighborFlow) /
+                                        max(centerFlowMagnitude * neighborFlowMagnitude, 0.001);
+                                    const float magnitudeAgreement =
+                                        min(centerFlowMagnitude, neighborFlowMagnitude) /
+                                        max(centerFlowMagnitude, neighborFlowMagnitude);
+                                    flowCoherence =
+                                        smoothstep(0.68, 0.92, directionAgreement) *
+                                        smoothstep(0.25, 0.70, magnitudeAgreement);
+                                }
+                                const float2 neighborPreviousUv =
+                                    neighborUv + neighborFlow / propagationOutputSize;
+                                const bool insideNeighborPrevious =
+                                    all(neighborPreviousUv >= float2(0.0, 0.0)) &&
+                                    all(neighborPreviousUv <= float2(1.0, 1.0));
+                                if (insideNeighborPrevious)
+                                {
+                                    const float3 neighborPreviousRaw =
+                                        PreviousSource.SampleLevel(LinearClamp,
+                                            neighborPreviousUv, 0.0).rgb;
+                                    const float neighborResidual =
+                                        SourceMatchError(
+                                            neighborCurrent, neighborPreviousRaw);
+                                    const float neighborPreviousDisplayedL = Luma(
+                                        PreviousOutput.SampleLevel(
+                                            LinearClamp, neighborUv, 0.0).rgb);
+                                    const float neighborDisplayedDelta = abs(
+                                        Luma(neighborCurrent) -
+                                        neighborPreviousDisplayedL);
+                                    const float neighborEvent =
+                                        smoothstep(P11.z, P11.w, neighborResidual) *
+                                        smoothstep(P15.x, P15.y,
+                                            neighborDisplayedDelta);
+                                    const float support = neighborEvent *
+                                        sameCurrentSurface * flowCoherence;
+                                    propagatedEvent = max(
+                                        propagatedEvent, support);
+                                    propagatedSupportCount +=
+                                        support > 0.45 ? 1.0 : 0.0;
+                                }
+                            }
+                        }
+                    }
+                }
+                currentIntrinsicEvent = max(currentIntrinsicEvent,
+                    propagatedEvent * step(1.5, propagatedSupportCount) *
+                    (1.0 - hardDisocclusion));
+            }
 
             // Mode 8 keeps a short signed PRIME separately from display-active
             // risk. R encodes [-1,+1] around 0.5 only in this benchmark mode.
@@ -4519,7 +4617,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 8);
+                    std::clamp(tuning.architectureMode, 0, 9);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,

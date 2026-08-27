@@ -286,16 +286,16 @@ try {
             }
         }
 
-        # Current targeted/full matrix is diagnostic-only: measure which
-        # authorities are missing on the underprotected moving-flash pixels.
+        # Current targeted/full matrix directly accepts or rejects same-surface
+        # spatial propagation as the moving-flash coverage architecture.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
             if ($TestTier -eq 'targeted' -and -not $TuneMatrix) {
-                & (Join-Path $PSScriptRoot 'matrix-v16.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v17.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir -ScreenOnly
             } else {
-                & (Join-Path $PSScriptRoot 'matrix-v16.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v17.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir
             }
