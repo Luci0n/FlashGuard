@@ -51,7 +51,8 @@
     "FLASHGUARD_MATRIX/11",
     "FLASHGUARD_MATRIX/12",
     "FLASHGUARD_MATRIX/13",
-    "FLASHGUARD_MATRIX/14"
+    "FLASHGUARD_MATRIX/14",
+    "FLASHGUARD_MATRIX/15"
   ],
   "runs": [
     {
@@ -182,6 +183,11 @@
     {
       "run_id": "2026-08-27_30dea046_repetition-gated-risk",
       "commit": "30dea046f0a65bef9507d766e70a013304558917",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_4c31e52b_same-surface-opposition",
+      "commit": "4c31e52b4150311cdda9fd461fd653e7c8e038ed",
       "result": "SUCCESS"
     }
   ]
