@@ -846,35 +846,48 @@ R"HLSL(
             cpuCameraMotionGate / max(cpuMotionWeight, 0.001));
         const float corroboratedMotionGate = max(
             coarseMotionGate, cpuMotionCorroboration);
-        // Modes 16/17 keep mode 14's corrected current-pixel event semantics only
+        // Modes 16-19 keep mode 14's corrected current-pixel event semantics only
         // for LOCAL motion. During coherent whole-frame/camera motion, photometric
         // overlap is too permissive: blend the event interpretation back to raw
         // disocclusion so fast pans cannot be mistaken for intrinsic flashes.
         const bool cameraAwareEventDisocclusionArchitecture =
-            P16.x > 15.5 && P16.x < 18.5;
+            P16.x > 15.5 && P16.x < 19.5;
         // Matrix 25 showed a separate stationary sequence problem: 5 Hz flashes
         // lose protection because the 100 ms surface-risk state decays between
         // opposing half-cycles, while a 4-code reversal is too weak to establish
-        // useful opposition authority. Modes 17/18 change neither rule for moving
+        // useful opposition authority. Modes 17-19 change neither rule for moving
         // content. They extend already-qualified risk only when scene-level motion
         // is absent, and tiny changes still need an opposing signed reversal
         // before they are allowed to affect the display.
         const bool stationaryWeakRepetitionArchitecture =
-            P16.x > 16.5 && P16.x < 18.5;
-        // Matrix 26 showed that extending the state after transport is not enough:
-        // a stationary brightness reversal can first trip the raw disocclusion
-        // reset and erase already opposition-qualified state. Mode 18 restores only
-        // that qualified risk under stationary CURRENT-surface correspondence.
-        // Displayed history and every moving/camera path remain on raw disocclusion.
+            P16.x > 16.5 && P16.x < 19.5;
+        // Mode 18 requires current-surface correspondence before preserving
+        // sequence state. Matrix 27 showed that this is the wrong requirement for
+        // uniform stationary flashes: NVOFA has no texture/motion with which to
+        // prove a correspondence. Mode 19 therefore treats simultaneous absence
+        // of scene-level and LOCAL motion as stationary correspondence, but only
+        // for signed-prime/risk state. Displayed history stays on raw disocclusion.
         const bool stationaryQualifiedStateArchitecture =
             P16.x > 17.5 && P16.x < 18.5;
+        const bool stationaryMotionOnlyStateArchitecture =
+            P16.x > 18.5 && P16.x < 19.5;
         const float stationaryRepetitionGate =
             stationaryWeakRepetitionArchitecture ?
                 (1.0 - smoothstep(0.08, 0.30, corroboratedMotionGate)) : 0.0;
-        if (stationaryQualifiedStateArchitecture &&
-            stationaryRepetitionGate > 0.0 && previousProtectionValid &&
-            previousProtectionState.g > 0.06 &&
-            correctedCurrentPixelDisocclusionGate <= P13.z)
+        const float localSequenceMotionGate = smoothstep(
+            0.10, 0.45, max(localMotionGate, hardwareMotionGate));
+        const float stationarySequenceStateGate =
+            stationaryMotionOnlyStateArchitecture ?
+                stationaryRepetitionGate * (1.0 - localSequenceMotionGate) :
+                stationaryRepetitionGate;
+        const bool restoreQualifiedState =
+            stationaryMotionOnlyStateArchitecture ?
+                (stationarySequenceStateGate > 0.0) :
+                (stationaryQualifiedStateArchitecture &&
+                 stationarySequenceStateGate > 0.0 &&
+                 correctedCurrentPixelDisocclusionGate <= P13.z);
+        if (restoreQualifiedState && previousProtectionValid &&
+            previousProtectionState.g > 0.06)
         {
             const float restoredRisk = saturate(previousProtectionState.g) *
                 exp(-dt / max(P13.w, 0.005));
@@ -1065,16 +1078,23 @@ R"HLSL(
             const float hardEventDisocclusion =
                 smoothstep(0.30, 0.60, eventDisocclusionGate);
             const float stationaryStateDisocclusionGate =
-                stationaryQualifiedStateArchitecture ?
+                stationaryMotionOnlyStateArchitecture ?
+                    explicitDisocclusionGate *
+                        (1.0 - stationarySequenceStateGate) :
+                (stationaryQualifiedStateArchitecture ?
                     lerp(explicitDisocclusionGate,
                         correctedCurrentPixelDisocclusionGate,
                         stationaryRepetitionGate) :
-                    explicitDisocclusionGate;
+                    explicitDisocclusionGate);
             const float hardStateDisocclusion =
                 smoothstep(0.30, 0.60, stationaryStateDisocclusionGate);
-            const float surfaceContinuity = saturate(max(
-                stableSourceGate, verifiedCurrentSurfaceTransport)) *
-                (1.0 - hardStateDisocclusion);
+            const float stateContinuityEvidence =
+                stationaryMotionOnlyStateArchitecture ?
+                    max(max(stableSourceGate, verifiedCurrentSurfaceTransport),
+                        stationarySequenceStateGate) :
+                    max(stableSourceGate, verifiedCurrentSurfaceTransport);
+            const float surfaceContinuity =
+                saturate(stateContinuityEvidence) * (1.0 - hardStateDisocclusion);
             transportedSurfaceRisk *= surfaceContinuity;
             transportedRedAuthority *= surfaceContinuity;
             finalRedSafetyAuthority = max(
@@ -4928,7 +4948,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 18);
+                    std::clamp(tuning.architectureMode, 0, 19);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
@@ -8537,7 +8557,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         const int requestedArchitecture =
                             _wtoi(spec[42].c_str());
                         tuning.architectureMode =
-                            std::clamp(requestedArchitecture, 0, 18);
+                            std::clamp(requestedArchitecture, 0, 19);
                         if (tuning.architectureMode != requestedArchitecture)
                         {
                             DestroyWindow(replayWindow);

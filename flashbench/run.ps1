@@ -286,11 +286,11 @@ try {
             }
         }
 
-        # Canonical full-replay validation of stationary qualified-state
-        # continuity after Matrix 26 isolated false disocclusion at 5-7.5 Hz.
+        # Canonical full-replay validation of stationary sequence state without
+        # requiring NVOFA correspondence on textureless uniform flashes.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v27.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v28.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE

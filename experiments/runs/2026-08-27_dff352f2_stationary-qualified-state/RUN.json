@@ -1,0 +1,46 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_dff352f2_stationary-qualified-state",
+  "source_commit": "dff352f2bd261960ecd48a6917fef544870fd53e",
+  "workflow_run_id": 33087480407,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9653065537,
+  "artifact_name": "flashbench-gpu-dff352f2bd261960ecd48a6917fef544870fd53e",
+  "artifact_digest": "sha256:d1b7b4fe57ac39bc248fc940ca487838b0de40aa9f789811f3f555f343d6321a",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/27",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Canonical full-replay test of preserving already-qualified stationary flash risk/prime across false raw disocclusion.",
+  "invariant": "Production architecture 0 remained unchanged. Mode 18 preserved sequence state only under stationary current-surface correspondence; displayed history and moving/camera paths stayed conservative.",
+  "result_summary": {
+    "mode18_replay_status": "SUCCESS",
+    "mode18_moving_clear_05_ms": 66.667,
+    "mode18_moving_flash_reduction": 0.83272139,
+    "mode18_perceptual_min_reduction": 0.1361999,
+    "mode18_pan_mae": 0.00271939,
+    "mode18_fast_pan_mae": 0.00451717,
+    "mode18_extreme_pan_mae": 0.00991931,
+    "mode18_wcag_sc_2_3_1_pass": false,
+    "mode18_wcag_sc_2_3_2_pass": false,
+    "remaining_wcag_failures": [
+      "luminance_quarter@5Hz",
+      "luminance_quarter@7.5Hz"
+    ]
+  },
+  "interpretation": "Mode 18 strongly improves moving-flash suppression while keeping clearing and pan gates, but does not solve low-frequency uniform/quarter-field flashes. The perceptual phase split shows the remaining sequence-state path still depends on NVOFA current-surface confidence; uniform stationary flashes have no motion texture to provide that correspondence. The next test therefore treats absence of scene-level and local motion as stationary sequence correspondence for risk/prime only.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "7f677059484e3029f714b8f1f7c65f208a5759246588daa8f086ca7537a116a7"
+    },
+    {
+      "path": "mode18-perceptual-sweep.json",
+      "sha256": "ee3069469b520b21f062f65be4b18d63b1d44089e691c540bc5e106072318559"
+    },
+    {
+      "path": "mode18-flash-sweep.json",
+      "sha256": "84812d917051a01553def4fbca369b07a487317480a40162ed2e66975d7eb99f"
+    }
+  ]
+}

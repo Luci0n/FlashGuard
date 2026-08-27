@@ -65,7 +65,8 @@
     "FLASHGUARD_MATRIX/23",
     "FLASHGUARD_MATRIX/24",
     "FLASHGUARD_MATRIX/25",
-    "FLASHGUARD_MATRIX/26"
+    "FLASHGUARD_MATRIX/26",
+    "FLASHGUARD_MATRIX/27"
   ],
   "runs": [
     {
@@ -256,6 +257,11 @@
     {
       "run_id": "2026-08-27_2ce9c0f7_stationary-reversal-hold",
       "commit": "2ce9c0f711c6fc0184e60425c189e97d01fb4d70",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_dff352f2_stationary-qualified-state",
+      "commit": "dff352f2bd261960ecd48a6917fef544870fd53e",
       "result": "SUCCESS"
     }
   ]
