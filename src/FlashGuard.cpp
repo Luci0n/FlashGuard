@@ -860,7 +860,7 @@ R"HLSL(
         // overlap is too permissive: blend the event interpretation back to raw
         // disocclusion so fast pans cannot be mistaken for intrinsic flashes.
         const bool cameraAwareEventDisocclusionArchitecture =
-            P16.x > 15.5 && P16.x < 22.5;
+            P16.x > 15.5 && P16.x < 23.5;
         // Matrix 25 showed a separate stationary sequence problem: 5 Hz flashes
         // lose protection because the 100 ms surface-risk state decays between
         // opposing half-cycles, while a 4-code reversal is too weak to establish
@@ -869,7 +869,7 @@ R"HLSL(
         // is absent, and tiny changes still need an opposing signed reversal
         // before they are allowed to affect the display.
         const bool stationaryWeakRepetitionArchitecture =
-            P16.x > 16.5 && P16.x < 22.5;
+            P16.x > 16.5 && P16.x < 23.5;
         // Mode 18 preserves qualified state when CURRENT-surface geometry proves
         // continuity. Mode 19 attempted a textureless fallback, but Matrix 28
         // showed that max(localMotionGate, hardwareMotionGate) is itself polluted
@@ -882,7 +882,12 @@ R"HLSL(
         const bool stationaryMotionOnlyStateArchitecture =
             P16.x > 18.5 && P16.x < 19.5;
         const bool texturelessStationaryPrimeStateArchitecture =
-            P16.x > 19.5 && P16.x < 22.5;
+            P16.x > 19.5 && P16.x < 23.5;
+        // Mode 23 keeps mode 20 semantics except that an unmasked whole-frame
+        // camera translation veto is applied only to the textureless fallback.
+        // It does not inherit mode 21/22's broader sequence-state rewrites.
+        const bool minimalTexturelessCameraVetoArchitecture =
+            P16.x > 22.5 && P16.x < 23.5;
         // Modes 21/22 make the whole-frame translation score authoritative even
         // during active protection. Mode 22 receives a structural/gradient-
         // validated score in P6.y; mode 21 and production retain raw luminance.
@@ -900,16 +905,21 @@ R"HLSL(
             0.10, 0.45, max(localMotionGate, hardwareMotionGate));
         const float coherentSequenceMotionGate = smoothstep(
             0.20, 0.60, max(diagCurrentSurfaceGate, diagGlobalFlowGate));
-        const float texturelessStationaryFallbackGate =
+        const float baseTexturelessStationaryFallbackGate =
             texturelessStationaryPrimeStateArchitecture ?
                 stationaryRepetitionGate * (1.0 - coherentSequenceMotionGate) : 0.0;
+        const float texturelessStationaryFallbackGate =
+            minimalTexturelessCameraVetoArchitecture ?
+                baseTexturelessStationaryFallbackGate *
+                    (1.0 - unmaskedCpuCameraMotionGate) :
+                baseTexturelessStationaryFallbackGate;
         const float stationarySequenceStateGate =
             stationaryMotionOnlyStateArchitecture ?
                 stationaryRepetitionGate * (1.0 - localSequenceMotionGate) :
             (texturelessStationaryPrimeStateArchitecture ?
                 texturelessStationaryFallbackGate : stationaryRepetitionGate);
 )HLSL" R"HLSL(
-        const float texturelessStateDisocclusionGate =
+        const float texturelessStateDisocclusionGateBase =
             qualifiedStationaryCameraGuardArchitecture ?
                 lerp(explicitDisocclusionGate,
                     correctedCurrentPixelDisocclusionGate,
@@ -918,6 +928,11 @@ R"HLSL(
                 min(correctedCurrentPixelDisocclusionGate,
                     explicitDisocclusionGate *
                         (1.0 - texturelessStationaryFallbackGate));
+        const float texturelessStateDisocclusionGate =
+            minimalTexturelessCameraVetoArchitecture ?
+                lerp(texturelessStateDisocclusionGateBase,
+                    explicitDisocclusionGate, unmaskedCpuCameraMotionGate) :
+                texturelessStateDisocclusionGateBase;
         const bool restoreQualifiedState =
             texturelessStationaryPrimeStateArchitecture ?
                 ((qualifiedStationaryCameraGuardArchitecture ?
@@ -5014,7 +5029,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 22);
+                    std::clamp(tuning.architectureMode, 0, 23);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
@@ -8627,7 +8642,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         const int requestedArchitecture =
                             _wtoi(spec[42].c_str());
                         tuning.architectureMode =
-                            std::clamp(requestedArchitecture, 0, 22);
+                            std::clamp(requestedArchitecture, 0, 23);
                         if (tuning.architectureMode != requestedArchitecture)
                         {
                             DestroyWindow(replayWindow);

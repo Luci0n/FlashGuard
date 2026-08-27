@@ -286,11 +286,11 @@ try {
             }
         }
 
-        # Canonical full-replay validation of the structural/gradient-validated
-        # camera guard for textureless stationary sequence state.
+        # Canonical full-replay validation of the minimal camera veto applied only
+        # to mode 20's textureless stationary fallback/raw-disocclusion path.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v31.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v32.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE

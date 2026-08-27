@@ -69,7 +69,8 @@
     "FLASHGUARD_MATRIX/27",
     "FLASHGUARD_MATRIX/28",
     "FLASHGUARD_MATRIX/29",
-    "FLASHGUARD_MATRIX/30"
+    "FLASHGUARD_MATRIX/30",
+    "FLASHGUARD_MATRIX/31"
   ],
   "runs": [
     {
@@ -280,6 +281,11 @@
     {
       "run_id": "2026-08-27_e618f868_camera-guarded-state",
       "commit": "e618f8685fa07a92cac1c4cc0e9991f37fa2c198",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_7b51f4d9_structural-camera-guard",
+      "commit": "7b51f4d9d8134d4a36ff64b0b104ff18cc0cdb00",
       "result": "SUCCESS"
     }
   ]
