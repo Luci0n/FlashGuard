@@ -1,0 +1,45 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_c5ff67c9_textureless-flow-consensus",
+  "source_commit": "c5ff67c958a2bd6e8846a16173af4278882c83b8",
+  "workflow_run_id": 33065984213,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9643841087,
+  "artifact_name": "flashbench-gpu-c5ff67c958a2bd6e8846a16173af4278882c83b8",
+  "artifact_digest": "sha256:ed0b1a0e2a302852a450680933ff20c9815d06ac94b52015e73ad0f8f2a0e492",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/19",
+  "purpose": "Directly accept or reject textureless moving-surface NVOF consensus as the missing moving-flash intrinsic-coverage mechanism.",
+  "invariant": "Benchmark architecture 11 only; production architecture 0 remained unchanged and the candidate transported only a validated motion vector for raw-source comparison, never display RGB or event memory.",
+  "primary_gate": "moving clear-to-5% <=70 ms; moving-flash reduction >=0.45; perceptual minimum reduction >=0.70; WCAG SC 2.3.1 and 2.3.2 pass",
+  "result_summary": {
+    "opposition_mode8": {
+      "moving_clear_05_ms": 66.667,
+      "moving_flash_reduction": 0.37155597,
+      "perceptual_min_reduction": 0.75097655,
+      "pan_mae": 0.00352272,
+      "wcag_pass": true
+    },
+    "textureless_flow_consensus_mode11": {
+      "moving_clear_05_ms": 66.667,
+      "moving_flash_reduction": 0.37155597,
+      "perceptual_min_reduction": 0.75097655,
+      "pan_mae": 0.00352272,
+      "wcag_pass": true
+    },
+    "selected": null,
+    "screen_elapsed_ms": 26156
+  },
+  "interpretation": "Mode 11 again produced exactly the mode-8 moving-flash result, while slightly changing ordinary moving-square error, proving architecture mode 11 was active but its NVOF consensus did not add moving-flash authority. This rejects optical-flow infill as the next lever. The next candidate uses a different invariant: at a translating uniform object's interior, same-coordinate raw source remains unchanged for small displacement, whereas an intrinsic flash changes the whole interior; pixels near motion boundaries are excluded by four-sided current-surface support.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "b94ed6d53e52c4227be7573520aaa26f895baccceddd34b989cec60026555e86"
+    },
+    {
+      "path": "summary.json",
+      "sha256": "b6ceea3707fa2aa0e30c8826f9d08af0aa570e0845177d3f469c8e152f3a7dc5"
+    }
+  ]
+}

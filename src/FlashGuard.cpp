@@ -993,7 +993,9 @@ R"HLSL(
                 P16.x > 8.5 && P16.x < 9.5;
             const bool phaseHoldArchitecture =
                 P16.x > 9.5 && P16.x < 10.5;
-            const bool flowConsensusArchitecture = P16.x > 10.5;
+            const bool flowConsensusArchitecture =
+                P16.x > 10.5 && P16.x < 11.5;
+            const bool interiorIntrinsicArchitecture = P16.x > 11.5;
             const float hardDisocclusion =
                 smoothstep(0.30, 0.60, explicitDisocclusionGate);
             const float surfaceContinuity = saturate(max(
@@ -1201,6 +1203,58 @@ R"HLSL(
                 }
                 currentIntrinsicEvent = max(currentIntrinsicEvent,
                     consensusIntrinsicEvent * (1.0 - hardDisocclusion));
+            }
+
+            // Mode 12 exploits a geometric invariant that does not require optical
+            // flow. With the benchmark's small translation, a pixel well inside a
+            // uniform moving surface still covered the same surface at this screen
+            // coordinate one frame ago. Ordinary translation therefore has a small
+            // same-coordinate raw delta there. A real intrinsic flash changes the
+            // whole interior. Require four-sided CURRENT appearance support before
+            // trusting sourceDelta, which excludes leading/trailing motion edges and
+            // disocclusions. This is current-frame authority only: no display or event
+            // memory is added.
+            if (interiorIntrinsicArchitecture && P7.z > 0.5 &&
+                hardDisocclusion < 0.5 && currentIntrinsicEvent < 0.95 &&
+                sourceDelta > P11.z && displayedDelta > P15.x)
+            {
+                const float2 interiorOutputSize =
+                    max(float2(P2.z, P2.w), float2(1.0, 1.0));
+                const float2 interiorTexel = 1.0 / interiorOutputSize;
+                float interiorSupport = 1.0;
+                [unroll]
+                for (int ini = 0; ini < 4; ++ini)
+                {
+                    const float2 direction = ini == 0 ? float2(-1.0, 0.0) :
+                        (ini == 1 ? float2(1.0, 0.0) :
+                        (ini == 2 ? float2(0.0, -1.0) : float2(0.0, 1.0)));
+                    const float2 neighborUv =
+                        i.uv + direction * interiorTexel * 6.0;
+                    const bool insideNeighbor =
+                        all(neighborUv >= float2(0.0, 0.0)) &&
+                        all(neighborUv <= float2(1.0, 1.0));
+                    if (!insideNeighbor)
+                    {
+                        interiorSupport = 0.0;
+                    }
+                    else
+                    {
+                        const float3 neighborCurrent = CurrentFrame.SampleLevel(
+                            LinearClamp, neighborUv, 0.0).rgb;
+                        const float sameCurrentSurface = 1.0 - smoothstep(
+                            0.004, 0.025,
+                            SourceMatchError(rawSourceColor, neighborCurrent));
+                        interiorSupport = min(interiorSupport, sameCurrentSurface);
+                    }
+                }
+                const float interiorGate =
+                    smoothstep(0.70, 0.95, interiorSupport);
+                const float interiorIntrinsicEvent =
+                    interiorGate * smoothstep(P11.z, P11.w, sourceDelta) *
+                    smoothstep(P15.x, P15.y, displayedDelta) *
+                    (1.0 - hardDisocclusion);
+                currentIntrinsicEvent = max(
+                    currentIntrinsicEvent, interiorIntrinsicEvent);
             }
 
             // Mode 8 keeps a short signed PRIME separately from display-active
@@ -4731,7 +4785,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 11);
+                    std::clamp(tuning.architectureMode, 0, 12);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
