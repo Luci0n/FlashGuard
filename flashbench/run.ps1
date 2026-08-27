@@ -286,11 +286,11 @@ try {
             }
         }
 
-        # Canonical full-replay validation of stationary repetition after Matrix
-        # 25 exposed low-frequency and 4-code safety gaps.
+        # Canonical full-replay validation of stationary qualified-state
+        # continuity after Matrix 26 isolated false disocclusion at 5-7.5 Hz.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v26.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v27.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE
