@@ -44,7 +44,8 @@
     "FLASHGUARD_MATRIX/6",
     "FLASHGUARD_MATRIX/7",
     "FLASHGUARD_MATRIX/8",
-    "FLASHGUARD_MATRIX/9"
+    "FLASHGUARD_MATRIX/9",
+    "FLASHGUARD_AUTHORITY_DIAGNOSTICS/1"
   ],
   "runs": [
     {
@@ -145,6 +146,11 @@
     {
       "run_id": "2026-08-27_c9b842e9_disocclusion-seed-veto",
       "commit": "c9b842e9c0dda95d7d2563a5dad7f4d869c956c5",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_fb32a4d9_trail-authority-attribution",
+      "commit": "fb32a4d9564d4f4f487101a8a205e3a662e59df6",
       "result": "SUCCESS"
     }
   ]
