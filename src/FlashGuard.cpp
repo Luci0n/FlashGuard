@@ -890,8 +890,12 @@ R"HLSL(
             max(motionGate, hardwareMotionGate);
         const float verifiedFlashOverride =
             hardwareMotionGate * intrinsicResidualGate;
+        // Mode 5 tests the architectural invariant that verified disocclusion
+        // geometry must not be suppressed by stale/repeated flash memory.
+        const float disocclusionAuthority =
+            P16.x > 4.5 ? 1.0 : (1.0 - repeatedIntrinsicAuthority);
         const float effectiveMotionGate = max(
-            explicitDisocclusionGate * (1.0 - repeatedIntrinsicAuthority),
+            explicitDisocclusionGate * disocclusionAuthority,
             correspondenceGate * (1.0 - motionProtectionAuthority));
 
         // Red safety gets the same geometry-independent intrinsic authority.
@@ -934,7 +938,7 @@ R"HLSL(
             verifiedCurrentSurfaceTransport * (1.0 - motionProtectionAuthority);
         const float disocclusionHoldVeto =
             max(verifiedVacatedTransport, verifiedInfillTransport) *
-            (1.0 - repeatedIntrinsicAuthority);
+            disocclusionAuthority;
         const float verifiedLocalTransportGate =
             max(currentSurfaceHoldVeto, disocclusionHoldVeto);
         const float stationaryCurrentHoldAuthorization =
@@ -4450,7 +4454,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 4);
+                    std::clamp(tuning.architectureMode, 0, 5);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
@@ -8057,7 +8061,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     if (!spec[42].empty())
                     {
                         tuning.architectureMode =
-                            std::clamp(_wtoi(spec[42].c_str()), 0, 4);
+                            std::clamp(_wtoi(spec[42].c_str()), 0, 5);
                         tuning.enabled = true;
                     }
                     tune(43, tuning.riskOnlyNeutralLuma);

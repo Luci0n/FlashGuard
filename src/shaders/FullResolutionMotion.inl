@@ -298,10 +298,11 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                 // noisy even though nearby previous->current vectors are excellent.
                 // Search only changing pixels and accept an infill bypass only when
                 // a nearby backward vector survives round-trip, cost, and prior
-                // surface-continuity validation. Strong flash memory disables this local
-                // infill; the independently validated global-pan gate above remains.
+                // surface-continuity validation. Legacy modes retain the high-risk
+                // guard; benchmark mode 5 tests whether that guard creates a
+                // self-locking stale-risk trail by suppressing valid geometry.
                 if (hardwareMotionGate < 0.80 && sourceDelta > 0.010 &&
-                    temporalRisk < 0.70)
+                    (P16.x > 4.5 || temporalRisk < 0.70))
                 {
                     float bestInfillEvidence = 0.0;
                     float2 bestInfillFlow = float2(0.0, 0.0);
