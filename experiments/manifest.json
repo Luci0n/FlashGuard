@@ -37,10 +37,14 @@
     "FLASHGUARD_MATRIX/3",
     "FLASHGUARD_SCREENING_PROBES/1",
     "FLASHGUARD_SCREENING_PROBES/2",
+    "FLASHGUARD_SCREENING_PROBES/3",
+    "FLASHGUARD_MATRIX/4",
+    "FLASHGUARD_MATRIX/5",
     "FLASHGUARD_TRAIL_METRICS/2",
     "FLASHGUARD_MATRIX/6",
     "FLASHGUARD_MATRIX/7",
-    "FLASHGUARD_MATRIX/8"
+    "FLASHGUARD_MATRIX/8",
+    "FLASHGUARD_MATRIX/9"
   ],
   "runs": [
     {
@@ -109,6 +113,21 @@
       "result": "SUCCESS"
     },
     {
+      "run_id": "2026-08-26_0c94a7e6_self-validating-probes",
+      "commit": "0c94a7e6fe7b729f82ff5480113a8703107e2a97",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_a102aa9c_direct-tuning-search",
+      "commit": "a102aa9c5c3aacd042a941c6c1b89a7702564f22",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_09c1343a_shader-tuning-search",
+      "commit": "09c1343a7f919ea0a72fa074cf48b765395fca15",
+      "result": "SUCCESS"
+    },
+    {
       "run_id": "2026-08-27_6b582a4e_uncensored-trail-metrics",
       "commit": "6b582a4ed88c509f8fdb026b93f2f5e8a2070dd2",
       "result": "SUCCESS"
@@ -121,6 +140,11 @@
     {
       "run_id": "2026-08-27_ee5af05f_surface-risk-v2",
       "commit": "ee5af05f14959ce1b5d200839587e7698bc58387",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_c9b842e9_disocclusion-seed-veto",
+      "commit": "c9b842e9c0dda95d7d2563a5dad7f4d869c956c5",
       "result": "SUCCESS"
     }
   ]
