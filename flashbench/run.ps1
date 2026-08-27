@@ -286,11 +286,11 @@ try {
             }
         }
 
-        # Canonical full-replay validation of stationary sequence state without
-        # requiring NVOFA correspondence on textureless uniform flashes.
+        # Canonical full-replay validation of textureless stationary prime/risk
+        # continuity using coherent displacement rather than raw NVOFA magnitude.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v28.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v29.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE
