@@ -4815,7 +4815,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             // overrides cannot leak into the next persistent-batch case.
             m_safety.cameraMotionSuppression = 0.32f;
             m_shaderTuning = ShaderTuningSettings{};
-            m_benchmarkArchitectureMode = 0;
+            // Matrix 24 selected mode 15 for branch-test visual validation.
+            // Replay-batch tuning still overrides this value per candidate.
+            m_benchmarkArchitectureMode = 15;
             m_benchmarkRiskOnlyNeutralLuma = 0.18f;
             m_benchmarkRiskOnlyGain = 0.92f;
             m_debugEnabled.store(options.debugOverlay, std::memory_order_release);
@@ -7039,7 +7041,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         HMONITOR m_monitor{};
         SafetySettings m_safety{};
         ShaderTuningSettings m_shaderTuning{};
-        int m_benchmarkArchitectureMode = 0;
+        int m_benchmarkArchitectureMode = 15;
         float m_benchmarkRiskOnlyNeutralLuma = 0.18f;
         float m_benchmarkRiskOnlyGain = 0.92f;
         float m_contrastReduction = 2.0f / 3.0f;

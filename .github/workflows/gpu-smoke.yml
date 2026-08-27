@@ -131,6 +131,14 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
           Copy-Item -Force .\FlashGuard.exe (Join-Path $dest 'FlashGuard.exe')
           Set-Content -Path (Join-Path $root 'LATEST.txt') -Value (Join-Path $dest 'FlashGuard.exe')
+      - name: Upload tested FlashGuard executable
+        if: steps.gpu.outcome == 'success'
+        uses: actions/upload-artifact@v6
+        with:
+          name: flashguard-tested-${{ github.sha }}
+          path: FlashGuard.exe
+          if-no-files-found: error
+          retention-days: 14
       - name: Publish GPU smoke status
         if: always()
         shell: powershell
