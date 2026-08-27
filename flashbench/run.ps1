@@ -287,16 +287,16 @@ try {
         }
 
         # Current targeted/full matrix tests one narrow architectural question:
-        # can disocclusion geometry remain authoritative under high temporal risk?
-        # Keep legacy/mode3/mode4 as controls and add only benchmark mode5.
+        # does persistent surface-local risk itself cause the remaining trail?
+        # Mode6 keeps current-event mitigation but writes no persistent local risk.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
             if ($TestTier -eq 'targeted' -and -not $TuneMatrix) {
-                & (Join-Path $PSScriptRoot 'matrix-v11.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v12.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir -ScreenOnly
             } else {
-                & (Join-Path $PSScriptRoot 'matrix-v11.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v12.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir
             }
