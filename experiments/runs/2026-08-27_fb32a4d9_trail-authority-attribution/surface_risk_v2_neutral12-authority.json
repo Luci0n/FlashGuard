@@ -1,0 +1,34 @@
+{
+  "schema":"FLASHGUARD_AUTHORITY_DIAGNOSTICS/1",
+  "scope":"grayscale moving-square trail pixels with absolute sRGB-luma error above 0.05",
+  "delta_active_threshold":0.01,
+  "strength_active_threshold":0.05,
+  "cases":{
+    "moving_square":{
+      "trail_pixel_count":84480,
+      "error_pixel_count":6769,
+      "error_pixel_fraction":0.08012547,
+      "mean_error_on_error_pixels":0.26739536,
+      "unexplained_error_fraction":0.00000000,
+      "channels":{
+        "preprocess_luma_delta":{"mean_on_error_pixels":0.00000000,"max":0.00000000,"active_fraction_on_error_pixels":0.00000000,"error_weighted_mean":0.00000000},
+        "architecture_luma_delta":{"mean_on_error_pixels":0.09923853,"max":0.10198975,"active_fraction_on_error_pixels":0.99926134,"error_weighted_mean":0.10066289},
+        "current_event_strength":{"mean_on_error_pixels":0.26883337,"max":1.00000000,"active_fraction_on_error_pixels":0.27212291,"error_weighted_mean":0.27402273},
+        "surface_memory_strength":{"mean_on_error_pixels":0.70604945,"max":1.00000000,"active_fraction_on_error_pixels":0.73157039,"error_weighted_mean":0.71485999}
+      }
+    },
+    "moving_square_recovery":{
+      "trail_pixel_count":326656,
+      "error_pixel_count":20395,
+      "error_pixel_fraction":0.06243571,
+      "mean_error_on_error_pixels":0.24473478,
+      "unexplained_error_fraction":0.00000000,
+      "channels":{
+        "preprocess_luma_delta":{"mean_on_error_pixels":0.00000000,"max":0.00000000,"active_fraction_on_error_pixels":0.00000000,"error_weighted_mean":0.00000000},
+        "architecture_luma_delta":{"mean_on_error_pixels":0.08786297,"max":0.10198975,"active_fraction_on_error_pixels":0.99416524,"error_weighted_mean":0.09363253},
+        "current_event_strength":{"mean_on_error_pixels":0.08112744,"max":1.00000000,"active_fraction_on_error_pixels":0.08134347,"error_weighted_mean":0.09044700},
+        "surface_memory_strength":{"mean_on_error_pixels":0.78045876,"max":1.00000000,"active_fraction_on_error_pixels":0.91880363,"error_weighted_mean":0.82771967}
+      }
+    }
+  }
+}
