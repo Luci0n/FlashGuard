@@ -278,31 +278,29 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                     const float rawVacatedGate =
                         vacatedEvidence > 0.34 ? 1.0 :
                         smoothstep(0.18, 0.34, vacatedEvidence);
-                    // Mode 13 fixes the semantic ambiguity exposed by Matrix 22.
-                    // The old material point at this screen coordinate may move
-                    // away while another point of the SAME surface moves into the
-                    // coordinate. A valid current->previous correspondence proves
-                    // that this current pixel has a predecessor, so it cannot also
-                    // be treated as a disocclusion merely because the old point
-                    // moved elsewhere. True trailing-edge holes retain no current
-                    // surface coverage and therefore keep the raw vacated result.
-                    const float vacatedGate = P16.x > 12.5 ?
-                        rawVacatedGate *
-                            (1.0 - saturate(diagCurrentSurfaceGate)) :
-                        rawVacatedGate;
-                    diagVacatedGate = max(diagVacatedGate, vacatedGate);
+                    const float correctedVacatedGate = rawVacatedGate *
+                        (1.0 - saturate(diagCurrentSurfaceGate));
+                    // Mode 13 corrects residual and motion/history semantics.
+                    // Mode 14 corrects only current-event semantics later. Mode 15
+                    // additionally preserves the compensated intrinsic residual,
+                    // while raw disocclusion still drives motion/history rejection.
+                    const bool fullVacatedCorrection =
+                        P16.x > 12.5 && P16.x < 13.5;
+                    const bool residualVacatedCorrection =
+                        fullVacatedCorrection || (P16.x > 14.5 && P16.x < 15.5);
+                    const float motionVacatedGate = fullVacatedCorrection ?
+                        correctedVacatedGate : rawVacatedGate;
+                    const float residualVacatedGate = residualVacatedCorrection ?
+                        correctedVacatedGate : rawVacatedGate;
+                    diagVacatedGate = max(diagVacatedGate, motionVacatedGate);
 
-                    // Only corrected current-pixel disocclusion may erase the
-                    // intrinsic residual. This preserves a real brightness change
-                    // on overlapping translating surfaces while true newly revealed
-                    // background still discards the departed surface's history.
-                    motionCompensatedSourceDelta *= (1.0 - vacatedGate);
+                    motionCompensatedSourceDelta *= (1.0 - residualVacatedGate);
 
                     // Do NOT transport history for a vacated pixel: the previous
                     // history here belongs to the object that left. We only need the
                     // motion bypass so the freshly revealed background appears now.
-                    hardwareMotionGate = max(hardwareMotionGate, vacatedGate);
-                    localMotionGate = max(localMotionGate, vacatedGate);
+                    hardwareMotionGate = max(hardwareMotionGate, motionVacatedGate);
+                    localMotionGate = max(localMotionGate, motionVacatedGate);
                 }
 
                 // --- C. Conservative disocclusion infill --------------------------

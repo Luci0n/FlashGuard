@@ -764,15 +764,19 @@ R"HLSL(
         // so it starts from the current candidate and inherits no hazard memory.
         const float rawExplicitDisocclusionGate =
             saturate(max(diagVacatedGate, diagInfillGate));
-        // Mode 13 makes disocclusion a CURRENT-pixel property. A verified
-        // current->previous surface correspondence means this pixel has incoming
-        // coverage even if the material point that occupied this coordinate in
-        // the previous frame moved elsewhere. Do not let vacated/infill evidence
-        // reset history or veto an intrinsic event in that overlap case.
-        const float explicitDisocclusionGate = P16.x > 12.5 ?
+        const float correctedCurrentPixelDisocclusionGate =
             rawExplicitDisocclusionGate *
-                (1.0 - saturate(diagCurrentSurfaceGate)) :
-            rawExplicitDisocclusionGate;
+                (1.0 - saturate(diagCurrentSurfaceGate));
+        // Mode 13 corrects both event and history semantics. Modes 14/15 retain
+        // raw disocclusion for history/motion bypass but use the corrected current-
+        // pixel definition when deciding whether a current event may exist.
+        const bool fullDisocclusionCorrection =
+            P16.x > 12.5 && P16.x < 13.5;
+        const bool eventDisocclusionCorrection = P16.x > 12.5;
+        const float explicitDisocclusionGate = fullDisocclusionCorrection ?
+            correctedCurrentPixelDisocclusionGate : rawExplicitDisocclusionGate;
+        const float eventDisocclusionGate = eventDisocclusionCorrection ?
+            correctedCurrentPixelDisocclusionGate : rawExplicitDisocclusionGate;
         const float4 previousProtectionState = PreviousProtectionState.SampleLevel(
             LinearClamp, protectionStatePreviousUv, 0.0);
         const bool previousProtectionValid = previousProtectionState.a >= 0.5;
@@ -947,7 +951,7 @@ R"HLSL(
         const float verifiedInfillTransport =
             smoothstep(P13.x, P13.y, diagInfillGate) *
             coarseMotionGate *
-            (P16.x > 12.5 ?
+            (fullDisocclusionCorrection ?
                 (1.0 - verifiedCurrentSurfaceTransport) : 1.0);
         const float currentSurfaceHoldVeto =
             verifiedCurrentSurfaceTransport * (1.0 - motionProtectionAuthority);
@@ -1009,6 +1013,8 @@ R"HLSL(
             const bool interiorIntrinsicArchitecture = P16.x > 11.5;
             const float hardDisocclusion =
                 smoothstep(0.30, 0.60, explicitDisocclusionGate);
+            const float hardEventDisocclusion =
+                smoothstep(0.30, 0.60, eventDisocclusionGate);
             const float surfaceContinuity = saturate(max(
                 stableSourceGate, verifiedCurrentSurfaceTransport)) *
                 (1.0 - hardDisocclusion);
@@ -1023,7 +1029,7 @@ R"HLSL(
             const float stationaryCurrentEvent =
                 eventGate * eventDeltaGate * (1.0 - correspondenceGate);
             const float disocclusionEventVeto = P16.x > 3.5 ?
-                smoothstep(0.08, 0.35, explicitDisocclusionGate) : 0.0;
+                smoothstep(0.08, 0.35, eventDisocclusionGate) : 0.0;
             float currentIntrinsicEvent =
                 max(directIntrinsicEvent, stationaryCurrentEvent) *
                 (1.0 - disocclusionEventVeto);
@@ -1226,7 +1232,7 @@ R"HLSL(
             // disocclusions. This is current-frame authority only: no display or event
             // memory is added.
             if (interiorIntrinsicArchitecture && P7.z > 0.5 &&
-                hardDisocclusion < 0.5 && currentIntrinsicEvent < 0.95 &&
+                hardEventDisocclusion < 0.5 && currentIntrinsicEvent < 0.95 &&
                 sourceDelta > P11.z && displayedDelta > P15.x)
             {
                 const float2 interiorOutputSize =
@@ -1263,7 +1269,7 @@ R"HLSL(
                 const float interiorIntrinsicEvent =
                     interiorGate * smoothstep(P11.z, P11.w, sourceDelta) *
                     smoothstep(P15.x, P15.y, displayedDelta) *
-                    (1.0 - hardDisocclusion);
+                    (1.0 - hardEventDisocclusion);
                 currentIntrinsicEvent = max(
                     currentIntrinsicEvent, interiorIntrinsicEvent);
             }
@@ -4849,7 +4855,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 13);
+                    std::clamp(tuning.architectureMode, 0, 15);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
@@ -8458,7 +8464,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         const int requestedArchitecture =
                             _wtoi(spec[42].c_str());
                         tuning.architectureMode =
-                            std::clamp(requestedArchitecture, 0, 13);
+                            std::clamp(requestedArchitecture, 0, 15);
                         if (tuning.architectureMode != requestedArchitecture)
                         {
                             DestroyWindow(replayWindow);

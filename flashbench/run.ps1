@@ -286,16 +286,16 @@ try {
             }
         }
 
-        # Direct architecture test after the phase/disocclusion diagnosis:
-        # corrected current-pixel disocclusion versus modes 8 and 12.
+        # One bounded tuning pass after Matrix 23: separate corrected current
+        # event disocclusion from conservative persistent-history rejection.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
             if ($TestTier -eq 'targeted' -and -not $TuneMatrix) {
-                & (Join-Path $PSScriptRoot 'matrix-v23.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v24.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir -ScreenOnly
             } else {
-                & (Join-Path $PSScriptRoot 'matrix-v23.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v24.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir
             }
