@@ -890,6 +890,7 @@ R"HLSL(
                 stationaryRepetitionGate * (1.0 - localSequenceMotionGate) :
             (texturelessStationaryPrimeStateArchitecture ?
                 texturelessStationaryFallbackGate : stationaryRepetitionGate);
+)HLSL" R"HLSL(
         const float texturelessStateDisocclusionGate = min(
             correctedCurrentPixelDisocclusionGate,
             explicitDisocclusionGate * (1.0 - texturelessStationaryFallbackGate));
