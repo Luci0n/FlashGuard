@@ -775,7 +775,7 @@ R"HLSL(
         const bool eventDisocclusionCorrection = P16.x > 12.5;
         const float explicitDisocclusionGate = fullDisocclusionCorrection ?
             correctedCurrentPixelDisocclusionGate : rawExplicitDisocclusionGate;
-        const float eventDisocclusionGate = eventDisocclusionCorrection ?
+        const float eventDisocclusionGateBase = eventDisocclusionCorrection ?
             correctedCurrentPixelDisocclusionGate : rawExplicitDisocclusionGate;
         const float4 previousProtectionState = PreviousProtectionState.SampleLevel(
             LinearClamp, protectionStatePreviousUv, 0.0);
@@ -846,6 +846,20 @@ R"HLSL(
             cpuCameraMotionGate / max(cpuMotionWeight, 0.001));
         const float corroboratedMotionGate = max(
             coarseMotionGate, cpuMotionCorroboration);
+        // Mode 16 keeps mode 14's corrected current-pixel event semantics only
+        // for LOCAL motion. During coherent whole-frame/camera motion, photometric
+        // overlap is too permissive: blend the event interpretation back to raw
+        // disocclusion so fast pans cannot be mistaken for intrinsic flashes.
+        // History and compensated residual already remain on the conservative raw
+        // path in this mode, so this adds no new temporal memory.
+        const bool cameraAwareEventDisocclusionArchitecture =
+            P16.x > 15.5 && P16.x < 16.5;
+        const float wholeFrameMotionEventVeto =
+            cameraAwareEventDisocclusionArchitecture ?
+                smoothstep(0.35, 0.75, corroboratedMotionGate) : 0.0;
+        const float eventDisocclusionGate = lerp(
+            eventDisocclusionGateBase, rawExplicitDisocclusionGate,
+            wholeFrameMotionEventVeto);
         const float motionGate = max(max(coarseMotionGate, localMotionGate),
             cpuCameraMotionGate);
 
@@ -4815,9 +4829,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             // overrides cannot leak into the next persistent-batch case.
             m_safety.cameraMotionSuppression = 0.32f;
             m_shaderTuning = ShaderTuningSettings{};
-            // Matrix 24 selected mode 15 for branch-test visual validation.
-            // Replay-batch tuning still overrides this value per candidate.
-            m_benchmarkArchitectureMode = 15;
+            m_benchmarkArchitectureMode = 0;
             m_benchmarkRiskOnlyNeutralLuma = 0.18f;
             m_benchmarkRiskOnlyGain = 0.92f;
             m_debugEnabled.store(options.debugOverlay, std::memory_order_release);
@@ -4857,7 +4869,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 15);
+                    std::clamp(tuning.architectureMode, 0, 16);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
@@ -7041,7 +7053,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         HMONITOR m_monitor{};
         SafetySettings m_safety{};
         ShaderTuningSettings m_shaderTuning{};
-        int m_benchmarkArchitectureMode = 15;
+        int m_benchmarkArchitectureMode = 0;
         float m_benchmarkRiskOnlyNeutralLuma = 0.18f;
         float m_benchmarkRiskOnlyGain = 0.92f;
         float m_contrastReduction = 2.0f / 3.0f;
@@ -8466,7 +8478,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         const int requestedArchitecture =
                             _wtoi(spec[42].c_str());
                         tuning.architectureMode =
-                            std::clamp(requestedArchitecture, 0, 15);
+                            std::clamp(requestedArchitecture, 0, 16);
                         if (tuning.architectureMode != requestedArchitecture)
                         {
                             DestroyWindow(replayWindow);

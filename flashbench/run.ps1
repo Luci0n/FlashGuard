@@ -286,19 +286,13 @@ try {
             }
         }
 
-        # One bounded tuning pass after Matrix 23: separate corrected current
-        # event disocclusion from conservative persistent-history rejection.
+        # Canonical full-replay finalist validation after Matrix 24 exposed
+        # fast-pan regressions hidden by screening-only selection.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            if ($TestTier -eq 'targeted' -and -not $TuneMatrix) {
-                & (Join-Path $PSScriptRoot 'matrix-v24.ps1') `
-                    -Executable (Join-Path $root 'FlashGuard.exe') `
-                    -OutputDir $matrixDir -ScreenOnly
-            } else {
-                & (Join-Path $PSScriptRoot 'matrix-v24.ps1') `
-                    -Executable (Join-Path $root 'FlashGuard.exe') `
-                    -OutputDir $matrixDir
-            }
+            & (Join-Path $PSScriptRoot 'matrix-v25.ps1') `
+                -Executable (Join-Path $root 'FlashGuard.exe') `
+                -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE
             if ($matrixExit -ne 0) {
                 $summary['matrix_status'] = 'FAILED'

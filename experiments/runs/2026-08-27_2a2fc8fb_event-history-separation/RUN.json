@@ -15,22 +15,28 @@
   "result_summary": {
     "mode14_moving_flash_reduction": 0.55669234,
     "mode14_pan_mae": 0.00353295,
+    "mode14_fast_pan_mae": 0.06747364,
     "mode15_moving_flash_reduction": 0.69358439,
     "mode15_moving_clear_05_ms": 66.667,
     "mode15_perceptual_min_reduction": 0.75097655,
     "mode15_pan_mae": 0.00993669,
+    "mode15_fast_pan_mae": 0.23253281,
     "mode15_replay_status": "SUCCESS",
     "mode15_wcag_sc_2_3_1_pass": true,
     "mode15_wcag_sc_2_3_2_pass": true,
     "mode15_transition_current_event_active": 0.88016493,
     "mode15_stable_current_event_active": 0.00885417
   },
-  "interpretation": "Mode 15 is the first candidate to pass the complete Matrix 24 hard contract: replay SUCCESS, <=70 ms clearing, >=0.45 moving-flash reduction, >=0.70 perceptual reduction, WCAG 2.3.1/2.3.2, and pan MAE <=0.010. Mode 14 also passes with substantially more pan margin but lower moving-flash suppression. Per the bounded-experiment rule, no further parameter tuning is performed before human visual validation; mode 15 is promoted only on branch test.",
+  "interpretation": "Matrix 24 proved event/history separation can retain the moving-flash gain without the long trail, but it was a screening run. Inspection of the raw replay fields shows both finalists violate the canonical full-replay fast-pan limit of 0.020: mode 14 measured 0.06747364 and mode 15 measured 0.23253281. Therefore neither is promoted to visual testing. Mode 16 adds a direct whole-frame-motion veto to mode 14 event correction and Matrix 25 evaluates it under the full replay contract.",
   "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
   "raw_evidence": [
     {
       "path": "matrix.json",
       "sha256": "a9e590a16f7182d03e34e6fe53ca7a3353873884e0523ceee62dec91daf66a8c"
+    },
+    {
+      "path": "mode14-replay.json",
+      "sha256": "cfb108e60a82f18e8cc25996851bbf21691974594a225d1ba1f507606a0d02ab"
     },
     {
       "path": "mode15-replay.json",
