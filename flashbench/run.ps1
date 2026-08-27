@@ -286,17 +286,18 @@ try {
             }
         }
 
-        # Targeted runs screen full-resolution shader transport/hold overrides in one
-        # persistent 320x180 GPU session. Full/tuning runs additionally verify
-        # only the Pareto-selected candidate and production default at 640x360.
+        # Targeted runs compare mitigation architectures in one persistent 320x180
+        # GPU session: legacy transported luminance, risk-only current-frame, and
+        # hybrid one-frame raw-source limiting. Full/tuning runs verify the selected
+        # architecture and legacy default at 640x360.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
             if ($TestTier -eq 'targeted' -and -not $TuneMatrix) {
-                & (Join-Path $PSScriptRoot 'matrix-v6.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v7.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir -ScreenOnly
             } else {
-                & (Join-Path $PSScriptRoot 'matrix-v6.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v7.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir
             }
