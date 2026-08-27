@@ -1,0 +1,58 @@
+﻿{
+    "schema":  "FLASHGUARD_MATRIX/17",
+    "purpose":  "direct accept/reject test of same-current-surface spatial propagation for moving intrinsic flash authority",
+    "screening_resolution":  "320x180",
+    "screening_fps":  30,
+    "screen_elapsed_ms":  29304,
+    "candidate_count":  3,
+    "invariant":  "benchmark architecture 9 only: production architecture 0 is unchanged; no neighbor RGB/history is transported",
+    "primary_gate":  {
+                         "moving_clear_05_ms_max":  70,
+                         "moving_flash_reduction_min":  0.45,
+                         "perceptual_min_reduction_min":  0.7,
+                         "wcag_sc_2_3_1_required":  true,
+                         "wcag_sc_2_3_2_required":  true
+                     },
+    "selected":  null,
+    "screen_candidates":  [
+                              {
+                                  "name":  "surface_risk_v2_default",
+                                  "architecture_mode":  3,
+                                  "surface_risk_tau":  null,
+                                  "risk_gain":  0.92,
+                                  "moving_clear_05_ms":  800,
+                                  "moving_flash_reduction":  0.35130792,
+                                  "perceptual_min_reduction":  0.73627725,
+                                  "pan_mae":  0.00394786,
+                                  "wcag_sc_2_3_1_pass":  true,
+                                  "wcag_sc_2_3_2_pass":  true,
+                                  "primary_pass":  false
+                              },
+                              {
+                                  "name":  "opposition_tau100_gain200",
+                                  "architecture_mode":  8,
+                                  "surface_risk_tau":  0.1,
+                                  "risk_gain":  2,
+                                  "moving_clear_05_ms":  66.667,
+                                  "moving_flash_reduction":  0.37155597,
+                                  "perceptual_min_reduction":  0.75097655,
+                                  "pan_mae":  0.00352272,
+                                  "wcag_sc_2_3_1_pass":  true,
+                                  "wcag_sc_2_3_2_pass":  true,
+                                  "primary_pass":  false
+                              },
+                              {
+                                  "name":  "surface_propagation_tau100_gain200",
+                                  "architecture_mode":  9,
+                                  "surface_risk_tau":  0.1,
+                                  "risk_gain":  2,
+                                  "moving_clear_05_ms":  66.667,
+                                  "moving_flash_reduction":  0.37155597,
+                                  "perceptual_min_reduction":  0.75097655,
+                                  "pan_mae":  0.00352272,
+                                  "wcag_sc_2_3_1_pass":  true,
+                                  "wcag_sc_2_3_2_pass":  true,
+                                  "primary_pass":  false
+                              }
+                          ]
+}

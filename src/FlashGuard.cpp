@@ -739,6 +739,7 @@ MainOutput PSMain(VSOut i)
     // Mode 8 reuses protection-state R as an encoded signed prime. Other modes
     // continue to store protected/display luminance there.
     float signedPrimeStateEncoded = 0.5;
+    float phaseHoldStateEncoded = 1.0;
     float authorityPreprocessLumaDelta = saturate(abs(candidateL - Luma(rawSourceColor)));
     float authorityArchitectureLumaDelta = 0.0;
     float authorityCurrentEventStrength = 0.0;
@@ -988,7 +989,9 @@ R"HLSL(
             const bool repetitionGatedArchitecture =
                 P16.x > 6.5 && P16.x < 7.5;
             const bool oppositionGatedArchitecture = P16.x > 7.5;
-            const bool surfacePropagationArchitecture = P16.x > 8.5;
+            const bool surfacePropagationArchitecture =
+                P16.x > 8.5 && P16.x < 9.5;
+            const bool phaseHoldArchitecture = P16.x > 9.5;
             const float hardDisocclusion =
                 smoothstep(0.30, 0.60, explicitDisocclusionGate);
             const float surfaceContinuity = saturate(max(
@@ -1150,10 +1153,28 @@ R"HLSL(
                 currentIntrinsicEvent * persistentSeedAuthority;
             const float surfaceMemoryMitigation = eventOnlyArchitecture ?
                 0.0 : smoothstep(0.06, 0.45, transportedSurfaceRisk);
+
+            // Mode 10 adds exactly one nonrecursive frame of event memory. Alpha
+            // stores only the PREVIOUS frame's intrinsic-event strength around a
+            // 0.5-valid baseline. The hold is allowed only while raw appearance
+            // remains stable on the selected surface and is vetoed on verified
+            // disocclusion. Unlike surface risk, this state is never fed back
+            // into itself, so it cannot grow a long-lived trail.
+            const float previousPhaseEvent = phaseHoldArchitecture &&
+                previousProtectionValid ?
+                saturate((previousProtectionState.a - 0.5) * 2.0) : 0.0;
+            const float phaseHoldMitigation = phaseHoldArchitecture ?
+                smoothstep(0.06, 0.45, previousPhaseEvent *
+                    stableSourceGate * (1.0 - hardDisocclusion)) : 0.0;
             authorityCurrentEventStrength = saturate(currentIntrinsicEvent);
-            authoritySurfaceMemoryStrength = saturate(surfaceMemoryMitigation);
-            const float currentFrameStrength = saturate(max(
-                currentIntrinsicEvent, surfaceMemoryMitigation));
+            authoritySurfaceMemoryStrength = saturate(max(
+                surfaceMemoryMitigation, phaseHoldMitigation));
+            const float currentFrameStrength = saturate(max(max(
+                currentIntrinsicEvent, surfaceMemoryMitigation),
+                phaseHoldMitigation));
+            if (phaseHoldArchitecture)
+                phaseHoldStateEncoded =
+                    saturate(0.5 + 0.5 * currentIntrinsicEvent);
 
             if (oppositionGatedArchitecture)
             {
@@ -1366,7 +1387,7 @@ R"HLSL(
         saturate(sourceHistoryColor), saturate(sourceHistoryGeometryConfidence));
     output.protectionState = float4(
         saturate(protectionStateLuma), saturate(protectionStateRisk),
-        saturate(protectionStateRedAuthority), 1.0);
+        saturate(protectionStateRedAuthority), saturate(phaseHoldStateEncoded));
     return output;
 }
 )HLSL"
@@ -4619,7 +4640,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 9);
+                    std::clamp(tuning.architectureMode, 0, 10);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
