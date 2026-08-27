@@ -2002,6 +2002,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 std::array<double, 4> maximum{};
                 std::array<double, 4> errorWeightedSum{};
                 std::array<uint64_t, 4> active{};
+                std::array<double, 8> geometrySum{};
+                std::array<double, 8> geometryMaximum{};
+                std::array<double, 8> geometryErrorWeightedSum{};
+                std::array<uint64_t, 8> geometryActive{};
                 uint64_t trailPixels = 0;
                 uint64_t errorPixels = 0;
                 uint64_t unexplainedErrorPixels = 0;
@@ -2096,12 +2100,22 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 if (!trailRect || m_benchmarkArchitectureMode <= 2 ||
                     !m_motionDiagnosticTextures[2] || !m_motionDiagnosticReadbacks[2])
                     return;
+                m_context->CopyResource(m_motionDiagnosticReadbacks[0].get(),
+                    m_motionDiagnosticTextures[0].get());
+                m_context->CopyResource(m_motionDiagnosticReadbacks[1].get(),
+                    m_motionDiagnosticTextures[1].get());
                 m_context->CopyResource(m_motionDiagnosticReadbacks[2].get(),
                     m_motionDiagnosticTextures[2].get());
                 D3D11_MAPPED_SUBRESOURCE outputMapped{};
+                D3D11_MAPPED_SUBRESOURCE geometry0Mapped{};
+                D3D11_MAPPED_SUBRESOURCE geometry1Mapped{};
                 D3D11_MAPPED_SUBRESOURCE authorityMapped{};
                 ThrowIfFailed(m_context->Map(m_replayReadback.get(), 0,
                     D3D11_MAP_READ, 0, &outputMapped));
+                ThrowIfFailed(m_context->Map(m_motionDiagnosticReadbacks[0].get(), 0,
+                    D3D11_MAP_READ, 0, &geometry0Mapped));
+                ThrowIfFailed(m_context->Map(m_motionDiagnosticReadbacks[1].get(), 0,
+                    D3D11_MAP_READ, 0, &geometry1Mapped));
                 ThrowIfFailed(m_context->Map(m_motionDiagnosticReadbacks[2].get(), 0,
                     D3D11_MAP_READ, 0, &authorityMapped));
 
@@ -2117,6 +2131,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     const auto* authorityRow = reinterpret_cast<const uint16_t*>(
                         static_cast<const uint8_t*>(authorityMapped.pData) +
                         static_cast<size_t>(y) * authorityMapped.RowPitch);
+                    const auto* geometry0Row = reinterpret_cast<const uint16_t*>(
+                        static_cast<const uint8_t*>(geometry0Mapped.pData) +
+                        static_cast<size_t>(y) * geometry0Mapped.RowPitch);
+                    const auto* geometry1Row = reinterpret_cast<const uint16_t*>(
+                        static_cast<const uint8_t*>(geometry1Mapped.pData) +
+                        static_cast<size_t>(y) * geometry1Mapped.RowPitch);
                     for (LONG x = left; x < right; ++x)
                     {
                         const bool stillOccupied = activeRect &&
@@ -2154,10 +2174,28 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                                 explained = true;
                             }
                         }
+                        const uint16_t* geometryRows[2] = { geometry0Row, geometry1Row };
+                        for (size_t group = 0; group < 2; ++group)
+                        {
+                            for (size_t channel = 0; channel < 4; ++channel)
+                            {
+                                const size_t metric = group * 4 + channel;
+                                const double value = std::clamp(static_cast<double>(
+                                    halfToFloat(geometryRows[group][base + channel])),
+                                    0.0, 1.0);
+                                aggregate.geometrySum[metric] += value;
+                                aggregate.geometryMaximum[metric] = std::max(
+                                    aggregate.geometryMaximum[metric], value);
+                                aggregate.geometryErrorWeightedSum[metric] += value * error;
+                                if (value > 0.5) ++aggregate.geometryActive[metric];
+                            }
+                        }
                         if (!explained) ++aggregate.unexplainedErrorPixels;
                     }
                 }
                 m_context->Unmap(m_motionDiagnosticReadbacks[2].get(), 0);
+                m_context->Unmap(m_motionDiagnosticReadbacks[1].get(), 0);
+                m_context->Unmap(m_motionDiagnosticReadbacks[0].get(), 0);
                 m_context->Unmap(m_replayReadback.get(), 0);
             };
 
@@ -4020,11 +4058,34 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         channelNames[channel], mean, aggregate.maximum[channel],
                         activeFraction, weightedMean, channel + 1 < 4 ? "," : "");
                 }
+                std::fputs("      },\n      \"geometry_on_error_pixels\":{\n",
+                    authorityReport);
+                constexpr const char* geometryNames[8] = {
+                    "global_flow", "current_surface", "vacated", "infill",
+                    "portable", "hardware", "effective_motion", "repeated_risk"
+                };
+                for (size_t metric = 0; metric < 8; ++metric)
+                {
+                    const double mean = aggregate.errorPixels ?
+                        aggregate.geometrySum[metric] /
+                            static_cast<double>(aggregate.errorPixels) : 0.0;
+                    const double activeFraction = aggregate.errorPixels ?
+                        static_cast<double>(aggregate.geometryActive[metric]) /
+                            static_cast<double>(aggregate.errorPixels) : 0.0;
+                    const double weightedMean = aggregate.errorSum > 0.0 ?
+                        aggregate.geometryErrorWeightedSum[metric] / aggregate.errorSum : 0.0;
+                    std::fprintf(authorityReport,
+                        "        \"%s\":{\"mean_on_error_pixels\":%.8f,"
+                        "\"max\":%.8f,\"active_fraction_on_error_pixels\":%.8f,"
+                        "\"error_weighted_mean\":%.8f}%s\n",
+                        geometryNames[metric], mean, aggregate.geometryMaximum[metric],
+                        activeFraction, weightedMean, metric + 1 < 8 ? "," : "");
+                }
                 std::fprintf(authorityReport, "      }\n    }%s\n",
                     trailingComma ? "," : "");
             };
             std::fputs(
-                "{\n  \"schema\":\"FLASHGUARD_AUTHORITY_DIAGNOSTICS/1\",\n"
+                "{\n  \"schema\":\"FLASHGUARD_AUTHORITY_DIAGNOSTICS/2\",\n"
                 "  \"scope\":\"grayscale moving-square trail pixels with absolute sRGB-luma error above 0.05\",\n"
                 "  \"delta_active_threshold\":0.01,\n"
                 "  \"strength_active_threshold\":0.05,\n"
