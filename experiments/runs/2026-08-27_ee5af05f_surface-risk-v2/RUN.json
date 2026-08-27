@@ -1,0 +1,30 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_ARCHIVE/1",
+  "run_id": "2026-08-27_ee5af05f_surface-risk-v2",
+  "commit": "ee5af05f14959ce1b5d200839587e7698bc58387",
+  "workflow_run_id": 33041135146,
+  "workflow_run_number": 86,
+  "artifact_id": 9634079271,
+  "artifact_name": "flashbench-gpu-ee5af05f14959ce1b5d200839587e7698bc58387",
+  "artifact_digest": "sha256:de05d52d688560a85aa16a4999a6d6450dc1d3c4600cefb16e905c244540feec",
+  "test_tier": "targeted",
+  "matrix_schema": "FLASHGUARD_MATRIX/8",
+  "workflow_result": "SUCCESS",
+  "interpretation": "REJECTED",
+  "hypothesis": "Surface-validated persistent risk will eliminate screen-space risk trails while retaining current-frame flash protection.",
+  "result_summary": {
+    "risk_only_v1_trail_area05_frame_mean": 0.72103403,
+    "surface_risk_default_trail_area05_frame_mean": 0.11845323,
+    "risk_only_v1_recovery_area05_auc": 0.88679278,
+    "surface_risk_default_recovery_area05_auc": 0.06023319,
+    "risk_only_v1_pan_mae": 0.01841592,
+    "surface_risk_default_pan_mae": 0.00319152,
+    "best_surface_candidate": "surface_risk_low_contrast_neutral12",
+    "best_surface_failed_gates": 2,
+    "best_surface_clear_05_ms": 800.0,
+    "best_surface_trail_p99_frame_p95": 0.27306985,
+    "best_surface_perceptual_min_reduction": 0.73627725,
+    "best_surface_moving_flash_reduction": 0.35130792
+  },
+  "next_hypothesis": "Vacated/infill pixels are being classified as fresh intrinsic events, then that false event is written into new surface-risk state after the revealed background stabilizes. Suppress current-event seeding on verified disocclusion and make mode-3 protectionStateRisk use only surface-validated current/transported risk."
+}
