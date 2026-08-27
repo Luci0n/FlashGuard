@@ -736,6 +736,10 @@ MainOutput PSMain(VSOut i)
     float protectionStateLuma = candidateL;
     float protectionStateRisk = 0.0;
     float protectionStateRedAuthority = 0.0;
+    float authorityPreprocessLumaDelta = saturate(abs(candidateL - Luma(rawSourceColor)));
+    float authorityArchitectureLumaDelta = 0.0;
+    float authorityCurrentEventStrength = 0.0;
+    float authoritySurfaceMemoryStrength = 0.0;
     if (P7.y > 0.5)
     {
 )HLSL"
@@ -907,6 +911,7 @@ R"HLSL(
             cur = lerp(cur, residualGray.xxx, intrinsicRedDesat);
             candidateL = Luma(cur);
         }
+        authorityPreprocessLumaDelta = saturate(abs(candidateL - Luma(rawSourceColor)));
 )HLSL" R"HLSL(
 
 
@@ -995,12 +1000,17 @@ R"HLSL(
             surfaceRiskStateSeed = currentIntrinsicEvent;
             const float surfaceMemoryMitigation =
                 smoothstep(0.06, 0.45, transportedSurfaceRisk);
+            authorityCurrentEventStrength = saturate(currentIntrinsicEvent);
+            authoritySurfaceMemoryStrength = saturate(surfaceMemoryMitigation);
             const float currentFrameStrength = saturate(max(
                 currentIntrinsicEvent, surfaceMemoryMitigation));
 
+            const float architectureInputL = candidateL;
             const float resolvedL = lerp(
                 candidateL, saturate(P16.y),
                 saturate(currentFrameStrength * max(P16.z, 0.0)));
+            authorityArchitectureLumaDelta =
+                saturate(abs(resolvedL - architectureInputL));
             cur = RemapGlobalLuminance(cur, candidateL, resolvedL);
             candidateL = Luma(cur);
             safetyHistoryL = candidateL;
@@ -1095,6 +1105,14 @@ R"HLSL(
             candidateL = Luma(cur);
             safetyHistoryL = candidateL;
         }
+
+        // Replay-only attribution reuses the third diagnostic MRT for risk-only
+        // architectures. Production binds only targets 0-3, so this cannot alter
+        // the displayed image or persistent production state.
+        if (P16.x > 2.5)
+            output.motionDiagnostics2 = float4(authorityPreprocessLumaDelta,
+                authorityArchitectureLumaDelta, authorityCurrentEventStrength,
+                authoritySurfaceMemoryStrength);
 
         // Refresh surface-local safety memory from intrinsic evidence only. The
         // analyzer's broader temporalRisk remains independent, while this state
@@ -1978,11 +1996,25 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 std::array<uint64_t, 12> changedCount{};
             };
 
+            struct AuthorityDiagnosticAggregate
+            {
+                std::array<double, 4> sum{};
+                std::array<double, 4> maximum{};
+                std::array<double, 4> errorWeightedSum{};
+                std::array<uint64_t, 4> active{};
+                uint64_t trailPixels = 0;
+                uint64_t errorPixels = 0;
+                uint64_t unexplainedErrorPixels = 0;
+                double errorSum = 0.0;
+            };
+
             const auto collectMotionDiagnostics =
                 [&](MotionDiagnosticAggregate& aggregate, const RECT* activeRect)
             {
                 if (!previousDiagnosticSourceValid) return;
-                for (size_t group = 0; group < m_motionDiagnosticTextures.size(); ++group)
+                const size_t groupCount = m_benchmarkArchitectureMode > 2 ?
+                    2u : m_motionDiagnosticTextures.size();
+                for (size_t group = 0; group < groupCount; ++group)
                 {
                     m_context->CopyResource(
                         m_motionDiagnosticReadbacks[group].get(),
@@ -2057,6 +2089,78 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 }
             };
 
+            const auto collectAuthorityDiagnostics =
+                [&](AuthorityDiagnosticAggregate& aggregate, const RECT* trailRect,
+                    const RECT* activeRect)
+            {
+                if (!trailRect || m_benchmarkArchitectureMode <= 2 ||
+                    !m_motionDiagnosticTextures[2] || !m_motionDiagnosticReadbacks[2])
+                    return;
+                m_context->CopyResource(m_motionDiagnosticReadbacks[2].get(),
+                    m_motionDiagnosticTextures[2].get());
+                D3D11_MAPPED_SUBRESOURCE outputMapped{};
+                D3D11_MAPPED_SUBRESOURCE authorityMapped{};
+                ThrowIfFailed(m_context->Map(m_replayReadback.get(), 0,
+                    D3D11_MAP_READ, 0, &outputMapped));
+                ThrowIfFailed(m_context->Map(m_motionDiagnosticReadbacks[2].get(), 0,
+                    D3D11_MAP_READ, 0, &authorityMapped));
+
+                const LONG left = std::max<LONG>(0, trailRect->left);
+                const LONG top = std::max<LONG>(0, trailRect->top);
+                const LONG right = std::min<LONG>(static_cast<LONG>(width), trailRect->right);
+                const LONG bottom = std::min<LONG>(static_cast<LONG>(height), trailRect->bottom);
+                for (LONG y = top; y < bottom; ++y)
+                {
+                    const auto* outputRow = reinterpret_cast<const uint16_t*>(
+                        static_cast<const uint8_t*>(outputMapped.pData) +
+                        static_cast<size_t>(y) * outputMapped.RowPitch);
+                    const auto* authorityRow = reinterpret_cast<const uint16_t*>(
+                        static_cast<const uint8_t*>(authorityMapped.pData) +
+                        static_cast<size_t>(y) * authorityMapped.RowPitch);
+                    for (LONG x = left; x < right; ++x)
+                    {
+                        const bool stillOccupied = activeRect &&
+                            x >= activeRect->left && x < activeRect->right &&
+                            y >= activeRect->top && y < activeRect->bottom;
+                        if (stillOccupied) continue;
+                        ++aggregate.trailPixels;
+                        const size_t base = static_cast<size_t>(x) * 4;
+                        const float r = std::clamp(halfToFloat(outputRow[base + 0]), 0.0f, 1.0f);
+                        const float g = std::clamp(halfToFloat(outputRow[base + 1]), 0.0f, 1.0f);
+                        const float b = std::clamp(halfToFloat(outputRow[base + 2]), 0.0f, 1.0f);
+                        const double outputLuma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                        const uint32_t packed = pixels[
+                            static_cast<size_t>(y) * width + static_cast<UINT>(x)];
+                        const float sb = static_cast<float>(packed & 0xFFu) / 255.0f;
+                        const float sg = static_cast<float>((packed >> 8) & 0xFFu) / 255.0f;
+                        const float sr = static_cast<float>((packed >> 16) & 0xFFu) / 255.0f;
+                        const double sourceLuma = 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
+                        const double error = std::fabs(outputLuma - sourceLuma);
+                        if (error <= 0.05) continue;
+                        ++aggregate.errorPixels;
+                        aggregate.errorSum += error;
+                        bool explained = false;
+                        for (size_t channel = 0; channel < 4; ++channel)
+                        {
+                            const double value = std::clamp(static_cast<double>(halfToFloat(
+                                authorityRow[base + channel])), 0.0, 1.0);
+                            aggregate.sum[channel] += value;
+                            aggregate.maximum[channel] = std::max(aggregate.maximum[channel], value);
+                            aggregate.errorWeightedSum[channel] += value * error;
+                            const double threshold = channel < 2 ? 0.01 : 0.05;
+                            if (value > threshold)
+                            {
+                                ++aggregate.active[channel];
+                                explained = true;
+                            }
+                        }
+                        if (!explained) ++aggregate.unexplainedErrorPixels;
+                    }
+                }
+                m_context->Unmap(m_motionDiagnosticReadbacks[2].get(), 0);
+                m_context->Unmap(m_replayReadback.get(), 0);
+            };
+
             struct FrameSample
             {
                 double sourceMean = 0.0;
@@ -2103,7 +2207,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                                              MotionDiagnosticAggregate* motionDiagnostics = nullptr,
                                              std::vector<uint32_t>* sourceDisplayCodes = nullptr,
                                              std::vector<uint32_t>* outputDisplayCodes = nullptr,
-                                             const RECT* previousRect = nullptr) {
+                                             const RECT* previousRect = nullptr,
+                                             AuthorityDiagnosticAggregate* authorityDiagnostics = nullptr) {
                 m_context->UpdateSubresource(source.get(), 0, nullptr,
                     pixels.data(), width * 4u, 0);
                 QueueCapturedFrame(source.get(), dt);
@@ -2314,6 +2419,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 }
                 writeVisualBmp(visualCase, visualFrame, mapped);
                 m_context->Unmap(m_replayReadback.get(), 0);
+                if (authorityDiagnostics)
+                    collectAuthorityDiagnostics(*authorityDiagnostics, previousRect, activeRect);
                 if (motionDiagnostics)
                 {
                     const uint64_t request = diagnosticRequestCount++;
@@ -3270,6 +3377,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             std::vector<double> movingTrailP99Frames;
             std::vector<double> movingTrailArea05Frames;
             int movingVacatedFrames = 0;
+            AuthorityDiagnosticAggregate movingTrailAuthority{};
+            AuthorityDiagnosticAggregate movingRecoveryAuthority{};
             constexpr int squareSize = 64;
             const int movingFrames = replayScreening ?
                 std::max(18, replayFps / 2) : std::max(45, replayFps * 3 / 2);
@@ -3325,7 +3434,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     (writeVisuals && i % 10 == 0) ? L"bright_motion" : nullptr,
                     i, (replayScreening && m_benchmarkArchitectureMode < 4) ?
                         nullptr : &movingDiagnostics,
-                    nullptr, nullptr, &movingTrailRect);
+                    nullptr, nullptr, &movingTrailRect,
+                    &movingTrailAuthority);
                 movingGhostMae += sample.outsideMae;
                 movingInsideMae += sample.insideMae;
                 movingEdgeMae += sample.edgeMae;
@@ -3400,7 +3510,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 fillGray(24);
                 const FrameSample recovery = renderAndSample(
                     nullptr, nullptr, -1, nullptr, nullptr, nullptr,
-                    &recoveryTrailRect);
+                    &recoveryTrailRect, &movingRecoveryAuthority);
                 ++trailRecoveryFramesMeasured;
                 trailRecoveryP99Final = recovery.vacatedP99;
                 trailRecoveryP99Auc += recovery.vacatedP99 * static_cast<double>(dt);
@@ -3857,6 +3967,72 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 "integer_snapped_scroll", snappedScrollDiagnostics, false);
             std::fputs("  }\n}\n", diagnosticReport);
             std::fclose(diagnosticReport);
+
+            const auto authorityPath =
+                std::filesystem::path(reportPath).parent_path() /
+                L"authority-diagnostics.json";
+            FILE* authorityReport = nullptr;
+            if (_wfopen_s(&authorityReport, authorityPath.c_str(), L"wb") != 0 ||
+                !authorityReport)
+                return false;
+            const auto writeAuthorityCase =
+                [&](const char* name, const AuthorityDiagnosticAggregate& aggregate,
+                    bool trailingComma)
+            {
+                constexpr const char* channelNames[4] = {
+                    "preprocess_luma_delta", "architecture_luma_delta",
+                    "current_event_strength", "surface_memory_strength"
+                };
+                const double errorFraction = aggregate.trailPixels ?
+                    static_cast<double>(aggregate.errorPixels) /
+                        static_cast<double>(aggregate.trailPixels) : 0.0;
+                const double meanError = aggregate.errorPixels ?
+                    aggregate.errorSum / static_cast<double>(aggregate.errorPixels) : 0.0;
+                const double unexplainedFraction = aggregate.errorPixels ?
+                    static_cast<double>(aggregate.unexplainedErrorPixels) /
+                        static_cast<double>(aggregate.errorPixels) : 0.0;
+                std::fprintf(authorityReport,
+                    "    \"%s\":{\n"
+                    "      \"trail_pixel_count\":%llu,\n"
+                    "      \"error_pixel_count\":%llu,\n"
+                    "      \"error_pixel_fraction\":%.8f,\n"
+                    "      \"mean_error_on_error_pixels\":%.8f,\n"
+                    "      \"unexplained_error_fraction\":%.8f,\n"
+                    "      \"channels\":{\n",
+                    name,
+                    static_cast<unsigned long long>(aggregate.trailPixels),
+                    static_cast<unsigned long long>(aggregate.errorPixels),
+                    errorFraction, meanError, unexplainedFraction);
+                for (size_t channel = 0; channel < 4; ++channel)
+                {
+                    const double mean = aggregate.errorPixels ?
+                        aggregate.sum[channel] /
+                            static_cast<double>(aggregate.errorPixels) : 0.0;
+                    const double activeFraction = aggregate.errorPixels ?
+                        static_cast<double>(aggregate.active[channel]) /
+                            static_cast<double>(aggregate.errorPixels) : 0.0;
+                    const double weightedMean = aggregate.errorSum > 0.0 ?
+                        aggregate.errorWeightedSum[channel] / aggregate.errorSum : 0.0;
+                    std::fprintf(authorityReport,
+                        "        \"%s\":{\"mean_on_error_pixels\":%.8f,"
+                        "\"max\":%.8f,\"active_fraction_on_error_pixels\":%.8f,"
+                        "\"error_weighted_mean\":%.8f}%s\n",
+                        channelNames[channel], mean, aggregate.maximum[channel],
+                        activeFraction, weightedMean, channel + 1 < 4 ? "," : "");
+                }
+                std::fprintf(authorityReport, "      }\n    }%s\n",
+                    trailingComma ? "," : "");
+            };
+            std::fputs(
+                "{\n  \"schema\":\"FLASHGUARD_AUTHORITY_DIAGNOSTICS/1\",\n"
+                "  \"scope\":\"grayscale moving-square trail pixels with absolute sRGB-luma error above 0.05\",\n"
+                "  \"delta_active_threshold\":0.01,\n"
+                "  \"strength_active_threshold\":0.05,\n"
+                "  \"cases\":{\n", authorityReport);
+            writeAuthorityCase("moving_square", movingTrailAuthority, true);
+            writeAuthorityCase("moving_square_recovery", movingRecoveryAuthority, false);
+            std::fputs("  }\n}\n", authorityReport);
+            std::fclose(authorityReport);
 
             const auto trailMetricsPath =
                 std::filesystem::path(reportPath).parent_path() / L"trail-metrics.json";
