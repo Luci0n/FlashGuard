@@ -860,7 +860,7 @@ R"HLSL(
         // overlap is too permissive: blend the event interpretation back to raw
         // disocclusion so fast pans cannot be mistaken for intrinsic flashes.
         const bool cameraAwareEventDisocclusionArchitecture =
-            P16.x > 15.5 && P16.x < 23.5;
+            P16.x > 15.5 && P16.x < 24.5;
         // Matrix 25 showed a separate stationary sequence problem: 5 Hz flashes
         // lose protection because the 100 ms surface-risk state decays between
         // opposing half-cycles, while a 4-code reversal is too weak to establish
@@ -869,7 +869,7 @@ R"HLSL(
         // is absent, and tiny changes still need an opposing signed reversal
         // before they are allowed to affect the display.
         const bool stationaryWeakRepetitionArchitecture =
-            P16.x > 16.5 && P16.x < 23.5;
+            P16.x > 16.5 && P16.x < 24.5;
         // Mode 18 preserves qualified state when CURRENT-surface geometry proves
         // continuity. Mode 19 attempted a textureless fallback, but Matrix 28
         // showed that max(localMotionGate, hardwareMotionGate) is itself polluted
@@ -882,12 +882,17 @@ R"HLSL(
         const bool stationaryMotionOnlyStateArchitecture =
             P16.x > 18.5 && P16.x < 19.5;
         const bool texturelessStationaryPrimeStateArchitecture =
-            P16.x > 19.5 && P16.x < 23.5;
+            P16.x > 19.5 && P16.x < 24.5;
         // Mode 23 keeps mode 20 semantics except that an unmasked whole-frame
         // camera translation veto is applied only to the textureless fallback.
         // It does not inherit mode 21/22's broader sequence-state rewrites.
         const bool minimalTexturelessCameraVetoArchitecture =
             P16.x > 22.5 && P16.x < 23.5;
+        // Mode 24 isolates mode 21's current-event camera veto. It leaves mode
+        // 20's risk/prime lifetimes, stable authority and hold authorization
+        // unchanged, so Matrix 33 can attribute any pan change to this branch.
+        const bool currentEventOnlyCameraGuardArchitecture =
+            P16.x > 23.5 && P16.x < 24.5;
         // Modes 21/22 make the whole-frame translation score authoritative even
         // during active protection. Mode 22 receives a structural/gradient-
         // validated score in P6.y; mode 21 and production retain raw luminance.
@@ -963,9 +968,13 @@ R"HLSL(
             transportedSurfaceRisk = saturate(transportedSurfaceRisk *
                 lerp(1.0, decayCompensation, stationaryRiskStateGate));
         }
+        const float currentEventMotionGuardGate =
+            currentEventOnlyCameraGuardArchitecture ?
+                max(corroboratedMotionGate, unmaskedCpuCameraMotionGate) :
+                stationaryMotionGuardGate;
         const float wholeFrameMotionEventVeto =
             cameraAwareEventDisocclusionArchitecture ?
-                smoothstep(0.35, 0.75, stationaryMotionGuardGate) : 0.0;
+                smoothstep(0.35, 0.75, currentEventMotionGuardGate) : 0.0;
         const float eventDisocclusionGate = lerp(
             eventDisocclusionGateBase, rawExplicitDisocclusionGate,
             wholeFrameMotionEventVeto);
@@ -5029,7 +5038,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 23);
+                    std::clamp(tuning.architectureMode, 0, 24);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
@@ -8642,7 +8651,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         const int requestedArchitecture =
                             _wtoi(spec[42].c_str());
                         tuning.architectureMode =
-                            std::clamp(requestedArchitecture, 0, 23);
+                            std::clamp(requestedArchitecture, 0, 24);
                         if (tuning.architectureMode != requestedArchitecture)
                         {
                             DestroyWindow(replayWindow);

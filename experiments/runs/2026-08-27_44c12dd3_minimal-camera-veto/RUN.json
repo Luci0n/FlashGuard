@@ -1,0 +1,47 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_44c12dd3_minimal-camera-veto",
+  "source_commit": "44c12dd300bb203c4d43f5afa110ddf2cccba8ba",
+  "workflow_run_id": 33103752045,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9659786764,
+  "artifact_name": "flashbench-gpu-44c12dd300bb203c4d43f5afa110ddf2cccba8ba",
+  "artifact_digest": "sha256:a9b0cf56176b4775f9ddc427bdff1035d9341e28379e0fb023b8b4cf3dca92c2",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/32",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Canonical full-replay isolation of an unmasked CPU camera veto applied only to mode 20 textureless stationary fallback/state disocclusion.",
+  "invariant": "Production architecture 0 remained unchanged. Mode 23 preserved mode 20 risk/prime lifetimes, stable/current authority, hold authorization, and event-camera semantics; only the textureless fallback/state-disocclusion path received the unmasked camera veto.",
+  "result_summary": {
+    "mode23_replay_status": "FAILED",
+    "mode23_moving_clear_05_ms": 66.667,
+    "mode23_moving_flash_reduction": 0.95880978,
+    "mode23_perceptual_min_reduction": 0.41401669,
+    "mode23_perceptual_delta4_min_reduction": 0.53775022,
+    "mode23_pan_mae": 0.00271939,
+    "mode23_fast_pan_mae": 0.00453162,
+    "mode23_extreme_pan_mae": 0.06669124,
+    "mode23_wcag_sc_2_3_1_pass": false,
+    "mode23_wcag_sc_2_3_2_pass": false
+  },
+  "interpretation": "Mode 23 is effectively identical to mode 20 on the decisive failures. The fallback-only camera veto did not reduce extreme-pan error and did not change weak-flash protection, disproving the hypothesis that the mode-20 pan regression was primarily caused by textureless state persistence. The next probe should isolate mode 21 display-authority camera vetoes rather than memory state.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "f6d37fdfa541edb6ae63cc10d04bec5a7e9a151eb79d4fdbe49058dfd0902d99"
+    },
+    {
+      "path": "mode23-replay.json",
+      "sha256": "7ba41c10c75bb47269db9df00e876a8ab654ef9e5dc41ff9effde98bbfaf4ae7"
+    },
+    {
+      "path": "mode23-perceptual-sweep.json",
+      "sha256": "64038411f1710886d9781637ce25725b6e56e8f0a404c2d73d208e178e7b7547"
+    },
+    {
+      "path": "mode23-flash-sweep.json",
+      "sha256": "357a0e7129ca716b3be0b9dec7bb86fbf2b6babc5568a58379410221586ea262"
+    }
+  ]
+}

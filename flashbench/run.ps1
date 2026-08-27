@@ -286,11 +286,11 @@ try {
             }
         }
 
-        # Canonical full-replay validation of the minimal camera veto applied only
-        # to mode 20's textureless stationary fallback/raw-disocclusion path.
+        # Canonical full-replay isolation of the current-event-only unmasked
+        # camera guard, keeping mode 20's sequence state and hold paths unchanged.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v32.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v33.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE
