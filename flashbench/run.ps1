@@ -286,17 +286,17 @@ try {
             }
         }
 
-        # Targeted runs compare legacy, failed risk-only v1, and surface-validated
-        # risk-only v2 in one persistent 320x180 GPU session. Full/tuning runs
-        # verify only the selected architecture and legacy default at 640x360.
+        # Targeted runs compare the archived surface-risk v2 against a mode that
+        # vetoes fresh risk seeding at disocclusions. Full/tuning runs verify only
+        # the selected architecture and legacy default at 640x360.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
             if ($TestTier -eq 'targeted' -and -not $TuneMatrix) {
-                & (Join-Path $PSScriptRoot 'matrix-v8.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v9.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir -ScreenOnly
             } else {
-                & (Join-Path $PSScriptRoot 'matrix-v8.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v9.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir
             }
