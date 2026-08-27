@@ -1256,6 +1256,8 @@ R"HLSL(
                 currentIntrinsicEvent = max(
                     currentIntrinsicEvent, interiorIntrinsicEvent);
             }
+)HLSL"
+R"HLSL(
 
             // Mode 8 keeps a short signed PRIME separately from display-active
             // risk. R encodes [-1,+1] around 0.5 only in this benchmark mode.
