@@ -1,0 +1,46 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_b7f7325a_display-authority-isolation",
+  "source_commit": "b7f7325aa1b7610fea5d2ba7257e0e5c24d98eb0",
+  "workflow_run_id": 33111101896,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9662816806,
+  "artifact_name": "flashbench-gpu-b7f7325aa1b7610fea5d2ba7257e0e5c24d98eb0",
+  "artifact_digest": "sha256:3b1f9598bb5e408de03e5f079641f0a9e1beb4253b36298c856d2641ec2e7cb3",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/34",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Canonical full-replay causal isolation of mode 21's stable repeated-authority and stationary current-hold camera guards, separately and together.",
+  "invariant": "Production architecture 0 remained unchanged. A benchmark-only source transform extended the mode-20 family through modes 25-27; mode 25 changed only stableMotionConflict, mode 26 only stationaryCurrentHoldAuthorization, and mode 27 both.",
+  "result_summary": {
+    "mode20_extreme_pan_mae": 0.06669124,
+    "mode20_perceptual_min_reduction": 0.41401669,
+    "mode20_moving_flash_reduction": 0.95880978,
+    "mode25_extreme_pan_mae": 0.06669124,
+    "mode26_extreme_pan_mae": 0.06669124,
+    "mode27_extreme_pan_mae": 0.06670023,
+    "mode27_perceptual_min_reduction": 0.41401669,
+    "mode27_moving_flash_reduction": 0.95880978,
+    "all_candidates_primary_pass": false
+  },
+  "interpretation": "Modes 25 and 26 were exactly equal to mode 20 on the decisive metrics, and mode 27 differed only by ~9e-6 extreme-pan MAE while retaining the same weak-flash and moving-flash results. Matrix 34 therefore rules out the stable repeated-authority camera guard and stationary current-hold authorization guard, individually and jointly, as the cause of mode 21's extreme-pan repair.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "4b42557f422658a82f1d59e9f27e8a8a4f58ac1f348316c63ec95e952c4c4597"
+    },
+    {
+      "path": "mode27-replay.json",
+      "sha256": "ba1b94261f11072162ce82c4a20975f9692baf92036a5ea07df4e12b948938af"
+    },
+    {
+      "path": "mode27-perceptual-sweep.json",
+      "sha256": "64038411f1710886d9781637ce25725b6e56e8f0a404c2d73d208e178e7b7547"
+    },
+    {
+      "path": "mode27-flash-sweep.json",
+      "sha256": "357a0e7129ca716b3be0b9dec7bb86fbf2b6babc5568a58379410221586ea262"
+    }
+  ]
+}
