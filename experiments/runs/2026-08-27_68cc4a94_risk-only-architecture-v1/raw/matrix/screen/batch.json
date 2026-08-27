@@ -1,0 +1,18 @@
+{
+  "schema": "FLASHGUARD_REPLAY_BATCH/1",
+  "status": "SUCCESS",
+  "screening": true,
+  "width": 320,
+  "height": 180,
+  "cases": [
+    {"name":"legacy_default","behavior_pass":true,"elapsed_ms":4964},
+    {"name":"legacy_repeat_later","behavior_pass":true,"elapsed_ms":4160},
+    {"name":"legacy_low_contrast","behavior_pass":true,"elapsed_ms":4169},
+    {"name":"risk_only_default","behavior_pass":false,"elapsed_ms":4880},
+    {"name":"risk_only_low_contrast","behavior_pass":false,"elapsed_ms":4792},
+    {"name":"risk_only_low_contrast_late_memory","behavior_pass":false,"elapsed_ms":4757},
+    {"name":"hybrid_default","behavior_pass":false,"elapsed_ms":4669},
+    {"name":"hybrid_low_contrast","behavior_pass":false,"elapsed_ms":4262},
+    {"name":"hybrid_low_contrast_late_memory","behavior_pass":false,"elapsed_ms":4910}
+  ]
+}

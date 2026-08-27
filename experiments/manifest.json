@@ -38,7 +38,8 @@
     "FLASHGUARD_SCREENING_PROBES/1",
     "FLASHGUARD_SCREENING_PROBES/2",
     "FLASHGUARD_TRAIL_METRICS/2",
-    "FLASHGUARD_MATRIX/6"
+    "FLASHGUARD_MATRIX/6",
+    "FLASHGUARD_MATRIX/7"
   ],
   "runs": [
     {
@@ -109,6 +110,11 @@
     {
       "run_id": "2026-08-27_6b582a4e_uncensored-trail-metrics",
       "commit": "6b582a4ed88c509f8fdb026b93f2f5e8a2070dd2",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_68cc4a94_risk-only-architecture-v1",
+      "commit": "68cc4a94a226faa51f58ed9ac6ab3c9928459a73",
       "result": "SUCCESS"
     }
   ]
