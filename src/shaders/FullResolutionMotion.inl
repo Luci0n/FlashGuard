@@ -275,15 +275,27 @@ R"HLSL(        // First compare raw source at the same screen coordinate. Bright
                         lerp(0.35, 1.0, vacatedCostConfidence) *
                         lerp(0.55, 1.0, vacatedContinuity);
 
-                    const float vacatedGate =
+                    const float rawVacatedGate =
                         vacatedEvidence > 0.34 ? 1.0 :
                         smoothstep(0.18, 0.34, vacatedEvidence);
+                    // Mode 13 fixes the semantic ambiguity exposed by Matrix 22.
+                    // The old material point at this screen coordinate may move
+                    // away while another point of the SAME surface moves into the
+                    // coordinate. A valid current->previous correspondence proves
+                    // that this current pixel has a predecessor, so it cannot also
+                    // be treated as a disocclusion merely because the old point
+                    // moved elsewhere. True trailing-edge holes retain no current
+                    // surface coverage and therefore keep the raw vacated result.
+                    const float vacatedGate = P16.x > 12.5 ?
+                        rawVacatedGate *
+                            (1.0 - saturate(diagCurrentSurfaceGate)) :
+                        rawVacatedGate;
                     diagVacatedGate = max(diagVacatedGate, vacatedGate);
 
-                    // A verified previous->current round trip proves that the old
-                    // surface left this pixel. There is no same-surface sample for
-                    // the newly revealed background, so classify the raw delta as
-                    // motion-explained rather than as an intrinsic luminance change.
+                    // Only corrected current-pixel disocclusion may erase the
+                    // intrinsic residual. This preserves a real brightness change
+                    // on overlapping translating surfaces while true newly revealed
+                    // background still discards the departed surface's history.
                     motionCompensatedSourceDelta *= (1.0 - vacatedGate);
 
                     // Do NOT transport history for a vacated pixel: the previous

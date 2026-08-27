@@ -1,0 +1,436 @@
+{
+  "schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "scope": "risk-architecture sample pixels plus >0.05 changed/error pixels; moving flash split into transition and stable phase frames",
+  "delta_active_threshold": 0.01,
+  "strength_active_threshold": 0.05,
+  "cases": {
+    "moving_square": {
+      "trail_pixel_count": 84480,
+      "error_pixel_count": 1982,
+      "error_pixel_fraction": 0.02346117,
+      "mean_error_on_error_pixels": 0.28418847,
+      "unexplained_error_fraction": 0.0,
+      "channels": {
+        "preprocess_luma_delta": {
+          "mean_on_sample_pixels": 0.0,
+          "active_fraction_on_sample_pixels": 0.0,
+          "mean_on_error_pixels": 0.0,
+          "max": 0.0,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.0
+        },
+        "architecture_luma_delta": {
+          "mean_on_sample_pixels": 0.00256916,
+          "active_fraction_on_sample_pixels": 0.02346117,
+          "mean_on_error_pixels": 0.10950257,
+          "max": 0.11083984,
+          "active_fraction_on_error_pixels": 1.0,
+          "error_weighted_mean": 0.110116
+        },
+        "current_event_strength": {
+          "mean_on_sample_pixels": 0.02299786,
+          "active_fraction_on_sample_pixels": 0.02336648,
+          "mean_on_error_pixels": 0.9802332,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.99596367,
+          "error_weighted_mean": 0.98765106
+        },
+        "surface_memory_strength": {
+          "mean_on_sample_pixels": 1.151e-05,
+          "active_fraction_on_sample_pixels": 0.00010653,
+          "mean_on_error_pixels": 0.00049072,
+          "max": 0.1105957,
+          "active_fraction_on_error_pixels": 0.00454087,
+          "error_weighted_mean": 0.00021364
+        }
+      },
+      "geometry_on_error_pixels": {
+        "global_flow": {
+          "mean_on_sample_pixels": 0.28317234,
+          "active_fraction_on_sample_pixels": 0.2844697,
+          "mean_on_error_pixels": 0.27952965,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.28002018,
+          "error_weighted_mean": 0.27890791
+        },
+        "current_surface": {
+          "mean_on_sample_pixels": 0.17410045,
+          "active_fraction_on_sample_pixels": 0.17408854,
+          "mean_on_error_pixels": 0.22792078,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.22906155,
+          "error_weighted_mean": 0.2231223
+        },
+        "vacated": {
+          "mean_on_sample_pixels": 0.23619558,
+          "active_fraction_on_sample_pixels": 0.23602036,
+          "mean_on_error_pixels": 0.00733798,
+          "max": 0.42651367,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.00701709
+        },
+        "infill": {
+          "mean_on_sample_pixels": 0.00429237,
+          "active_fraction_on_sample_pixels": 0.00420218,
+          "mean_on_error_pixels": 0.00262408,
+          "max": 0.34057617,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.00247344
+        },
+        "portable": {
+          "mean_on_sample_pixels": 0.0,
+          "active_fraction_on_sample_pixels": 0.0,
+          "mean_on_error_pixels": 0.0,
+          "max": 0.0,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.0
+        },
+        "hardware": {
+          "mean_on_sample_pixels": 0.42615134,
+          "active_fraction_on_sample_pixels": 0.42733191,
+          "mean_on_error_pixels": 0.38764717,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.38597376,
+          "error_weighted_mean": 0.38330106
+        },
+        "effective_motion": {
+          "mean_on_sample_pixels": 0.56137404,
+          "active_fraction_on_sample_pixels": 0.4258286,
+          "mean_on_error_pixels": 0.33171969,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.32795156,
+          "error_weighted_mean": 0.32811451
+        },
+        "repeated_risk": {
+          "mean_on_sample_pixels": 0.72895567,
+          "active_fraction_on_sample_pixels": 0.88103693,
+          "mean_on_error_pixels": 0.98392811,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 1.0,
+          "error_weighted_mean": 0.98381887
+        }
+      }
+    },
+    "moving_flash_transition": {
+      "trail_pixel_count": 23040,
+      "error_pixel_count": 8914,
+      "error_pixel_fraction": 0.38689236,
+      "mean_error_on_error_pixels": 0.41182072,
+      "unexplained_error_fraction": 0.0,
+      "channels": {
+        "preprocess_luma_delta": {
+          "mean_on_sample_pixels": 0.0,
+          "active_fraction_on_sample_pixels": 0.0,
+          "mean_on_error_pixels": 0.0,
+          "max": 0.0,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.0
+        },
+        "architecture_luma_delta": {
+          "mean_on_sample_pixels": 0.18396142,
+          "active_fraction_on_sample_pixels": 0.38728299,
+          "mean_on_error_pixels": 0.47546677,
+          "max": 0.71044922,
+          "active_fraction_on_error_pixels": 1.0,
+          "error_weighted_mean": 0.5945288
+        },
+        "current_event_strength": {
+          "mean_on_sample_pixels": 0.38183124,
+          "active_fraction_on_sample_pixels": 0.38719618,
+          "mean_on_error_pixels": 0.98683585,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.99988782,
+          "error_weighted_mean": 0.99239182
+        },
+        "surface_memory_strength": {
+          "mean_on_sample_pixels": 0.00445281,
+          "active_fraction_on_sample_pixels": 0.00633681,
+          "mean_on_error_pixels": 0.01150764,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.01637873,
+          "error_weighted_mean": 0.01079035
+        }
+      },
+      "geometry_on_error_pixels": {
+        "global_flow": {
+          "mean_on_sample_pixels": 0.09546344,
+          "active_fraction_on_sample_pixels": 0.09479167,
+          "mean_on_error_pixels": 0.12867979,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.12945928,
+          "error_weighted_mean": 0.1608824
+        },
+        "current_surface": {
+          "mean_on_sample_pixels": 0.57282669,
+          "active_fraction_on_sample_pixels": 0.57200521,
+          "mean_on_error_pixels": 0.202422,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.20103208,
+          "error_weighted_mean": 0.19241106
+        },
+        "vacated": {
+          "mean_on_sample_pixels": 0.56351839,
+          "active_fraction_on_sample_pixels": 0.56267361,
+          "mean_on_error_pixels": 0.0125492,
+          "max": 0.49023438,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.01106133
+        },
+        "infill": {
+          "mean_on_sample_pixels": 0.04310852,
+          "active_fraction_on_sample_pixels": 0.04184028,
+          "mean_on_error_pixels": 0.00199855,
+          "max": 0.44897461,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.00163511
+        },
+        "portable": {
+          "mean_on_sample_pixels": 0.0,
+          "active_fraction_on_sample_pixels": 0.0,
+          "mean_on_error_pixels": 0.0,
+          "max": 0.0,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.0
+        },
+        "hardware": {
+          "mean_on_sample_pixels": 0.73290525,
+          "active_fraction_on_sample_pixels": 0.73133681,
+          "mean_on_error_pixels": 0.33025128,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.32218981,
+          "error_weighted_mean": 0.35614653
+        },
+        "effective_motion": {
+          "mean_on_sample_pixels": 0.60626382,
+          "active_fraction_on_sample_pixels": 0.60368924,
+          "mean_on_error_pixels": 0.01746584,
+          "max": 0.53515625,
+          "active_fraction_on_error_pixels": 0.00044873,
+          "error_weighted_mean": 0.01407586
+        },
+        "repeated_risk": {
+          "mean_on_sample_pixels": 0.96121012,
+          "active_fraction_on_sample_pixels": 0.95833333,
+          "mean_on_error_pixels": 0.97224499,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.97094458,
+          "error_weighted_mean": 0.98256807
+        }
+      }
+    },
+    "moving_flash_stable": {
+      "trail_pixel_count": 11520,
+      "error_pixel_count": 576,
+      "error_pixel_fraction": 0.05,
+      "mean_error_on_error_pixels": 0.19864639,
+      "unexplained_error_fraction": 0.0,
+      "channels": {
+        "preprocess_luma_delta": {
+          "mean_on_sample_pixels": 0.0,
+          "active_fraction_on_sample_pixels": 0.0,
+          "mean_on_error_pixels": 0.0,
+          "max": 0.0,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.0
+        },
+        "architecture_luma_delta": {
+          "mean_on_sample_pixels": 0.00453725,
+          "active_fraction_on_sample_pixels": 0.05017361,
+          "mean_on_error_pixels": 0.09048104,
+          "max": 0.09375,
+          "active_fraction_on_error_pixels": 1.0,
+          "error_weighted_mean": 0.09182702
+        },
+        "current_event_strength": {
+          "mean_on_sample_pixels": 0.00263408,
+          "active_fraction_on_sample_pixels": 0.00520833,
+          "mean_on_error_pixels": 0.05190595,
+          "max": 0.63378906,
+          "active_fraction_on_error_pixels": 0.10416667,
+          "error_weighted_mean": 0.04994559
+        },
+        "surface_memory_strength": {
+          "mean_on_sample_pixels": 0.04261394,
+          "active_fraction_on_sample_pixels": 0.04496528,
+          "mean_on_error_pixels": 0.851646,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.89583333,
+          "error_weighted_mean": 0.87295527
+        }
+      },
+      "geometry_on_error_pixels": {
+        "global_flow": {
+          "mean_on_sample_pixels": 0.16634374,
+          "active_fraction_on_sample_pixels": 0.17152778,
+          "mean_on_error_pixels": 0.24479167,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.24479167,
+          "error_weighted_mean": 0.25008849
+        },
+        "current_surface": {
+          "mean_on_sample_pixels": 0.74430906,
+          "active_fraction_on_sample_pixels": 0.74270833,
+          "mean_on_error_pixels": 0.64568588,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.63368056,
+          "error_weighted_mean": 0.63819519
+        },
+        "vacated": {
+          "mean_on_sample_pixels": 0.72940152,
+          "active_fraction_on_sample_pixels": 0.72803819,
+          "mean_on_error_pixels": 0.03304709,
+          "max": 0.49902344,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.03139362
+        },
+        "infill": {
+          "mean_on_sample_pixels": 0.00152389,
+          "active_fraction_on_sample_pixels": 0.0015625,
+          "mean_on_error_pixels": 0.0,
+          "max": 0.0,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.0
+        },
+        "portable": {
+          "mean_on_sample_pixels": 0.0,
+          "active_fraction_on_sample_pixels": 0.0,
+          "mean_on_error_pixels": 0.0,
+          "max": 0.0,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.0
+        },
+        "hardware": {
+          "mean_on_sample_pixels": 0.84050079,
+          "active_fraction_on_sample_pixels": 0.83923611,
+          "mean_on_error_pixels": 0.6835764,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.67708333,
+          "error_weighted_mean": 0.67685598
+        },
+        "effective_motion": {
+          "mean_on_sample_pixels": 0.75813339,
+          "active_fraction_on_sample_pixels": 0.75694444,
+          "mean_on_error_pixels": 0.11335015,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.08159722,
+          "error_weighted_mean": 0.10359864
+        },
+        "repeated_risk": {
+          "mean_on_sample_pixels": 0.79580458,
+          "active_fraction_on_sample_pixels": 0.83914931,
+          "mean_on_error_pixels": 0.80454402,
+          "max": 0.94091797,
+          "active_fraction_on_error_pixels": 0.84548611,
+          "error_weighted_mean": 0.81502838
+        }
+      }
+    },
+    "moving_square_recovery": {
+      "trail_pixel_count": 22528,
+      "error_pixel_count": 1678,
+      "error_pixel_fraction": 0.07448509,
+      "mean_error_on_error_pixels": 0.28674173,
+      "unexplained_error_fraction": 0.0,
+      "channels": {
+        "preprocess_luma_delta": {
+          "mean_on_sample_pixels": 0.0,
+          "active_fraction_on_sample_pixels": 0.0,
+          "mean_on_error_pixels": 0.0,
+          "max": 0.0,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.0
+        },
+        "architecture_luma_delta": {
+          "mean_on_sample_pixels": 0.00825592,
+          "active_fraction_on_sample_pixels": 0.07448509,
+          "mean_on_error_pixels": 0.11083984,
+          "max": 0.11083984,
+          "active_fraction_on_error_pixels": 1.0,
+          "error_weighted_mean": 0.11083984
+        },
+        "current_event_strength": {
+          "mean_on_sample_pixels": 0.07439212,
+          "active_fraction_on_sample_pixels": 0.07448509,
+          "mean_on_error_pixels": 0.99875194,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 1.0,
+          "error_weighted_mean": 0.99875194
+        },
+        "surface_memory_strength": {
+          "mean_on_sample_pixels": 0.0,
+          "active_fraction_on_sample_pixels": 0.0,
+          "mean_on_error_pixels": 0.0,
+          "max": 0.0,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.0
+        }
+      },
+      "geometry_on_error_pixels": {
+        "global_flow": {
+          "mean_on_sample_pixels": 0.47746846,
+          "active_fraction_on_sample_pixels": 0.4753196,
+          "mean_on_error_pixels": 0.99070468,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.988677,
+          "error_weighted_mean": 0.99070468
+        },
+        "current_surface": {
+          "mean_on_sample_pixels": 0.11713158,
+          "active_fraction_on_sample_pixels": 0.11652166,
+          "mean_on_error_pixels": 0.37194731,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.37067938,
+          "error_weighted_mean": 0.37194731
+        },
+        "vacated": {
+          "mean_on_sample_pixels": 0.14979137,
+          "active_fraction_on_sample_pixels": 0.1504794,
+          "mean_on_error_pixels": 0.00684949,
+          "max": 0.44799805,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.00684949
+        },
+        "infill": {
+          "mean_on_sample_pixels": 0.00167498,
+          "active_fraction_on_sample_pixels": 0.00168679,
+          "mean_on_error_pixels": 0.0,
+          "max": 0.0,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.0
+        },
+        "portable": {
+          "mean_on_sample_pixels": 0.0,
+          "active_fraction_on_sample_pixels": 0.0,
+          "mean_on_error_pixels": 0.0,
+          "max": 0.0,
+          "active_fraction_on_error_pixels": 0.0,
+          "error_weighted_mean": 0.0
+        },
+        "hardware": {
+          "mean_on_sample_pixels": 0.50181824,
+          "active_fraction_on_sample_pixels": 0.50062145,
+          "mean_on_error_pixels": 0.99427914,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.99225268,
+          "error_weighted_mean": 0.99427914
+        },
+        "effective_motion": {
+          "mean_on_sample_pixels": 0.16889657,
+          "active_fraction_on_sample_pixels": 0.16823509,
+          "mean_on_error_pixels": 0.10454299,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.0977354,
+          "error_weighted_mean": 0.10454299
+        },
+        "repeated_risk": {
+          "mean_on_sample_pixels": 0.73950895,
+          "active_fraction_on_sample_pixels": 0.80761719,
+          "mean_on_error_pixels": 0.98958954,
+          "max": 1.0,
+          "active_fraction_on_error_pixels": 0.98450536,
+          "error_weighted_mean": 0.98958954
+        }
+      }
+    }
+  }
+}

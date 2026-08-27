@@ -762,8 +762,17 @@ R"HLSL(
         // Use the exact previous UV selected by the strongest validated transport
         // path in FullResolutionMotion. A disocclusion belongs to a new surface,
         // so it starts from the current candidate and inherits no hazard memory.
-        const float explicitDisocclusionGate =
+        const float rawExplicitDisocclusionGate =
             saturate(max(diagVacatedGate, diagInfillGate));
+        // Mode 13 makes disocclusion a CURRENT-pixel property. A verified
+        // current->previous surface correspondence means this pixel has incoming
+        // coverage even if the material point that occupied this coordinate in
+        // the previous frame moved elsewhere. Do not let vacated/infill evidence
+        // reset history or veto an intrinsic event in that overlap case.
+        const float explicitDisocclusionGate = P16.x > 12.5 ?
+            rawExplicitDisocclusionGate *
+                (1.0 - saturate(diagCurrentSurfaceGate)) :
+            rawExplicitDisocclusionGate;
         const float4 previousProtectionState = PreviousProtectionState.SampleLevel(
             LinearClamp, protectionStatePreviousUv, 0.0);
         const bool previousProtectionValid = previousProtectionState.a >= 0.5;
@@ -937,7 +946,9 @@ R"HLSL(
             smoothstep(P13.x, P13.y, diagVacatedGate);
         const float verifiedInfillTransport =
             smoothstep(P13.x, P13.y, diagInfillGate) *
-            coarseMotionGate;
+            coarseMotionGate *
+            (P16.x > 12.5 ?
+                (1.0 - verifiedCurrentSurfaceTransport) : 1.0);
         const float currentSurfaceHoldVeto =
             verifiedCurrentSurfaceTransport * (1.0 - motionProtectionAuthority);
         const float disocclusionHoldVeto =
@@ -4838,7 +4849,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 12);
+                    std::clamp(tuning.architectureMode, 0, 13);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
@@ -8447,7 +8458,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         const int requestedArchitecture =
                             _wtoi(spec[42].c_str());
                         tuning.architectureMode =
-                            std::clamp(requestedArchitecture, 0, 12);
+                            std::clamp(requestedArchitecture, 0, 13);
                         if (tuning.architectureMode != requestedArchitecture)
                         {
                             DestroyWindow(replayWindow);

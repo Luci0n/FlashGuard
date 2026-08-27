@@ -1,0 +1,43 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_28124537_phase-disocclusion-diagnosis",
+  "source_commit": "2812453717eec90679fc53684fdf77947c37a471",
+  "workflow_run_id": 33069193469,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9645187557,
+  "artifact_name": "flashbench-gpu-2812453717eec90679fc53684fdf77947c37a471",
+  "artifact_digest": "sha256:bb06c2cfc10c7264929a0749043cbcbb128dcb220b760c615dc714ed1c828c13",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/22",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Separate moving-flash transition coverage from stable half-cycle coverage and inspect the geometry masks across every active-square pixel.",
+  "invariant": "Diagnostic-only behavior: production architecture 0 and benchmark protection algorithms were unchanged. Modes 8 and 12 were measured with full active-square authority sampling.",
+  "result_summary": {
+    "mode12_moving_flash_reduction": 0.37554216,
+    "mode12_clear_ms": 66.667,
+    "transition_current_event_active": 0.38719618,
+    "transition_current_surface_active": 0.57200521,
+    "transition_vacated_active": 0.56267361,
+    "transition_infill_active": 0.04184028,
+    "stable_current_event_active": 0.00520833,
+    "stable_current_surface_active": 0.74270833,
+    "stable_vacated_active": 0.72803819,
+    "stable_infill_active": 0.00156250
+  },
+  "interpretation": "The missing moving-flash authority is concentrated on transition frames, but the stronger finding is geometric: current-surface and vacated classifications both cover most of the same translating square population. A previous material point moving away does not imply that the current screen coordinate has no predecessor when another point of the same surface moved into it. Mode 13 therefore corrects the vacated classification with current-surface coverage before the signal may erase intrinsic residual, reset surface history, or veto the current event.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "43b7c2e717bf605e66e3edf0ee04a3307ad65456a4922bbf7f97e3026f77c7ad"
+    },
+    {
+      "path": "summary.json",
+      "sha256": "929c1ce4fc6d5958e93ce3c9219f088cb53a8defc5ef4e0b2476eea82351282b"
+    },
+    {
+      "path": "mode12-authority.json",
+      "sha256": "ab671ac1b8a7c8f23e65a25285d36eab5aec2cfa515018ce0b67bfa1d3d479e1"
+    }
+  ]
+}
