@@ -11,6 +11,8 @@ if ($text.Contains('stableAuthorityCameraGuardArchitecture')) {
 }
 
 function Replace-Once([string]$Old, [string]$New) {
+    $Old = $Old.Replace("`r`n", "`n")
+    $New = $New.Replace("`r`n", "`n")
     $first = $script:text.IndexOf($Old, [StringComparison]::Ordinal)
     if ($first -lt 0) { throw "Matrix 34 source transform missing anchor: $($Old.Substring(0, [Math]::Min(80, $Old.Length)))" }
     $second = $script:text.IndexOf($Old, $first + $Old.Length, [StringComparison]::Ordinal)
