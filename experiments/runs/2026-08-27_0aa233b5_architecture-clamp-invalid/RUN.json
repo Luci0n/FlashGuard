@@ -1,0 +1,32 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_0aa233b5_architecture-clamp-invalid",
+  "source_commit": "0aa233b585a6817cb3165b50a0dfcc8162eeea5a",
+  "workflow_run_id": 33066794890,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9644202213,
+  "artifact_name": "flashbench-gpu-0aa233b585a6817cb3165b50a0dfcc8162eeea5a",
+  "artifact_digest": "sha256:073f85ec0381c02c55186e21aa6a42b42eba699514aa5113b2f875c2e64b655e",
+  "result": "INVALID",
+  "matrix_schema": "FLASHGUARD_MATRIX/20",
+  "purpose": "Preserve the uniform-interior candidate run that was invalidated by the replay-batch architecture clamp.",
+  "invariant": "Raw Matrix 20 evidence is preserved, but requested architecture_mode=12 was clamped to mode 8 by the batch parser before ApplyBenchmarkTuning.",
+  "primary_gate": "not applicable: architecture comparison invalidated by harness clamp",
+  "result_summary": {
+    "requested_mode8_moving_flash_reduction": 0.37155597,
+    "requested_mode12_reported_moving_flash_reduction": 0.37398297,
+    "parser_runtime_clamp": "0..8",
+    "interpretation_of_difference": "batch/state variance under the same effective mode 8; not mode-12 evidence"
+  },
+  "interpretation": "INVALID. Although Matrix 20 labels its second candidate architecture 12, source inspection of this exact commit shows the replay-batch parser still executed std::clamp(requestedArchitecture, 0, 8). The apparent metric difference therefore cannot be attributed to mode 12. Matrix 21 fixes the parser and re-runs modes 8-12 together.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "7effb978c61dc61e896db5aaced912b3e62cf19e0b0649f4336e1ad79d92dbec"
+    },
+    {
+      "path": "summary.json",
+      "sha256": "1f5e09a00dd19b4c8165b1d6b1686c24b921eca14ddcea22e2d70d51fd48c4ff"
+    }
+  ]
+}

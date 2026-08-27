@@ -8,6 +8,8 @@
   "artifact_name": "flashbench-gpu-c5ff67c958a2bd6e8846a16173af4278882c83b8",
   "artifact_digest": "sha256:ed0b1a0e2a302852a450680933ff20c9815d06ac94b52015e73ad0f8f2a0e492",
   "result": "SUCCESS",
+  "validity": "INVALIDATED",
+  "invalidated_reason": "Replay-batch parser clamped requested architecture_mode=11 to mode 8 before ApplyBenchmarkTuning.",
   "matrix_schema": "FLASHGUARD_MATRIX/19",
   "purpose": "Directly accept or reject textureless moving-surface NVOF consensus as the missing moving-flash intrinsic-coverage mechanism.",
   "invariant": "Benchmark architecture 11 only; production architecture 0 remained unchanged and the candidate transported only a validated motion vector for raw-source comparison, never display RGB or event memory.",
@@ -30,7 +32,7 @@
     "selected": null,
     "screen_elapsed_ms": 26156
   },
-  "interpretation": "Mode 11 again produced exactly the mode-8 moving-flash result, while slightly changing ordinary moving-square error, proving architecture mode 11 was active but its NVOF consensus did not add moving-flash authority. This rejects optical-flow infill as the next lever. The next candidate uses a different invariant: at a translating uniform object's interior, same-coordinate raw source remains unchanged for small displacement, whereas an intrinsic flash changes the whole interior; pixels near motion boundaries are excluded by four-sided current-surface support.",
+  "interpretation": "INVALIDATED: Matrix 19 requested mode 11, but source inspection of the exact commit shows the replay-batch parser clamped architecture_mode to 0..8 before ApplyBenchmarkTuning. The run therefore executed mode 8; its exact-null result and any small batch-order differences cannot be attributed to NVOF consensus.",
   "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
   "raw_evidence": [
     {

@@ -8393,8 +8393,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     tune(41, tuning.shader.eventSeedHigh);
                     if (!spec[42].empty())
                     {
+                        const int requestedArchitecture =
+                            _wtoi(spec[42].c_str());
                         tuning.architectureMode =
-                            std::clamp(_wtoi(spec[42].c_str()), 0, 8);
+                            std::clamp(requestedArchitecture, 0, 12);
+                        if (tuning.architectureMode != requestedArchitecture)
+                        {
+                            DestroyWindow(replayWindow);
+                            return 10;
+                        }
                         tuning.enabled = true;
                     }
                     tune(43, tuning.riskOnlyNeutralLuma);

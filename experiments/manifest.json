@@ -57,7 +57,8 @@
     "FLASHGUARD_MATRIX/16",
     "FLASHGUARD_MATRIX/17",
     "FLASHGUARD_MATRIX/18",
-    "FLASHGUARD_MATRIX/19"
+    "FLASHGUARD_MATRIX/19",
+    "FLASHGUARD_MATRIX/20"
   ],
   "runs": [
     {
@@ -214,6 +215,11 @@
       "run_id": "2026-08-27_c5ff67c9_textureless-flow-consensus",
       "commit": "c5ff67c958a2bd6e8846a16173af4278882c83b8",
       "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_0aa233b5_architecture-clamp-invalid",
+      "commit": "0aa233b585a6817cb3165b50a0dfcc8162eeea5a",
+      "result": "INVALID"
     }
   ]
 }

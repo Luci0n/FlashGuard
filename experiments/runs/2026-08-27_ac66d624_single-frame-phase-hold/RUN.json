@@ -8,6 +8,8 @@
   "artifact_name": "flashbench-gpu-ac66d6247b4acc143854178e92610fb7421808cb",
   "artifact_digest": "sha256:83b825b948e8954cc2ef8f2067570d211b6f8e98c89caa4160acb5d11a7cad00",
   "result": "SUCCESS",
+  "validity": "INVALIDATED",
+  "invalidated_reason": "Replay-batch parser clamped requested architecture_mode=10 to mode 8 before ApplyBenchmarkTuning.",
   "matrix_schema": "FLASHGUARD_MATRIX/18",
   "purpose": "Directly accept or reject a one-frame nonrecursive event hold as the missing moving-flash temporal coverage mechanism.",
   "invariant": "Benchmark architecture 10 only; production architecture 0 remained unchanged and the hold stored only the previous frame's event strength.",
@@ -29,7 +31,7 @@
     },
     "selected": null
   },
-  "interpretation": "Mode 10 was numerically identical to mode 8 on every reported gate metric, so a one-frame event hold did not touch the missing moving-flash transition coverage. Source review also showed the carryover was gated by same-screen stableSourceGate, which naturally rejects translating surfaces. The next candidate therefore targets the underlying geometry problem directly: infer a validated motion vector for textureless moving interiors, then measure intrinsic raw-source change at that transported surface without adding display memory.",
+  "interpretation": "INVALIDATED: Matrix 18 requested mode 10, but the replay-batch parser clamped architecture modes to 0..8, so the candidate actually executed mode 8. Raw evidence is preserved; the source-level stableSourceGate concern remains an implementation observation, not a measured rejection.",
   "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
   "raw_evidence": [
     {

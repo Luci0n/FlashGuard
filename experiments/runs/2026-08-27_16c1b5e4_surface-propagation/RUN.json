@@ -8,6 +8,8 @@
   "artifact_name": "flashbench-gpu-16c1b5e4fb7551f8e82799621387d1666ee74ef7",
   "artifact_digest": "sha256:cd1d73b8a80f3409a186d51d5bff7b6f3be1cfd4b147f5a005218d77b35b64e2",
   "result": "SUCCESS",
+  "validity": "INVALIDATED",
+  "invalidated_reason": "Replay-batch parser clamped requested architecture_mode=9 to mode 8 before ApplyBenchmarkTuning.",
   "matrix_schema": "FLASHGUARD_MATRIX/17",
   "purpose": "Directly accept or reject same-current-surface spatial propagation as the missing moving-flash coverage mechanism.",
   "invariant": "Benchmark architecture 9 only; production architecture 0 remained unchanged and no neighbor RGB or display history was transported.",
@@ -29,7 +31,7 @@
     },
     "selected": null
   },
-  "interpretation": "Mode 9 was numerically identical to mode 8 on every reported gate metric. The neighbor-event propagation path therefore added no useful moving-flash authority and is rejected rather than threshold-tuned. Together with Matrix 16, this shifts the next architectural attempt toward a short nonrecursive temporal phase hold rather than broader same-frame spatial propagation.",
+  "interpretation": "INVALIDATED: Matrix 17 requested mode 9, but the replay-batch parser clamped architecture modes to 0..8, so the candidate actually executed mode 8. Raw evidence is preserved, but this run provides no architectural evidence about mode 9.",
   "raw_evidence": [
     {
       "path": "matrix.json",
