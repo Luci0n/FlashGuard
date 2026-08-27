@@ -1,0 +1,591 @@
+﻿{
+    "schema":  "FLASHGUARD_MATRIX/10",
+    "purpose":  "focused per-pixel trail authority attribution; diagnostic only, no selection",
+    "screening_resolution":  "320x180",
+    "screen_elapsed_ms":  23267,
+    "candidate_count":  3,
+    "screen_candidates":  [
+                              {
+                                  "name":  "legacy_default",
+                                  "architecture_mode":  0,
+                                  "moving_clear_05_ms":  600,
+                                  "moving_trail_p99_frame_p95":  0.82726907,
+                                  "moving_flash_reduction":  0.55045492,
+                                  "perceptual_min_reduction":  -0.00387579,
+                                  "moving_error_pixel_fraction":  0,
+                                  "moving_unexplained_error_fraction":  0,
+                                  "moving_preprocess_error_weighted_mean":  0,
+                                  "moving_architecture_error_weighted_mean":  0,
+                                  "moving_current_event_error_weighted_mean":  0,
+                                  "moving_surface_memory_error_weighted_mean":  0,
+                                  "recovery_error_pixel_fraction":  0,
+                                  "recovery_unexplained_error_fraction":  0,
+                                  "recovery_preprocess_error_weighted_mean":  0,
+                                  "recovery_architecture_error_weighted_mean":  0,
+                                  "recovery_current_event_error_weighted_mean":  0,
+                                  "recovery_surface_memory_error_weighted_mean":  0,
+                                  "authority":  {
+                                                    "schema":  "FLASHGUARD_AUTHORITY_DIAGNOSTICS/2",
+                                                    "scope":  "grayscale moving-square trail pixels with absolute sRGB-luma error above 0.05",
+                                                    "delta_active_threshold":  0.01,
+                                                    "strength_active_threshold":  0.05,
+                                                    "cases":  {
+                                                                  "moving_square":  {
+                                                                                        "trail_pixel_count":  0,
+                                                                                        "error_pixel_count":  0,
+                                                                                        "error_pixel_fraction":  0.00000000,
+                                                                                        "mean_error_on_error_pixels":  0.00000000,
+                                                                                        "unexplained_error_fraction":  0.00000000,
+                                                                                        "channels":  {
+                                                                                                         "preprocess_luma_delta":  {
+                                                                                                                                       "mean_on_error_pixels":  0.00000000,
+                                                                                                                                       "max":  0.00000000,
+                                                                                                                                       "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                       "error_weighted_mean":  0.00000000
+                                                                                                                                   },
+                                                                                                         "architecture_luma_delta":  {
+                                                                                                                                         "mean_on_error_pixels":  0.00000000,
+                                                                                                                                         "max":  0.00000000,
+                                                                                                                                         "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                         "error_weighted_mean":  0.00000000
+                                                                                                                                     },
+                                                                                                         "current_event_strength":  {
+                                                                                                                                        "mean_on_error_pixels":  0.00000000,
+                                                                                                                                        "max":  0.00000000,
+                                                                                                                                        "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                        "error_weighted_mean":  0.00000000
+                                                                                                                                    },
+                                                                                                         "surface_memory_strength":  {
+                                                                                                                                         "mean_on_error_pixels":  0.00000000,
+                                                                                                                                         "max":  0.00000000,
+                                                                                                                                         "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                         "error_weighted_mean":  0.00000000
+                                                                                                                                     }
+                                                                                                     },
+                                                                                        "geometry_on_error_pixels":  {
+                                                                                                                         "global_flow":  {
+                                                                                                                                             "mean_on_error_pixels":  0.00000000,
+                                                                                                                                             "max":  0.00000000,
+                                                                                                                                             "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                             "error_weighted_mean":  0.00000000
+                                                                                                                                         },
+                                                                                                                         "current_surface":  {
+                                                                                                                                                 "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                 "max":  0.00000000,
+                                                                                                                                                 "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                 "error_weighted_mean":  0.00000000
+                                                                                                                                             },
+                                                                                                                         "vacated":  {
+                                                                                                                                         "mean_on_error_pixels":  0.00000000,
+                                                                                                                                         "max":  0.00000000,
+                                                                                                                                         "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                         "error_weighted_mean":  0.00000000
+                                                                                                                                     },
+                                                                                                                         "infill":  {
+                                                                                                                                        "mean_on_error_pixels":  0.00000000,
+                                                                                                                                        "max":  0.00000000,
+                                                                                                                                        "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                        "error_weighted_mean":  0.00000000
+                                                                                                                                    },
+                                                                                                                         "portable":  {
+                                                                                                                                          "mean_on_error_pixels":  0.00000000,
+                                                                                                                                          "max":  0.00000000,
+                                                                                                                                          "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                          "error_weighted_mean":  0.00000000
+                                                                                                                                      },
+                                                                                                                         "hardware":  {
+                                                                                                                                          "mean_on_error_pixels":  0.00000000,
+                                                                                                                                          "max":  0.00000000,
+                                                                                                                                          "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                          "error_weighted_mean":  0.00000000
+                                                                                                                                      },
+                                                                                                                         "effective_motion":  {
+                                                                                                                                                  "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                  "max":  0.00000000,
+                                                                                                                                                  "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                  "error_weighted_mean":  0.00000000
+                                                                                                                                              },
+                                                                                                                         "repeated_risk":  {
+                                                                                                                                               "mean_on_error_pixels":  0.00000000,
+                                                                                                                                               "max":  0.00000000,
+                                                                                                                                               "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                               "error_weighted_mean":  0.00000000
+                                                                                                                                           }
+                                                                                                                     }
+                                                                                    },
+                                                                  "moving_square_recovery":  {
+                                                                                                 "trail_pixel_count":  0,
+                                                                                                 "error_pixel_count":  0,
+                                                                                                 "error_pixel_fraction":  0.00000000,
+                                                                                                 "mean_error_on_error_pixels":  0.00000000,
+                                                                                                 "unexplained_error_fraction":  0.00000000,
+                                                                                                 "channels":  {
+                                                                                                                  "preprocess_luma_delta":  {
+                                                                                                                                                "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                "max":  0.00000000,
+                                                                                                                                                "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                "error_weighted_mean":  0.00000000
+                                                                                                                                            },
+                                                                                                                  "architecture_luma_delta":  {
+                                                                                                                                                  "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                  "max":  0.00000000,
+                                                                                                                                                  "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                  "error_weighted_mean":  0.00000000
+                                                                                                                                              },
+                                                                                                                  "current_event_strength":  {
+                                                                                                                                                 "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                 "max":  0.00000000,
+                                                                                                                                                 "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                 "error_weighted_mean":  0.00000000
+                                                                                                                                             },
+                                                                                                                  "surface_memory_strength":  {
+                                                                                                                                                  "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                  "max":  0.00000000,
+                                                                                                                                                  "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                  "error_weighted_mean":  0.00000000
+                                                                                                                                              }
+                                                                                                              },
+                                                                                                 "geometry_on_error_pixels":  {
+                                                                                                                                  "global_flow":  {
+                                                                                                                                                      "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                      "max":  0.00000000,
+                                                                                                                                                      "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                      "error_weighted_mean":  0.00000000
+                                                                                                                                                  },
+                                                                                                                                  "current_surface":  {
+                                                                                                                                                          "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                          "max":  0.00000000,
+                                                                                                                                                          "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                          "error_weighted_mean":  0.00000000
+                                                                                                                                                      },
+                                                                                                                                  "vacated":  {
+                                                                                                                                                  "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                  "max":  0.00000000,
+                                                                                                                                                  "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                  "error_weighted_mean":  0.00000000
+                                                                                                                                              },
+                                                                                                                                  "infill":  {
+                                                                                                                                                 "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                 "max":  0.00000000,
+                                                                                                                                                 "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                 "error_weighted_mean":  0.00000000
+                                                                                                                                             },
+                                                                                                                                  "portable":  {
+                                                                                                                                                   "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                   "max":  0.00000000,
+                                                                                                                                                   "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                   "error_weighted_mean":  0.00000000
+                                                                                                                                               },
+                                                                                                                                  "hardware":  {
+                                                                                                                                                   "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                   "max":  0.00000000,
+                                                                                                                                                   "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                   "error_weighted_mean":  0.00000000
+                                                                                                                                               },
+                                                                                                                                  "effective_motion":  {
+                                                                                                                                                           "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                           "max":  0.00000000,
+                                                                                                                                                           "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                           "error_weighted_mean":  0.00000000
+                                                                                                                                                       },
+                                                                                                                                  "repeated_risk":  {
+                                                                                                                                                        "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                        "max":  0.00000000,
+                                                                                                                                                        "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                        "error_weighted_mean":  0.00000000
+                                                                                                                                                    }
+                                                                                                                              }
+                                                                                             }
+                                                              }
+                                                }
+                              },
+                              {
+                                  "name":  "surface_risk_v2_neutral12",
+                                  "architecture_mode":  3,
+                                  "moving_clear_05_ms":  800,
+                                  "moving_trail_p99_frame_p95":  0.27306985,
+                                  "moving_flash_reduction":  0.35130792,
+                                  "perceptual_min_reduction":  0.73627725,
+                                  "moving_error_pixel_fraction":  0.08012547,
+                                  "moving_unexplained_error_fraction":  0,
+                                  "moving_preprocess_error_weighted_mean":  0,
+                                  "moving_architecture_error_weighted_mean":  0.10066289,
+                                  "moving_current_event_error_weighted_mean":  0.27402273,
+                                  "moving_surface_memory_error_weighted_mean":  0.71485999,
+                                  "recovery_error_pixel_fraction":  0.06243571,
+                                  "recovery_unexplained_error_fraction":  0,
+                                  "recovery_preprocess_error_weighted_mean":  0,
+                                  "recovery_architecture_error_weighted_mean":  0.09363253,
+                                  "recovery_current_event_error_weighted_mean":  0.090447,
+                                  "recovery_surface_memory_error_weighted_mean":  0.82771967,
+                                  "authority":  {
+                                                    "schema":  "FLASHGUARD_AUTHORITY_DIAGNOSTICS/2",
+                                                    "scope":  "grayscale moving-square trail pixels with absolute sRGB-luma error above 0.05",
+                                                    "delta_active_threshold":  0.01,
+                                                    "strength_active_threshold":  0.05,
+                                                    "cases":  {
+                                                                  "moving_square":  {
+                                                                                        "trail_pixel_count":  84480,
+                                                                                        "error_pixel_count":  6769,
+                                                                                        "error_pixel_fraction":  0.08012547,
+                                                                                        "mean_error_on_error_pixels":  0.26739536,
+                                                                                        "unexplained_error_fraction":  0.00000000,
+                                                                                        "channels":  {
+                                                                                                         "preprocess_luma_delta":  {
+                                                                                                                                       "mean_on_error_pixels":  0.00000000,
+                                                                                                                                       "max":  0.00000000,
+                                                                                                                                       "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                       "error_weighted_mean":  0.00000000
+                                                                                                                                   },
+                                                                                                         "architecture_luma_delta":  {
+                                                                                                                                         "mean_on_error_pixels":  0.09923853,
+                                                                                                                                         "max":  0.10198975,
+                                                                                                                                         "active_fraction_on_error_pixels":  0.99926134,
+                                                                                                                                         "error_weighted_mean":  0.10066289
+                                                                                                                                     },
+                                                                                                         "current_event_strength":  {
+                                                                                                                                        "mean_on_error_pixels":  0.26883337,
+                                                                                                                                        "max":  1.00000000,
+                                                                                                                                        "active_fraction_on_error_pixels":  0.27212291,
+                                                                                                                                        "error_weighted_mean":  0.27402273
+                                                                                                                                    },
+                                                                                                         "surface_memory_strength":  {
+                                                                                                                                         "mean_on_error_pixels":  0.70604945,
+                                                                                                                                         "max":  1.00000000,
+                                                                                                                                         "active_fraction_on_error_pixels":  0.73157039,
+                                                                                                                                         "error_weighted_mean":  0.71485999
+                                                                                                                                     }
+                                                                                                     },
+                                                                                        "geometry_on_error_pixels":  {
+                                                                                                                         "global_flow":  {
+                                                                                                                                             "mean_on_error_pixels":  0.15416635,
+                                                                                                                                             "max":  1.00000000,
+                                                                                                                                             "active_fraction_on_error_pixels":  0.15438026,
+                                                                                                                                             "error_weighted_mean":  0.15453292
+                                                                                                                                         },
+                                                                                                                         "current_surface":  {
+                                                                                                                                                 "mean_on_error_pixels":  0.11449952,
+                                                                                                                                                 "max":  1.00000000,
+                                                                                                                                                 "active_fraction_on_error_pixels":  0.11567440,
+                                                                                                                                                 "error_weighted_mean":  0.11294117
+                                                                                                                                             },
+                                                                                                                         "vacated":  {
+                                                                                                                                         "mean_on_error_pixels":  0.02458616,
+                                                                                                                                         "max":  0.98925781,
+                                                                                                                                         "active_fraction_on_error_pixels":  0.02215985,
+                                                                                                                                         "error_weighted_mean":  0.02387054
+                                                                                                                                     },
+                                                                                                                         "infill":  {
+                                                                                                                                        "mean_on_error_pixels":  0.00000000,
+                                                                                                                                        "max":  0.00000000,
+                                                                                                                                        "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                        "error_weighted_mean":  0.00000000
+                                                                                                                                    },
+                                                                                                                         "portable":  {
+                                                                                                                                          "mean_on_error_pixels":  0.00000000,
+                                                                                                                                          "max":  0.00000000,
+                                                                                                                                          "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                          "error_weighted_mean":  0.00000000
+                                                                                                                                      },
+                                                                                                                         "hardware":  {
+                                                                                                                                          "mean_on_error_pixels":  0.23401373,
+                                                                                                                                          "max":  1.00000000,
+                                                                                                                                          "active_fraction_on_error_pixels":  0.23400798,
+                                                                                                                                          "error_weighted_mean":  0.23186092
+                                                                                                                                      },
+                                                                                                                         "effective_motion":  {
+                                                                                                                                                  "mean_on_error_pixels":  0.32675258,
+                                                                                                                                                  "max":  1.00000000,
+                                                                                                                                                  "active_fraction_on_error_pixels":  0.19397252,
+                                                                                                                                                  "error_weighted_mean":  0.32367746
+                                                                                                                                              },
+                                                                                                                         "repeated_risk":  {
+                                                                                                                                               "mean_on_error_pixels":  0.83099557,
+                                                                                                                                               "max":  1.00000000,
+                                                                                                                                               "active_fraction_on_error_pixels":  0.95671443,
+                                                                                                                                               "error_weighted_mean":  0.83313982
+                                                                                                                                           }
+                                                                                                                     }
+                                                                                    },
+                                                                  "moving_square_recovery":  {
+                                                                                                 "trail_pixel_count":  326656,
+                                                                                                 "error_pixel_count":  20395,
+                                                                                                 "error_pixel_fraction":  0.06243571,
+                                                                                                 "mean_error_on_error_pixels":  0.24473478,
+                                                                                                 "unexplained_error_fraction":  0.00000000,
+                                                                                                 "channels":  {
+                                                                                                                  "preprocess_luma_delta":  {
+                                                                                                                                                "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                "max":  0.00000000,
+                                                                                                                                                "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                "error_weighted_mean":  0.00000000
+                                                                                                                                            },
+                                                                                                                  "architecture_luma_delta":  {
+                                                                                                                                                  "mean_on_error_pixels":  0.08786297,
+                                                                                                                                                  "max":  0.10198975,
+                                                                                                                                                  "active_fraction_on_error_pixels":  0.99416524,
+                                                                                                                                                  "error_weighted_mean":  0.09363253
+                                                                                                                                              },
+                                                                                                                  "current_event_strength":  {
+                                                                                                                                                 "mean_on_error_pixels":  0.08112744,
+                                                                                                                                                 "max":  1.00000000,
+                                                                                                                                                 "active_fraction_on_error_pixels":  0.08134347,
+                                                                                                                                                 "error_weighted_mean":  0.09044700
+                                                                                                                                             },
+                                                                                                                  "surface_memory_strength":  {
+                                                                                                                                                  "mean_on_error_pixels":  0.78045876,
+                                                                                                                                                  "max":  1.00000000,
+                                                                                                                                                  "active_fraction_on_error_pixels":  0.91880363,
+                                                                                                                                                  "error_weighted_mean":  0.82771967
+                                                                                                                                              }
+                                                                                                              },
+                                                                                                 "geometry_on_error_pixels":  {
+                                                                                                                                  "global_flow":  {
+                                                                                                                                                      "mean_on_error_pixels":  0.25739810,
+                                                                                                                                                      "max":  1.00000000,
+                                                                                                                                                      "active_fraction_on_error_pixels":  0.25888698,
+                                                                                                                                                      "error_weighted_mean":  0.25491260
+                                                                                                                                                  },
+                                                                                                                                  "current_surface":  {
+                                                                                                                                                          "mean_on_error_pixels":  0.05797644,
+                                                                                                                                                          "max":  1.00000000,
+                                                                                                                                                          "active_fraction_on_error_pixels":  0.05790635,
+                                                                                                                                                          "error_weighted_mean":  0.05984003
+                                                                                                                                                      },
+                                                                                                                                  "vacated":  {
+                                                                                                                                                  "mean_on_error_pixels":  0.00626062,
+                                                                                                                                                  "max":  0.98535156,
+                                                                                                                                                  "active_fraction_on_error_pixels":  0.00534445,
+                                                                                                                                                  "error_weighted_mean":  0.00645192
+                                                                                                                                              },
+                                                                                                                                  "infill":  {
+                                                                                                                                                 "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                 "max":  0.00000000,
+                                                                                                                                                 "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                 "error_weighted_mean":  0.00000000
+                                                                                                                                             },
+                                                                                                                                  "portable":  {
+                                                                                                                                                   "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                   "max":  0.00000000,
+                                                                                                                                                   "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                   "error_weighted_mean":  0.00000000
+                                                                                                                                               },
+                                                                                                                                  "hardware":  {
+                                                                                                                                                   "mean_on_error_pixels":  0.27687123,
+                                                                                                                                                   "max":  1.00000000,
+                                                                                                                                                   "active_fraction_on_error_pixels":  0.27800932,
+                                                                                                                                                   "error_weighted_mean":  0.27302191
+                                                                                                                                               },
+                                                                                                                                  "effective_motion":  {
+                                                                                                                                                           "mean_on_error_pixels":  0.04955192,
+                                                                                                                                                           "max":  1.00000000,
+                                                                                                                                                           "active_fraction_on_error_pixels":  0.04491297,
+                                                                                                                                                           "error_weighted_mean":  0.03015985
+                                                                                                                                                       },
+                                                                                                                                  "repeated_risk":  {
+                                                                                                                                                        "mean_on_error_pixels":  0.62018985,
+                                                                                                                                                        "max":  1.00000000,
+                                                                                                                                                        "active_fraction_on_error_pixels":  0.62402550,
+                                                                                                                                                        "error_weighted_mean":  0.65855079
+                                                                                                                                                    }
+                                                                                                                              }
+                                                                                             }
+                                                              }
+                                                }
+                              },
+                              {
+                                  "name":  "seed_veto_neutral12",
+                                  "architecture_mode":  4,
+                                  "moving_clear_05_ms":  766.667,
+                                  "moving_trail_p99_frame_p95":  0.27306985,
+                                  "moving_flash_reduction":  0.33519932,
+                                  "perceptual_min_reduction":  0.73627725,
+                                  "moving_error_pixel_fraction":  0.07065578,
+                                  "moving_unexplained_error_fraction":  0,
+                                  "moving_preprocess_error_weighted_mean":  0,
+                                  "moving_architecture_error_weighted_mean":  0.09936819,
+                                  "moving_current_event_error_weighted_mean":  0.28356123,
+                                  "moving_surface_memory_error_weighted_mean":  0.69245883,
+                                  "recovery_error_pixel_fraction":  0.06249645,
+                                  "recovery_unexplained_error_fraction":  0,
+                                  "recovery_preprocess_error_weighted_mean":  0,
+                                  "recovery_architecture_error_weighted_mean":  0.09482684,
+                                  "recovery_current_event_error_weighted_mean":  0.09454605,
+                                  "recovery_surface_memory_error_weighted_mean":  0.83534575,
+                                  "authority":  {
+                                                    "schema":  "FLASHGUARD_AUTHORITY_DIAGNOSTICS/2",
+                                                    "scope":  "grayscale moving-square trail pixels with absolute sRGB-luma error above 0.05",
+                                                    "delta_active_threshold":  0.01,
+                                                    "strength_active_threshold":  0.05,
+                                                    "cases":  {
+                                                                  "moving_square":  {
+                                                                                        "trail_pixel_count":  84480,
+                                                                                        "error_pixel_count":  5969,
+                                                                                        "error_pixel_fraction":  0.07065578,
+                                                                                        "mean_error_on_error_pixels":  0.26309915,
+                                                                                        "unexplained_error_fraction":  0.00000000,
+                                                                                        "channels":  {
+                                                                                                         "preprocess_luma_delta":  {
+                                                                                                                                       "mean_on_error_pixels":  0.00000000,
+                                                                                                                                       "max":  0.00000000,
+                                                                                                                                       "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                       "error_weighted_mean":  0.00000000
+                                                                                                                                   },
+                                                                                                         "architecture_luma_delta":  {
+                                                                                                                                         "mean_on_error_pixels":  0.09705721,
+                                                                                                                                         "max":  0.10198975,
+                                                                                                                                         "active_fraction_on_error_pixels":  0.99882727,
+                                                                                                                                         "error_weighted_mean":  0.09936819
+                                                                                                                                     },
+                                                                                                         "current_event_strength":  {
+                                                                                                                                        "mean_on_error_pixels":  0.27429177,
+                                                                                                                                        "max":  1.00000000,
+                                                                                                                                        "active_fraction_on_error_pixels":  0.27977886,
+                                                                                                                                        "error_weighted_mean":  0.28356123
+                                                                                                                                    },
+                                                                                                         "surface_memory_strength":  {
+                                                                                                                                         "mean_on_error_pixels":  0.67901352,
+                                                                                                                                         "max":  1.00000000,
+                                                                                                                                         "active_fraction_on_error_pixels":  0.72407438,
+                                                                                                                                         "error_weighted_mean":  0.69245883
+                                                                                                                                     }
+                                                                                                     },
+                                                                                        "geometry_on_error_pixels":  {
+                                                                                                                         "global_flow":  {
+                                                                                                                                             "mean_on_error_pixels":  0.16046975,
+                                                                                                                                             "max":  1.00000000,
+                                                                                                                                             "active_fraction_on_error_pixels":  0.16083096,
+                                                                                                                                             "error_weighted_mean":  0.16243477
+                                                                                                                                         },
+                                                                                                                         "current_surface":  {
+                                                                                                                                                 "mean_on_error_pixels":  0.11987547,
+                                                                                                                                                 "max":  1.00000000,
+                                                                                                                                                 "active_fraction_on_error_pixels":  0.12095828,
+                                                                                                                                                 "error_weighted_mean":  0.12042979
+                                                                                                                                             },
+                                                                                                                         "vacated":  {
+                                                                                                                                         "mean_on_error_pixels":  0.00713469,
+                                                                                                                                         "max":  0.51513672,
+                                                                                                                                         "active_fraction_on_error_pixels":  0.00117273,
+                                                                                                                                         "error_weighted_mean":  0.00616279
+                                                                                                                                     },
+                                                                                                                         "infill":  {
+                                                                                                                                        "mean_on_error_pixels":  0.00000000,
+                                                                                                                                        "max":  0.00000000,
+                                                                                                                                        "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                        "error_weighted_mean":  0.00000000
+                                                                                                                                    },
+                                                                                                                         "portable":  {
+                                                                                                                                          "mean_on_error_pixels":  0.00000000,
+                                                                                                                                          "max":  0.00000000,
+                                                                                                                                          "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                          "error_weighted_mean":  0.00000000
+                                                                                                                                      },
+                                                                                                                         "hardware":  {
+                                                                                                                                          "mean_on_error_pixels":  0.22510582,
+                                                                                                                                          "max":  1.00000000,
+                                                                                                                                          "active_fraction_on_error_pixels":  0.22198023,
+                                                                                                                                          "error_weighted_mean":  0.22521741
+                                                                                                                                      },
+                                                                                                                         "effective_motion":  {
+                                                                                                                                                  "mean_on_error_pixels":  0.32958551,
+                                                                                                                                                  "max":  1.00000000,
+                                                                                                                                                  "active_fraction_on_error_pixels":  0.20053610,
+                                                                                                                                                  "error_weighted_mean":  0.32770303
+                                                                                                                                              },
+                                                                                                                         "repeated_risk":  {
+                                                                                                                                               "mean_on_error_pixels":  0.83529007,
+                                                                                                                                               "max":  1.00000000,
+                                                                                                                                               "active_fraction_on_error_pixels":  0.95376110,
+                                                                                                                                               "error_weighted_mean":  0.84045718
+                                                                                                                                           }
+                                                                                                                     }
+                                                                                    },
+                                                                  "moving_square_recovery":  {
+                                                                                                 "trail_pixel_count":  281600,
+                                                                                                 "error_pixel_count":  17599,
+                                                                                                 "error_pixel_fraction":  0.06249645,
+                                                                                                 "mean_error_on_error_pixels":  0.24890071,
+                                                                                                 "unexplained_error_fraction":  0.00000000,
+                                                                                                 "channels":  {
+                                                                                                                  "preprocess_luma_delta":  {
+                                                                                                                                                "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                "max":  0.00000000,
+                                                                                                                                                "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                "error_weighted_mean":  0.00000000
+                                                                                                                                            },
+                                                                                                                  "architecture_luma_delta":  {
+                                                                                                                                                  "mean_on_error_pixels":  0.08988861,
+                                                                                                                                                  "max":  0.10198975,
+                                                                                                                                                  "active_fraction_on_error_pixels":  0.99539747,
+                                                                                                                                                  "error_weighted_mean":  0.09482684
+                                                                                                                                              },
+                                                                                                                  "current_event_strength":  {
+                                                                                                                                                 "mean_on_error_pixels":  0.08633960,
+                                                                                                                                                 "max":  1.00000000,
+                                                                                                                                                 "active_fraction_on_error_pixels":  0.08705040,
+                                                                                                                                                 "error_weighted_mean":  0.09454605
+                                                                                                                                             },
+                                                                                                                  "surface_memory_strength":  {
+                                                                                                                                                  "mean_on_error_pixels":  0.79512238,
+                                                                                                                                                  "max":  1.00000000,
+                                                                                                                                                  "active_fraction_on_error_pixels":  0.91312006,
+                                                                                                                                                  "error_weighted_mean":  0.83534575
+                                                                                                                                              }
+                                                                                                              },
+                                                                                                 "geometry_on_error_pixels":  {
+                                                                                                                                  "global_flow":  {
+                                                                                                                                                      "mean_on_error_pixels":  0.25781635,
+                                                                                                                                                      "max":  1.00000000,
+                                                                                                                                                      "active_fraction_on_error_pixels":  0.25893517,
+                                                                                                                                                      "error_weighted_mean":  0.25702082
+                                                                                                                                                  },
+                                                                                                                                  "current_surface":  {
+                                                                                                                                                          "mean_on_error_pixels":  0.06080991,
+                                                                                                                                                          "max":  1.00000000,
+                                                                                                                                                          "active_fraction_on_error_pixels":  0.06068527,
+                                                                                                                                                          "error_weighted_mean":  0.06151253
+                                                                                                                                                      },
+                                                                                                                                  "vacated":  {
+                                                                                                                                                  "mean_on_error_pixels":  0.00190083,
+                                                                                                                                                  "max":  0.42871094,
+                                                                                                                                                  "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                  "error_weighted_mean":  0.00156729
+                                                                                                                                              },
+                                                                                                                                  "infill":  {
+                                                                                                                                                 "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                 "max":  0.00000000,
+                                                                                                                                                 "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                 "error_weighted_mean":  0.00000000
+                                                                                                                                             },
+                                                                                                                                  "portable":  {
+                                                                                                                                                   "mean_on_error_pixels":  0.00000000,
+                                                                                                                                                   "max":  0.00000000,
+                                                                                                                                                   "active_fraction_on_error_pixels":  0.00000000,
+                                                                                                                                                   "error_weighted_mean":  0.00000000
+                                                                                                                                               },
+                                                                                                                                  "hardware":  {
+                                                                                                                                                   "mean_on_error_pixels":  0.27757548,
+                                                                                                                                                   "max":  1.00000000,
+                                                                                                                                                   "active_fraction_on_error_pixels":  0.27814080,
+                                                                                                                                                   "error_weighted_mean":  0.27519969
+                                                                                                                                               },
+                                                                                                                                  "effective_motion":  {
+                                                                                                                                                           "mean_on_error_pixels":  0.03887466,
+                                                                                                                                                           "max":  1.00000000,
+                                                                                                                                                           "active_fraction_on_error_pixels":  0.03352463,
+                                                                                                                                                           "error_weighted_mean":  0.02498281
+                                                                                                                                                       },
+                                                                                                                                  "repeated_risk":  {
+                                                                                                                                                        "mean_on_error_pixels":  0.64261139,
+                                                                                                                                                        "max":  1.00000000,
+                                                                                                                                                        "active_fraction_on_error_pixels":  0.66589011,
+                                                                                                                                                        "error_weighted_mean":  0.67458903
+                                                                                                                                                    }
+                                                                                                                              }
+                                                                                             }
+                                                              }
+                                                }
+                              }
+                          ]
+}
