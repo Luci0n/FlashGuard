@@ -71,7 +71,8 @@
     "FLASHGUARD_MATRIX/29",
     "FLASHGUARD_MATRIX/30",
     "FLASHGUARD_MATRIX/31",
-    "FLASHGUARD_MATRIX/32"
+    "FLASHGUARD_MATRIX/32",
+    "FLASHGUARD_MATRIX/33"
   ],
   "runs": [
     {
@@ -292,6 +293,11 @@
     {
       "run_id": "2026-08-27_44c12dd3_minimal-camera-veto",
       "commit": "44c12dd300bb203c4d43f5afa110ddf2cccba8ba",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_f36fa03a_current-event-camera-guard",
+      "commit": "f36fa03a16ae6a6ffcb0d240fe34b4427328f8d4",
       "result": "SUCCESS"
     }
   ]

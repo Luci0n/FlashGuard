@@ -11,6 +11,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
+if ($Mode -eq 'gpu-smoke' -and
+    ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full')) {
+    & (Join-Path $PSScriptRoot 'apply-matrix34-source.ps1') `
+        -SourcePath (Join-Path $root 'src/FlashGuard.cpp')
+}
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $outputPath = Join-Path $OutputDir 'summary.json'
 $logPath = Join-Path $OutputDir 'flashbench.log'
@@ -286,11 +291,11 @@ try {
             }
         }
 
-        # Canonical full-replay isolation of the current-event-only unmasked
-        # camera guard, keeping mode 20's sequence state and hold paths unchanged.
+        # Canonical full-replay isolation of mode 21's two remaining display-
+        # authority camera guards, separately and together.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v33.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v34.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE
