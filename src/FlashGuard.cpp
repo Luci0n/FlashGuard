@@ -846,14 +846,33 @@ R"HLSL(
             cpuCameraMotionGate / max(cpuMotionWeight, 0.001));
         const float corroboratedMotionGate = max(
             coarseMotionGate, cpuMotionCorroboration);
-        // Mode 16 keeps mode 14's corrected current-pixel event semantics only
+        // Modes 16/17 keep mode 14's corrected current-pixel event semantics only
         // for LOCAL motion. During coherent whole-frame/camera motion, photometric
         // overlap is too permissive: blend the event interpretation back to raw
         // disocclusion so fast pans cannot be mistaken for intrinsic flashes.
-        // History and compensated residual already remain on the conservative raw
-        // path in this mode, so this adds no new temporal memory.
         const bool cameraAwareEventDisocclusionArchitecture =
-            P16.x > 15.5 && P16.x < 16.5;
+            P16.x > 15.5 && P16.x < 17.5;
+        // Matrix 25 showed a separate stationary sequence problem: 5 Hz flashes
+        // lose protection because the 100 ms surface-risk state decays between
+        // opposing half-cycles, while a 4-code reversal is too weak to establish
+        // useful opposition authority. Mode 17 changes neither rule for moving
+        // content. It extends already-qualified risk only when scene-level motion
+        // is absent, and tiny changes still need an opposing signed reversal
+        // before they are allowed to affect the display.
+        const bool stationaryWeakRepetitionArchitecture =
+            P16.x > 16.5 && P16.x < 17.5;
+        const float stationaryRepetitionGate =
+            stationaryWeakRepetitionArchitecture ?
+                (1.0 - smoothstep(0.08, 0.30, corroboratedMotionGate)) : 0.0;
+        if (stationaryRepetitionGate > 0.0 && transportedSurfaceRisk > 0.0)
+        {
+            const float baseRiskTau = max(P13.w, 0.005);
+            const float stationaryRiskTau = max(baseRiskTau, 0.22);
+            const float decayCompensation = exp(dt *
+                (1.0 / baseRiskTau - 1.0 / stationaryRiskTau));
+            transportedSurfaceRisk = saturate(transportedSurfaceRisk *
+                lerp(1.0, decayCompensation, stationaryRepetitionGate));
+        }
         const float wholeFrameMotionEventVeto =
             cameraAwareEventDisocclusionArchitecture ?
                 smoothstep(0.35, 0.75, corroboratedMotionGate) : 0.0;
@@ -1304,6 +1323,13 @@ R"HLSL(
                 Luma(rawSourceColor) - previousMatchedRawL;
             const float signedMagnitudeGate =
                 smoothstep(P15.x, P15.y, abs(signedIntrinsicDelta));
+            // Mode 17 may prime a very small stationary transition, but a lone
+            // transition is still display-inert. Only a later opposite sign can
+            // convert this weak prime into current safety authority.
+            const float weakSignedMagnitudeGate =
+                stationaryWeakRepetitionArchitecture ?
+                    stationaryRepetitionGate *
+                    smoothstep(0.0010, 0.0060, abs(signedIntrinsicDelta)) : 0.0;
             const float currentSignedDirection =
                 signedIntrinsicDelta >= 0.0 ? 1.0 : -1.0;
             float transportedSignedPrime = oppositionGatedArchitecture &&
@@ -1323,12 +1349,20 @@ R"HLSL(
             const float opposingTransitionGate = oppositionGatedArchitecture ?
                 smoothstep(P12.x, P12.y, oppositionStrength) *
                 signedMagnitudeGate : 0.0;
+            const float weakOpposingTransitionGate =
+                stationaryWeakRepetitionArchitecture ?
+                    smoothstep(0.08, 0.28, oppositionStrength) *
+                    weakSignedMagnitudeGate : 0.0;
+            const float qualifiedIntrinsicEvent = max(
+                currentIntrinsicEvent, weakOpposingTransitionGate);
+            const float effectiveOpposingTransitionGate = max(
+                opposingTransitionGate, weakOpposingTransitionGate);
 
             const float persistentSeedAuthority = repetitionGatedArchitecture ?
                 repeatedMemoryGate : (oppositionGatedArchitecture ?
-                    opposingTransitionGate : 1.0);
+                    effectiveOpposingTransitionGate : 1.0);
             surfaceRiskStateSeed = eventOnlyArchitecture ? 0.0 :
-                currentIntrinsicEvent * persistentSeedAuthority;
+                qualifiedIntrinsicEvent * persistentSeedAuthority;
             const float surfaceMemoryMitigation = eventOnlyArchitecture ?
                 0.0 : smoothstep(0.06, 0.45, transportedSurfaceRisk);
 
@@ -1344,11 +1378,11 @@ R"HLSL(
             const float phaseHoldMitigation = phaseHoldArchitecture ?
                 smoothstep(0.06, 0.45, previousPhaseEvent *
                     stableSourceGate * (1.0 - hardDisocclusion)) : 0.0;
-            authorityCurrentEventStrength = saturate(currentIntrinsicEvent);
+            authorityCurrentEventStrength = saturate(qualifiedIntrinsicEvent);
             authoritySurfaceMemoryStrength = saturate(max(
                 surfaceMemoryMitigation, phaseHoldMitigation));
             const float currentFrameStrength = saturate(max(max(
-                currentIntrinsicEvent, surfaceMemoryMitigation),
+                qualifiedIntrinsicEvent, surfaceMemoryMitigation),
                 phaseHoldMitigation));
             if (phaseHoldArchitecture)
                 phaseHoldStateEncoded =
@@ -1356,8 +1390,9 @@ R"HLSL(
 
             if (oppositionGatedArchitecture)
             {
-                const float primeWrite = saturate(
-                    2.0 * currentIntrinsicEvent * signedMagnitudeGate);
+                const float primeWrite = saturate(max(
+                    2.0 * currentIntrinsicEvent * signedMagnitudeGate,
+                    weakSignedMagnitudeGate));
                 const float nextSignedPrime = lerp(
                     transportedSignedPrime, currentSignedDirection, primeWrite);
                 signedPrimeStateEncoded =
@@ -4869,7 +4904,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 16);
+                    std::clamp(tuning.architectureMode, 0, 17);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
@@ -8478,7 +8513,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         const int requestedArchitecture =
                             _wtoi(spec[42].c_str());
                         tuning.architectureMode =
-                            std::clamp(requestedArchitecture, 0, 16);
+                            std::clamp(requestedArchitecture, 0, 17);
                         if (tuning.architectureMode != requestedArchitecture)
                         {
                             DestroyWindow(replayWindow);

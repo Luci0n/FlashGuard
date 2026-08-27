@@ -63,7 +63,8 @@
     "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
     "FLASHGUARD_MATRIX/22",
     "FLASHGUARD_MATRIX/23",
-    "FLASHGUARD_MATRIX/24"
+    "FLASHGUARD_MATRIX/24",
+    "FLASHGUARD_MATRIX/25"
   ],
   "runs": [
     {
@@ -244,6 +245,11 @@
     {
       "run_id": "2026-08-27_2a2fc8fb_event-history-separation",
       "commit": "2a2fc8fbcf5ba41d0e9aa5cd1cd9846a0a8f6b19",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_f7b1ec19_full-finalist-validation",
+      "commit": "f7b1ec19a0a6e7673ad43a7e2599fc7d04f9aa78",
       "result": "SUCCESS"
     }
   ]

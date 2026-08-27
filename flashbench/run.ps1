@@ -286,11 +286,11 @@ try {
             }
         }
 
-        # Canonical full-replay finalist validation after Matrix 24 exposed
-        # fast-pan regressions hidden by screening-only selection.
+        # Canonical full-replay validation of stationary repetition after Matrix
+        # 25 exposed low-frequency and 4-code safety gaps.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v25.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v26.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE
