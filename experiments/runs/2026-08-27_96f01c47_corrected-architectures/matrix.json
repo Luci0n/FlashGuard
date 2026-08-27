@@ -1,0 +1,90 @@
+{
+  "schema": "FLASHGUARD_MATRIX/21",
+  "purpose": "first self-validating comparison of requested architectures 8-12 after fixing the replay-batch architecture clamp",
+  "screening_resolution": "320x180",
+  "screening_fps": 30,
+  "screen_elapsed_ms": 47559,
+  "candidate_count": 5,
+  "invariant": "production architecture 0 is unchanged; replay parser accepts requested modes through 12 and rejects out-of-range requests instead of silently clamping",
+  "prior_invalidated_matrices": [
+    "FLASHGUARD_MATRIX/17",
+    "FLASHGUARD_MATRIX/18",
+    "FLASHGUARD_MATRIX/19",
+    "FLASHGUARD_MATRIX/20"
+  ],
+  "primary_gate": {
+    "moving_clear_05_ms_max": 70,
+    "moving_flash_reduction_min": 0.45,
+    "perceptual_min_reduction_min": 0.7,
+    "wcag_sc_2_3_1_required": true,
+    "wcag_sc_2_3_2_required": true
+  },
+  "selected": null,
+  "screen_candidates": [
+    {
+      "name": "opposition_tau100_gain200",
+      "architecture_mode": 8,
+      "surface_risk_tau": 0.1,
+      "risk_gain": 2,
+      "moving_clear_05_ms": 66.667,
+      "moving_flash_reduction": 0.37155597,
+      "perceptual_min_reduction": 0.75097655,
+      "pan_mae": 0.00352272,
+      "wcag_sc_2_3_1_pass": true,
+      "wcag_sc_2_3_2_pass": true,
+      "primary_pass": false
+    },
+    {
+      "name": "surface_propagation_tau100_gain200",
+      "architecture_mode": 9,
+      "surface_risk_tau": 0.1,
+      "risk_gain": 2,
+      "moving_clear_05_ms": 66.667,
+      "moving_flash_reduction": 0.37554216,
+      "perceptual_min_reduction": 0.75097655,
+      "pan_mae": 0.00402131,
+      "wcag_sc_2_3_1_pass": true,
+      "wcag_sc_2_3_2_pass": true,
+      "primary_pass": false
+    },
+    {
+      "name": "single_frame_phase_hold_tau100_gain200",
+      "architecture_mode": 10,
+      "surface_risk_tau": 0.1,
+      "risk_gain": 2,
+      "moving_clear_05_ms": 100,
+      "moving_flash_reduction": 0.3668604,
+      "perceptual_min_reduction": 0.82101439,
+      "pan_mae": 0.00412849,
+      "wcag_sc_2_3_1_pass": true,
+      "wcag_sc_2_3_2_pass": true,
+      "primary_pass": false
+    },
+    {
+      "name": "textureless_flow_consensus_tau100_gain200",
+      "architecture_mode": 11,
+      "surface_risk_tau": 0.1,
+      "risk_gain": 2,
+      "moving_clear_05_ms": 66.667,
+      "moving_flash_reduction": 0.37554216,
+      "perceptual_min_reduction": 0.75097655,
+      "pan_mae": 0.00421524,
+      "wcag_sc_2_3_1_pass": true,
+      "wcag_sc_2_3_2_pass": true,
+      "primary_pass": false
+    },
+    {
+      "name": "uniform_interior_intrinsic_tau100_gain200",
+      "architecture_mode": 12,
+      "surface_risk_tau": 0.1,
+      "risk_gain": 2,
+      "moving_clear_05_ms": 66.667,
+      "moving_flash_reduction": 0.37554216,
+      "perceptual_min_reduction": 0.75097655,
+      "pan_mae": 0.00352272,
+      "wcag_sc_2_3_1_pass": true,
+      "wcag_sc_2_3_2_pass": true,
+      "primary_pass": false
+    }
+  ]
+}

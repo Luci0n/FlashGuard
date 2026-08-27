@@ -286,16 +286,16 @@ try {
             }
         }
 
-        # First self-validating architecture comparison after correcting the
-        # replay parser clamp: execute requested modes 8-12 in one batch.
+        # Diagnostic-only matrix: measure full active-square authority coverage
+        # separately on moving-flash transition and stable half-cycle frames.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
             if ($TestTier -eq 'targeted' -and -not $TuneMatrix) {
-                & (Join-Path $PSScriptRoot 'matrix-v21.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v22.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir -ScreenOnly
             } else {
-                & (Join-Path $PSScriptRoot 'matrix-v21.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v22.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir
             }

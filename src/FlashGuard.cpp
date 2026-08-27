@@ -2329,10 +2329,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
             struct AuthorityDiagnosticAggregate
             {
+                std::array<double, 4> sampleSum{};
+                std::array<uint64_t, 4> sampleActive{};
                 std::array<double, 4> sum{};
                 std::array<double, 4> maximum{};
                 std::array<double, 4> errorWeightedSum{};
                 std::array<uint64_t, 4> active{};
+                std::array<double, 8> geometrySampleSum{};
+                std::array<uint64_t, 8> geometrySampleActive{};
                 std::array<double, 8> geometrySum{};
                 std::array<double, 8> geometryMaximum{};
                 std::array<double, 8> geometryErrorWeightedSum{};
@@ -2487,14 +2491,38 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         const float sr = static_cast<float>((packed >> 16) & 0xFFu) / 255.0f;
                         const double sourceLuma = 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
                         const double error = std::fabs(outputLuma - sourceLuma);
+                        std::array<double, 4> authorityValues{};
+                        for (size_t channel = 0; channel < 4; ++channel)
+                        {
+                            const double value = std::clamp(static_cast<double>(halfToFloat(
+                                authorityRow[base + channel])), 0.0, 1.0);
+                            authorityValues[channel] = value;
+                            aggregate.sampleSum[channel] += value;
+                            const double threshold = channel < 2 ? 0.01 : 0.05;
+                            if (value > threshold) ++aggregate.sampleActive[channel];
+                        }
+                        std::array<double, 8> geometryValues{};
+                        const uint16_t* geometryRows[2] = { geometry0Row, geometry1Row };
+                        for (size_t group = 0; group < 2; ++group)
+                        {
+                            for (size_t channel = 0; channel < 4; ++channel)
+                            {
+                                const size_t metric = group * 4 + channel;
+                                const double value = std::clamp(static_cast<double>(
+                                    halfToFloat(geometryRows[group][base + channel])),
+                                    0.0, 1.0);
+                                geometryValues[metric] = value;
+                                aggregate.geometrySampleSum[metric] += value;
+                                if (value > 0.5) ++aggregate.geometrySampleActive[metric];
+                            }
+                        }
                         if (error <= 0.05) continue;
                         ++aggregate.errorPixels;
                         aggregate.errorSum += error;
                         bool explained = false;
                         for (size_t channel = 0; channel < 4; ++channel)
                         {
-                            const double value = std::clamp(static_cast<double>(halfToFloat(
-                                authorityRow[base + channel])), 0.0, 1.0);
+                            const double value = authorityValues[channel];
                             aggregate.sum[channel] += value;
                             aggregate.maximum[channel] = std::max(aggregate.maximum[channel], value);
                             aggregate.errorWeightedSum[channel] += value * error;
@@ -2505,21 +2533,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                                 explained = true;
                             }
                         }
-                        const uint16_t* geometryRows[2] = { geometry0Row, geometry1Row };
-                        for (size_t group = 0; group < 2; ++group)
+                        for (size_t metric = 0; metric < 8; ++metric)
                         {
-                            for (size_t channel = 0; channel < 4; ++channel)
-                            {
-                                const size_t metric = group * 4 + channel;
-                                const double value = std::clamp(static_cast<double>(
-                                    halfToFloat(geometryRows[group][base + channel])),
-                                    0.0, 1.0);
-                                aggregate.geometrySum[metric] += value;
-                                aggregate.geometryMaximum[metric] = std::max(
-                                    aggregate.geometryMaximum[metric], value);
-                                aggregate.geometryErrorWeightedSum[metric] += value * error;
-                                if (value > 0.5) ++aggregate.geometryActive[metric];
-                            }
+                            const double value = geometryValues[metric];
+                            aggregate.geometrySum[metric] += value;
+                            aggregate.geometryMaximum[metric] = std::max(
+                                aggregate.geometryMaximum[metric], value);
+                            aggregate.geometryErrorWeightedSum[metric] += value * error;
+                            if (value > 0.5) ++aggregate.geometryActive[metric];
                         }
                         if (!explained) ++aggregate.unexplainedErrorPixels;
                     }
@@ -4183,7 +4204,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 std::max(15, replayFps / 2) : std::max(60, replayFps * 2);
             double movingFlashRawVariation = 0.0;
             double movingFlashOutputVariation = 0.0;
-            AuthorityDiagnosticAggregate movingFlashAuthority{};
+            AuthorityDiagnosticAggregate movingFlashTransitionAuthority{};
+            AuthorityDiagnosticAggregate movingFlashStableAuthority{};
+            bool haveMovingFlashPhase = false;
+            bool previousMovingFlashHigh = false;
             for (int i = 0; i < movingFlashFrames; ++i)
             {
                 fillGray(24);
@@ -4199,14 +4223,20 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         pixels[static_cast<size_t>(y) * width + x] = value;
                 const RECT movingFlashRect{
                     x0, y0, x0 + redSquareSize, y0 + redSquareSize };
+                const bool phaseTransition =
+                    !haveMovingFlashPhase || high != previousMovingFlashHigh;
+                AuthorityDiagnosticAggregate& phaseAuthority = phaseTransition ?
+                    movingFlashTransitionAuthority : movingFlashStableAuthority;
                 const FrameSample currentMovingFlash = renderAndSample(
                     nullptr, nullptr, -1, nullptr, nullptr, nullptr,
-                    &movingFlashRect, &movingFlashAuthority);
+                    &movingFlashRect, &phaseAuthority);
                 movingFlashRawVariation += std::fabs(
                     currentMovingFlash.sourceMean - previousMovingFlash.sourceMean);
                 movingFlashOutputVariation += std::fabs(
                     currentMovingFlash.outputMean - previousMovingFlash.outputMean);
                 previousMovingFlash = currentMovingFlash;
+                previousMovingFlashHigh = high;
+                haveMovingFlashPhase = true;
             }
             const double movingFlashReduction = movingFlashRawVariation > 1e-9 ?
                 1.0 - movingFlashOutputVariation / movingFlashRawVariation : 0.0;
@@ -4387,12 +4417,21 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                             static_cast<double>(aggregate.errorPixels) : 0.0;
                     const double weightedMean = aggregate.errorSum > 0.0 ?
                         aggregate.errorWeightedSum[channel] / aggregate.errorSum : 0.0;
+                    const double sampleMean = aggregate.trailPixels ?
+                        aggregate.sampleSum[channel] /
+                            static_cast<double>(aggregate.trailPixels) : 0.0;
+                    const double sampleActiveFraction = aggregate.trailPixels ?
+                        static_cast<double>(aggregate.sampleActive[channel]) /
+                            static_cast<double>(aggregate.trailPixels) : 0.0;
                     std::fprintf(authorityReport,
-                        "        \"%s\":{\"mean_on_error_pixels\":%.8f,"
-                        "\"max\":%.8f,\"active_fraction_on_error_pixels\":%.8f,"
+                        "        \"%s\":{\"mean_on_sample_pixels\":%.8f,"
+                        "\"active_fraction_on_sample_pixels\":%.8f,"
+                        "\"mean_on_error_pixels\":%.8f,\"max\":%.8f,"
+                        "\"active_fraction_on_error_pixels\":%.8f,"
                         "\"error_weighted_mean\":%.8f}%s\n",
-                        channelNames[channel], mean, aggregate.maximum[channel],
-                        activeFraction, weightedMean, channel + 1 < 4 ? "," : "");
+                        channelNames[channel], sampleMean, sampleActiveFraction, mean,
+                        aggregate.maximum[channel], activeFraction, weightedMean,
+                        channel + 1 < 4 ? "," : "");
                 }
                 std::fputs("      },\n      \"geometry_on_error_pixels\":{\n",
                     authorityReport);
@@ -4410,24 +4449,36 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                             static_cast<double>(aggregate.errorPixels) : 0.0;
                     const double weightedMean = aggregate.errorSum > 0.0 ?
                         aggregate.geometryErrorWeightedSum[metric] / aggregate.errorSum : 0.0;
+                    const double sampleMean = aggregate.trailPixels ?
+                        aggregate.geometrySampleSum[metric] /
+                            static_cast<double>(aggregate.trailPixels) : 0.0;
+                    const double sampleActiveFraction = aggregate.trailPixels ?
+                        static_cast<double>(aggregate.geometrySampleActive[metric]) /
+                            static_cast<double>(aggregate.trailPixels) : 0.0;
                     std::fprintf(authorityReport,
-                        "        \"%s\":{\"mean_on_error_pixels\":%.8f,"
-                        "\"max\":%.8f,\"active_fraction_on_error_pixels\":%.8f,"
+                        "        \"%s\":{\"mean_on_sample_pixels\":%.8f,"
+                        "\"active_fraction_on_sample_pixels\":%.8f,"
+                        "\"mean_on_error_pixels\":%.8f,\"max\":%.8f,"
+                        "\"active_fraction_on_error_pixels\":%.8f,"
                         "\"error_weighted_mean\":%.8f}%s\n",
-                        geometryNames[metric], mean, aggregate.geometryMaximum[metric],
-                        activeFraction, weightedMean, metric + 1 < 8 ? "," : "");
+                        geometryNames[metric], sampleMean, sampleActiveFraction, mean,
+                        aggregate.geometryMaximum[metric], activeFraction, weightedMean,
+                        metric + 1 < 8 ? "," : "");
                 }
                 std::fprintf(authorityReport, "      }\n    }%s\n",
                     trailingComma ? "," : "");
             };
             std::fputs(
-                "{\n  \"schema\":\"FLASHGUARD_AUTHORITY_DIAGNOSTICS/3\",\n"
-                "  \"scope\":\"risk-architecture error pixels above 0.05: moving-square trail/recovery plus the active moving-flash square\",\n"
+                "{\n  \"schema\":\"FLASHGUARD_AUTHORITY_DIAGNOSTICS/4\",\n"
+                "  \"scope\":\"risk-architecture sample pixels plus >0.05 changed/error pixels; moving flash split into transition and stable phase frames\",\n"
                 "  \"delta_active_threshold\":0.01,\n"
                 "  \"strength_active_threshold\":0.05,\n"
                 "  \"cases\":{\n", authorityReport);
             writeAuthorityCase("moving_square", movingTrailAuthority, true);
-            writeAuthorityCase("moving_flash", movingFlashAuthority, true);
+            writeAuthorityCase("moving_flash_transition",
+                movingFlashTransitionAuthority, true);
+            writeAuthorityCase("moving_flash_stable",
+                movingFlashStableAuthority, true);
             writeAuthorityCase("moving_square_recovery", movingRecoveryAuthority, false);
             std::fputs("  }\n}\n", authorityReport);
             std::fclose(authorityReport);
