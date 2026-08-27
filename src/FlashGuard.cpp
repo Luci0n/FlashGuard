@@ -991,7 +991,9 @@ R"HLSL(
             const bool oppositionGatedArchitecture = P16.x > 7.5;
             const bool surfacePropagationArchitecture =
                 P16.x > 8.5 && P16.x < 9.5;
-            const bool phaseHoldArchitecture = P16.x > 9.5;
+            const bool phaseHoldArchitecture =
+                P16.x > 9.5 && P16.x < 10.5;
+            const bool flowConsensusArchitecture = P16.x > 10.5;
             const float hardDisocclusion =
                 smoothstep(0.30, 0.60, explicitDisocclusionGate);
             const float surfaceContinuity = saturate(max(
@@ -1111,6 +1113,95 @@ R"HLSL(
             }
 )HLSL"
 R"HLSL(
+
+            // Mode 11 fills the geometry hole rather than propagating display
+            // authority. Textureless moving interiors can have usable NVOFA vectors
+            // that the normal structure/observability gate rejects. Borrow a vector
+            // only from a CURRENT neighbor with nearly identical appearance, verify
+            // that vector by forward/backward round trip and NVOFA cost, then apply
+            // it to THIS pixel solely to compare current raw source with the previous
+            // raw surface. Ordinary translation therefore produces a small residual;
+            // an intrinsically flashing moving surface produces a large one. No RGB
+            // or event memory is transported by this path.
+            if (flowConsensusArchitecture && P7.z > 0.5 &&
+                hardwareFlowValid && hardDisocclusion < 0.5 &&
+                currentIntrinsicEvent < 0.95 && displayedDelta > P15.x)
+            {
+                const float2 consensusOutputSize =
+                    max(float2(P2.z, P2.w), float2(1.0, 1.0));
+                const float2 consensusTexel = 1.0 / consensusOutputSize;
+                float consensusIntrinsicEvent = 0.0;
+                [unroll]
+                for (int fri = 0; fri < 4; ++fri)
+                {
+                    const float radius = fri == 0 ? 6.0 :
+                        (fri == 1 ? 12.0 : (fri == 2 ? 18.0 : 22.0));
+                    [unroll]
+                    for (int fni = 0; fni < 4; ++fni)
+                    {
+                        const float2 direction = fni == 0 ? float2(-1.0, 0.0) :
+                            (fni == 1 ? float2(1.0, 0.0) :
+                            (fni == 2 ? float2(0.0, -1.0) : float2(0.0, 1.0)));
+                        const float2 neighborUv =
+                            i.uv + direction * consensusTexel * radius;
+                        const bool insideNeighbor =
+                            all(neighborUv >= float2(0.0, 0.0)) &&
+                            all(neighborUv <= float2(1.0, 1.0));
+                        if (!insideNeighbor) continue;
+
+                        const float3 neighborCurrent = CurrentFrame.SampleLevel(
+                            LinearClamp, neighborUv, 0.0).rgb;
+                        const float sameCurrentSurface = 1.0 - smoothstep(
+                            0.004, 0.025,
+                            SourceMatchError(rawSourceColor, neighborCurrent));
+                        if (sameCurrentSurface <= 0.20) continue;
+
+                        const float2 candidateFlow =
+                            LoadOpticalFlow(ForwardOpticalFlow, neighborUv);
+                        const float candidateMagnitude = length(candidateFlow);
+                        if (candidateMagnitude <= 0.10) continue;
+
+                        const float2 previousCandidateUv =
+                            i.uv + candidateFlow / consensusOutputSize;
+                        const bool insidePreviousCandidate =
+                            all(previousCandidateUv >= float2(0.0, 0.0)) &&
+                            all(previousCandidateUv <= float2(1.0, 1.0));
+                        if (!insidePreviousCandidate) continue;
+
+                        const float2 backwardCandidate = LoadOpticalFlow(
+                            BackwardOpticalFlow, previousCandidateUv);
+                        const float roundTripError =
+                            length(candidateFlow + backwardCandidate);
+                        const float allowedRoundTrip =
+                            max(1.25, 0.65 + candidateMagnitude * 0.22);
+                        const float fbConfidence = 1.0 - smoothstep(
+                            allowedRoundTrip, allowedRoundTrip + 2.0,
+                            roundTripError);
+                        float costConfidence = 1.0;
+                        if (P9.w > 0.5)
+                            costConfidence = 1.0 - smoothstep(0.28, 0.78,
+                                LoadOpticalCost(ForwardOpticalCost, neighborUv));
+                        const float geometryEvidence =
+                            sameCurrentSurface * fbConfidence *
+                            lerp(0.35, 1.0, costConfidence);
+                        if (geometryEvidence <= 0.18) continue;
+
+                        const float3 previousCandidateRaw =
+                            PreviousSource.SampleLevel(LinearClamp,
+                                previousCandidateUv, 0.0).rgb;
+                        const float candidateResidual = SourceMatchError(
+                            rawSourceColor, previousCandidateRaw);
+                        const float candidateEvent =
+                            smoothstep(0.18, 0.42, geometryEvidence) *
+                            smoothstep(P11.z, P11.w, candidateResidual) *
+                            smoothstep(P15.x, P15.y, displayedDelta);
+                        consensusIntrinsicEvent = max(
+                            consensusIntrinsicEvent, candidateEvent);
+                    }
+                }
+                currentIntrinsicEvent = max(currentIntrinsicEvent,
+                    consensusIntrinsicEvent * (1.0 - hardDisocclusion));
+            }
 
             // Mode 8 keeps a short signed PRIME separately from display-active
             // risk. R encodes [-1,+1] around 0.5 only in this benchmark mode.
@@ -4640,7 +4731,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 10);
+                    std::clamp(tuning.architectureMode, 0, 11);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,

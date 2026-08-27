@@ -1,0 +1,44 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_ac66d624_single-frame-phase-hold",
+  "source_commit": "ac66d6247b4acc143854178e92610fb7421808cb",
+  "workflow_run_id": 33061955020,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9642204937,
+  "artifact_name": "flashbench-gpu-ac66d6247b4acc143854178e92610fb7421808cb",
+  "artifact_digest": "sha256:83b825b948e8954cc2ef8f2067570d211b6f8e98c89caa4160acb5d11a7cad00",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/18",
+  "purpose": "Directly accept or reject a one-frame nonrecursive event hold as the missing moving-flash temporal coverage mechanism.",
+  "invariant": "Benchmark architecture 10 only; production architecture 0 remained unchanged and the hold stored only the previous frame's event strength.",
+  "primary_gate": "moving clear-to-5% <=70 ms; moving-flash reduction >=0.45; perceptual minimum reduction >=0.70; WCAG SC 2.3.1 and 2.3.2 pass",
+  "result_summary": {
+    "opposition_mode8": {
+      "moving_clear_05_ms": 66.667,
+      "moving_flash_reduction": 0.37155597,
+      "perceptual_min_reduction": 0.75097655,
+      "pan_mae": 0.00352272,
+      "wcag_pass": true
+    },
+    "single_frame_phase_hold_mode10": {
+      "moving_clear_05_ms": 66.667,
+      "moving_flash_reduction": 0.37155597,
+      "perceptual_min_reduction": 0.75097655,
+      "pan_mae": 0.00352272,
+      "wcag_pass": true
+    },
+    "selected": null
+  },
+  "interpretation": "Mode 10 was numerically identical to mode 8 on every reported gate metric, so a one-frame event hold did not touch the missing moving-flash transition coverage. Source review also showed the carryover was gated by same-screen stableSourceGate, which naturally rejects translating surfaces. The next candidate therefore targets the underlying geometry problem directly: infer a validated motion vector for textureless moving interiors, then measure intrinsic raw-source change at that transported surface without adding display memory.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "a3456cf4102f863bd3e8f4fbf1532ff4cb8712b5d1b6e533fb40fc7b3f9fa8c4"
+    },
+    {
+      "path": "summary.json",
+      "sha256": "0d7f6b6a46e83e3978b04a880465614d0006d34a4aa56d47af98acdd8119fc1d"
+    }
+  ]
+}

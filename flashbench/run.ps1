@@ -286,16 +286,16 @@ try {
             }
         }
 
-        # Current targeted/full matrix directly accepts or rejects a one-frame
-        # nonrecursive phase hold for the moving-flash temporal coverage gap.
+        # Current targeted/full matrix directly accepts or rejects textureless
+        # moving-surface flow consensus for intrinsic moving-flash coverage.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
             if ($TestTier -eq 'targeted' -and -not $TuneMatrix) {
-                & (Join-Path $PSScriptRoot 'matrix-v18.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v19.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir -ScreenOnly
             } else {
-                & (Join-Path $PSScriptRoot 'matrix-v18.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v19.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir
             }
