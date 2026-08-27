@@ -92,31 +92,23 @@ Replace-Once @'
 
 Replace-Once @'
         const float texturelessStateDisocclusionGate =
-            qualifiedStationaryCameraGuardArchitecture ?
-                lerp(explicitDisocclusionGate,
-                    correctedCurrentPixelDisocclusionGate,
-                    stationaryRepetitionGate) *
-                    (1.0 - texturelessStationaryFallbackGate) :
-                min(correctedCurrentPixelDisocclusionGate,
-                    explicitDisocclusionGate *
-                        (1.0 - texturelessStationaryFallbackGate));
+            minimalTexturelessCameraVetoArchitecture ?
+                lerp(texturelessStateDisocclusionGateBase,
+                    explicitDisocclusionGate, unmaskedCpuCameraMotionGate) :
+                texturelessStateDisocclusionGateBase;
 '@ @'
-        const float texturelessStateDisocclusionGateBase =
-            qualifiedStationaryCameraGuardArchitecture ?
-                lerp(explicitDisocclusionGate,
-                    correctedCurrentPixelDisocclusionGate,
-                    stationaryRepetitionGate) *
-                    (1.0 - texturelessStationaryFallbackGate) :
-                min(correctedCurrentPixelDisocclusionGate,
-                    explicitDisocclusionGate *
-                        (1.0 - texturelessStationaryFallbackGate));
+        const float matrix35RiskStateDisocclusionGate =
+            lerp(explicitDisocclusionGate,
+                correctedCurrentPixelDisocclusionGate,
+                stationaryRepetitionGate) *
+                (1.0 - texturelessStationaryFallbackGate);
         const float texturelessStateDisocclusionGate =
             matrix35RiskStateFactor ?
-                lerp(explicitDisocclusionGate,
-                    correctedCurrentPixelDisocclusionGate,
-                    stationaryRepetitionGate) *
-                    (1.0 - texturelessStationaryFallbackGate) :
-                texturelessStateDisocclusionGateBase;
+                matrix35RiskStateDisocclusionGate :
+            (minimalTexturelessCameraVetoArchitecture ?
+                lerp(texturelessStateDisocclusionGateBase,
+                    explicitDisocclusionGate, unmaskedCpuCameraMotionGate) :
+                texturelessStateDisocclusionGateBase);
 '@
 
 Replace-Once @'
