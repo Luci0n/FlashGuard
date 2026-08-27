@@ -467,7 +467,7 @@ cbuffer Safety : register(b0)
     float4 P13; // transport confidence / disocclusion / risk decay
     float4 P14; // temporal-state tau scales / exact hold / moving floor
     float4 P15; // direct-intrinsic display / event-seed gates
-    float4 P16; // x = benchmark architecture (0-6), y = risk neutral, z = risk gain
+    float4 P16; // x = benchmark architecture (0-8), y = risk neutral, z = risk gain
 };
 
 struct VSOut
@@ -736,6 +736,9 @@ MainOutput PSMain(VSOut i)
     float protectionStateLuma = candidateL;
     float protectionStateRisk = 0.0;
     float protectionStateRedAuthority = 0.0;
+    // Mode 8 reuses protection-state R as an encoded signed prime. Other modes
+    // continue to store protected/display luminance there.
+    float signedPrimeStateEncoded = 0.5;
     float authorityPreprocessLumaDelta = saturate(abs(candidateL - Luma(rawSourceColor)));
     float authorityArchitectureLumaDelta = 0.0;
     float authorityCurrentEventStrength = 0.0;
@@ -974,16 +977,17 @@ R"HLSL(
             cpuCameraMotionGate, temporalMask);
         float surfaceRiskStateSeed = 0.0;
 
-        // Architectures 3/4 keep only surface-local risk: persistent LOCAL risk
-        // survives only on the same raw surface or on a validated current-surface
-        // optical transport. Screen-coordinate temporal/coarse memory never drives
-        // display mitigation. Mode 4 additionally prevents a vacated/infill
-        // disocclusion from being mistaken for a fresh intrinsic flash.
+        // Architectures 3+ keep display mitigation image-memory-free. Persistent
+        // LOCAL risk may follow only a validated surface; benchmark mode 8 goes
+        // further and requires a real signed reversal on that same raw surface
+        // before any display-active risk memory can be seeded.
         if (P16.x > 2.5)
         {
             const bool eventOnlyArchitecture =
                 P16.x > 5.5 && P16.x < 6.5;
-            const bool repetitionGatedArchitecture = P16.x > 6.5;
+            const bool repetitionGatedArchitecture =
+                P16.x > 6.5 && P16.x < 7.5;
+            const bool oppositionGatedArchitecture = P16.x > 7.5;
             const float hardDisocclusion =
                 smoothstep(0.30, 0.60, explicitDisocclusionGate);
             const float surfaceContinuity = saturate(max(
@@ -1004,8 +1008,44 @@ R"HLSL(
             const float currentIntrinsicEvent =
                 max(directIntrinsicEvent, stationaryCurrentEvent) *
                 (1.0 - disocclusionEventVeto);
+
+            // Mode 8 keeps a short signed PRIME separately from display-active
+            // risk. R encodes [-1,+1] around 0.5 only in this benchmark mode.
+            // Unlike ordinary risk continuity, prime continuity must tolerate an
+            // intrinsic appearance change: a stationary flash would otherwise
+            // erase its own first sign before the opposite transition arrives.
+            const float previousMatchedRawL =
+                (previousProtectionValid && P7.z > 0.5) ?
+                Luma(PreviousSource.SampleLevel(
+                    LinearClamp, protectionStatePreviousUv, 0.0).rgb) :
+                Luma(rawSourceColor);
+            const float signedIntrinsicDelta =
+                Luma(rawSourceColor) - previousMatchedRawL;
+            const float signedMagnitudeGate =
+                smoothstep(P15.x, P15.y, abs(signedIntrinsicDelta));
+            const float currentSignedDirection =
+                signedIntrinsicDelta >= 0.0 ? 1.0 : -1.0;
+            float transportedSignedPrime = oppositionGatedArchitecture &&
+                previousProtectionValid ?
+                (saturate(previousProtectionState.r) * 2.0 - 1.0) *
+                exp(-dt / max(0.05, 0.18 * P14.x)) : 0.0;
+            const float localSurfaceMotionEvidence =
+                max(localMotionGate, hardwareMotionGate);
+            const float stationaryPrimeContinuity =
+                1.0 - smoothstep(0.10, 0.45, localSurfaceMotionEvidence);
+            const float signedPrimeContinuity = saturate(max(
+                stationaryPrimeContinuity, verifiedCurrentSurfaceTransport)) *
+                (1.0 - hardDisocclusion);
+            transportedSignedPrime *= signedPrimeContinuity;
+            const float oppositionStrength = max(
+                0.0, -transportedSignedPrime * currentSignedDirection);
+            const float opposingTransitionGate = oppositionGatedArchitecture ?
+                smoothstep(P12.x, P12.y, oppositionStrength) *
+                signedMagnitudeGate : 0.0;
+
             const float persistentSeedAuthority = repetitionGatedArchitecture ?
-                repeatedMemoryGate : 1.0;
+                repeatedMemoryGate : (oppositionGatedArchitecture ?
+                    opposingTransitionGate : 1.0);
             surfaceRiskStateSeed = eventOnlyArchitecture ? 0.0 :
                 currentIntrinsicEvent * persistentSeedAuthority;
             const float surfaceMemoryMitigation = eventOnlyArchitecture ?
@@ -1014,6 +1054,16 @@ R"HLSL(
             authoritySurfaceMemoryStrength = saturate(surfaceMemoryMitigation);
             const float currentFrameStrength = saturate(max(
                 currentIntrinsicEvent, surfaceMemoryMitigation));
+
+            if (oppositionGatedArchitecture)
+            {
+                const float primeWrite = saturate(
+                    2.0 * currentIntrinsicEvent * signedMagnitudeGate);
+                const float nextSignedPrime = lerp(
+                    transportedSignedPrime, currentSignedDirection, primeWrite);
+                signedPrimeStateEncoded =
+                    saturate(0.5 + 0.5 * nextSignedPrime);
+            }
 
             const float architectureInputL = candidateL;
             const float resolvedL = lerp(
@@ -1157,7 +1207,8 @@ R"HLSL(
         smoothstep(0.68, 0.80, finalOutputRedRatio);
     const float3 finalOutputGraySrgb = LinearToSrgb(finalOutputGray.xxx);
     cur = lerp(cur, finalOutputGraySrgb, finalOutputRedDesat);
-    protectionStateLuma = Luma(cur);
+    protectionStateLuma = P16.x > 7.5 ?
+        signedPrimeStateEncoded : Luma(cur);
 
     // Save filtered content color BEFORE debug/hotkey/shield-label overlays so
     // UI pixels never contaminate temporal state. RGB remains the displayed
@@ -4462,7 +4513,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 7);
+                    std::clamp(tuning.architectureMode, 0, 8);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
@@ -8069,7 +8120,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     if (!spec[42].empty())
                     {
                         tuning.architectureMode =
-                            std::clamp(_wtoi(spec[42].c_str()), 0, 7);
+                            std::clamp(_wtoi(spec[42].c_str()), 0, 8);
                         tuning.enabled = true;
                     }
                     tune(43, tuning.riskOnlyNeutralLuma);
