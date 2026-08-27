@@ -257,9 +257,18 @@ try {
             $summary['replay_moving_vacated_peak'] = $trail.moving_square_vacated_peak
             $summary['replay_moving_vacated_area_02_max'] = $trail.moving_square_vacated_area_above_0_02_max
             $summary['replay_moving_vacated_area_05_max'] = $trail.moving_square_vacated_area_above_0_05_max
+            $summary['replay_moving_trail_p99_frame_p95'] = $trail.moving_square_trail_p99_frame_p95
+            $summary['replay_moving_trail_area_05_frame_mean'] = $trail.moving_square_trail_area_above_0_05_frame_mean
+            $summary['replay_moving_recovery_p99_auc'] = $trail.moving_square_recovery_p99_auc
+            $summary['replay_moving_recovery_area_05_auc'] = $trail.moving_square_recovery_area_above_0_05_auc
+            $summary['replay_moving_recovery_p99_final'] = $trail.moving_square_recovery_p99_final
+            $summary['replay_moving_clear_01_observed'] = $trail.moving_square_clear_to_0_01_observed
+            $summary['replay_moving_clear_02_observed'] = $trail.moving_square_clear_to_0_02_observed
+            $summary['replay_moving_clear_05_observed'] = $trail.moving_square_clear_to_0_05_observed
             $summary['replay_moving_clear_01_ms'] = $trail.moving_square_clear_to_0_01_ms
             $summary['replay_moving_clear_02_ms'] = $trail.moving_square_clear_to_0_02_ms
             $summary['replay_moving_clear_05_ms'] = $trail.moving_square_clear_to_0_05_ms
+            $summary['replay_moving_clear_05_lower_bound_ms'] = $trail.moving_square_clear_to_0_05_lower_bound_ms
             $summary['replay_small_moving_vacated_p99_max'] = $trail.small_moving_square_vacated_p99_max
             $summary['replay_small_moving_vacated_peak'] = $trail.small_moving_square_vacated_peak
         }
@@ -283,11 +292,11 @@ try {
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
             if ($TestTier -eq 'targeted' -and -not $TuneMatrix) {
-                & (Join-Path $PSScriptRoot 'matrix-v5.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v6.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir -ScreenOnly
             } else {
-                & (Join-Path $PSScriptRoot 'matrix-v5.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v6.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir
             }

@@ -3166,6 +3166,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             double movingVacatedPeak = 0.0;
             double movingVacatedArea02Max = 0.0;
             double movingVacatedArea05Max = 0.0;
+            double movingTrailMeanErrorAuc = 0.0;
+            std::vector<double> movingTrailP99Frames;
+            std::vector<double> movingTrailArea05Frames;
             int movingVacatedFrames = 0;
             constexpr int squareSize = 64;
             const int movingFrames = replayScreening ?
@@ -3187,6 +3190,19 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 std::min(settledX0 + squareSize, static_cast<int>(width)),
                 std::min(settledY0 + squareSize, static_cast<int>(height))
             };
+            const int movingTrailHistoryFrames = std::max(3, replayFps / 2);
+            std::deque<RECT> movingTrailHistory;
+            const auto trailBounds = [](const std::deque<RECT>& history) {
+                RECT bounds = history.front();
+                for (const RECT& rect : history)
+                {
+                    bounds.left = std::min(bounds.left, rect.left);
+                    bounds.top = std::min(bounds.top, rect.top);
+                    bounds.right = std::max(bounds.right, rect.right);
+                    bounds.bottom = std::max(bounds.bottom, rect.bottom);
+                }
+                return bounds;
+            };
             for (int i = 0; i < movingFrames; ++i)
             {
                 fillGray(24);
@@ -3201,10 +3217,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     for (int x = std::max(x0, 0); x < x1; ++x)
                         pixels[static_cast<size_t>(y) * width + x] = grayPixel(235);
                 const RECT square{ x0, y0, x1, y1 };
+                movingTrailHistory.push_back(previousMovingRect);
+                while (static_cast<int>(movingTrailHistory.size()) > movingTrailHistoryFrames)
+                    movingTrailHistory.pop_front();
+                const RECT movingTrailRect = trailBounds(movingTrailHistory);
                 const FrameSample sample = renderAndSample(&square,
                     (writeVisuals && i % 10 == 0) ? L"bright_motion" : nullptr,
                     i, replayScreening ? nullptr : &movingDiagnostics,
-                    nullptr, nullptr, &previousMovingRect);
+                    nullptr, nullptr, &movingTrailRect);
                 movingGhostMae += sample.outsideMae;
                 movingInsideMae += sample.insideMae;
                 movingEdgeMae += sample.edgeMae;
@@ -3221,6 +3241,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         movingVacatedArea02Max, sample.vacatedAreaAbove02);
                     movingVacatedArea05Max = std::max(
                         movingVacatedArea05Max, sample.vacatedAreaAbove05);
+                    movingTrailMeanErrorAuc += sample.vacatedMean * static_cast<double>(dt);
+                    movingTrailP99Frames.push_back(sample.vacatedP99);
+                    movingTrailArea05Frames.push_back(sample.vacatedAreaAbove05);
                     ++movingVacatedFrames;
                 }
                 previousMovingRect = square;
@@ -3230,34 +3253,82 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             movingEdgeMae /= static_cast<double>(movingFrames);
             if (movingVacatedFrames > 0)
                 movingVacatedMean /= static_cast<double>(movingVacatedFrames);
+            const auto seriesMean = [](const std::vector<double>& values) {
+                if (values.empty()) return 0.0;
+                double sum = 0.0;
+                for (double value : values) sum += value;
+                return sum / static_cast<double>(values.size());
+            };
+            const auto seriesPercentile = [](std::vector<double> values, double q) {
+                if (values.empty()) return 0.0;
+                std::sort(values.begin(), values.end());
+                const size_t index = std::min(values.size() - 1,
+                    static_cast<size_t>(std::ceil(
+                        q * static_cast<double>(values.size()))) - 1);
+                return values[index];
+            };
+            const double movingTrailP99FrameMean = seriesMean(movingTrailP99Frames);
+            const double movingTrailP99FrameP50 =
+                seriesPercentile(movingTrailP99Frames, 0.50);
+            const double movingTrailP99FrameP90 =
+                seriesPercentile(movingTrailP99Frames, 0.90);
+            const double movingTrailP99FrameP95 =
+                seriesPercentile(movingTrailP99Frames, 0.95);
+            const double movingTrailArea05FrameMean = seriesMean(movingTrailArea05Frames);
+            const double movingTrailArea05FrameP95 =
+                seriesPercentile(movingTrailArea05Frames, 0.95);
 
-            // Clear the final object footprint and measure how many frames its
-            // visible residual survives. These thresholds are calibration data,
-            // not pass/fail gates until several real experiments are archived.
+            // Recovery is explicitly censored instead of pretending the end of a
+            // short observation window is the clear time. Measure the whole recent
+            // footprint corridor and integrate residual severity even if it never clears.
+            movingTrailHistory.push_back(previousMovingRect);
+            while (static_cast<int>(movingTrailHistory.size()) > movingTrailHistoryFrames)
+                movingTrailHistory.pop_front();
+            const RECT recoveryTrailRect = trailBounds(movingTrailHistory);
             const int trailRecoveryFrames = replayScreening ?
-                std::max(6, replayFps / 4) : std::max(12, replayFps / 2);
+                std::max(24, replayFps) : std::max(60, replayFps * 2);
             int trailClear01 = -1;
             int trailClear02 = -1;
             int trailClear05 = -1;
+            int trailRecoveryFramesMeasured = 0;
+            double trailRecoveryP99Auc = 0.0;
+            double trailRecoveryArea05Auc = 0.0;
+            double trailRecoveryP99Final = 0.0;
             for (int i = 0; i < trailRecoveryFrames; ++i)
             {
                 fillGray(24);
                 const FrameSample recovery = renderAndSample(
                     nullptr, nullptr, -1, nullptr, nullptr, nullptr,
-                    &previousMovingRect);
+                    &recoveryTrailRect);
+                ++trailRecoveryFramesMeasured;
+                trailRecoveryP99Final = recovery.vacatedP99;
+                trailRecoveryP99Auc += recovery.vacatedP99 * static_cast<double>(dt);
+                trailRecoveryArea05Auc +=
+                    recovery.vacatedAreaAbove05 * static_cast<double>(dt);
                 if (trailClear01 < 0 && recovery.vacatedP99 <= 0.01) trailClear01 = i;
                 if (trailClear02 < 0 && recovery.vacatedP99 <= 0.02) trailClear02 = i;
                 if (trailClear05 < 0 && recovery.vacatedP99 <= 0.05) trailClear05 = i;
                 if (trailClear01 >= 0 && trailClear02 >= 0 && trailClear05 >= 0) break;
             }
             const auto trailFramesToMs = [&](int frame) {
-                const int measured = frame >= 0 ? frame + 1 : trailRecoveryFrames;
-                return 1000.0 * static_cast<double>(measured) /
-                    static_cast<double>(replayFps);
+                return frame >= 0 ? 1000.0 * static_cast<double>(frame + 1) /
+                    static_cast<double>(replayFps) : -1.0;
             };
             const double trailClear01Ms = trailFramesToMs(trailClear01);
             const double trailClear02Ms = trailFramesToMs(trailClear02);
             const double trailClear05Ms = trailFramesToMs(trailClear05);
+            const double trailRecoveryMeasuredMs = 1000.0 *
+                static_cast<double>(trailRecoveryFramesMeasured) /
+                static_cast<double>(replayFps);
+            const double trailRecoveryWindowMaxMs = 1000.0 *
+                static_cast<double>(trailRecoveryFrames) /
+                static_cast<double>(replayFps);
+            const double trailClear01LowerBoundMs =
+                trailClear01 >= 0 ? trailClear01Ms : trailRecoveryMeasuredMs;
+            const double trailClear02LowerBoundMs =
+                trailClear02 >= 0 ? trailClear02Ms : trailRecoveryMeasuredMs;
+            const double trailClear05LowerBoundMs =
+                trailClear05 >= 0 ? trailClear05Ms : trailRecoveryMeasuredMs;
             const uint64_t movingFlowFrames = flowFrames - movingFlowStart;
 
             // Bright oblique motion: real game objects rarely move on an exact
@@ -3694,28 +3765,59 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 return false;
             std::fprintf(trailMetricsReport,
                 "{\n"
-                "  \"schema\": \"FLASHGUARD_TRAIL_METRICS/1\",\n"
+                "  \"schema\": \"FLASHGUARD_TRAIL_METRICS/2\",\n"
                 "  \"status\": \"SUCCESS\",\n"
                 "  \"test_scope\": \"%s\",\n"
                 "  \"width\": %u,\n  \"height\": %u,\n  \"fps\": %d,\n"
                 "  \"motion_scale\": %.3f,\n  \"metric_sample_stride\": %u,\n"
+                "  \"moving_square_trail_history_ms\": %.3f,\n"
                 "  \"moving_square_vacated_mean_mae\": %.8f,\n"
                 "  \"moving_square_vacated_p95_max\": %.8f,\n"
                 "  \"moving_square_vacated_p99_max\": %.8f,\n"
                 "  \"moving_square_vacated_peak\": %.8f,\n"
                 "  \"moving_square_vacated_area_above_0_02_max\": %.8f,\n"
                 "  \"moving_square_vacated_area_above_0_05_max\": %.8f,\n"
+                "  \"moving_square_trail_p99_frame_mean\": %.8f,\n"
+                "  \"moving_square_trail_p99_frame_p50\": %.8f,\n"
+                "  \"moving_square_trail_p99_frame_p90\": %.8f,\n"
+                "  \"moving_square_trail_p99_frame_p95\": %.8f,\n"
+                "  \"moving_square_trail_area_above_0_05_frame_mean\": %.8f,\n"
+                "  \"moving_square_trail_area_above_0_05_frame_p95\": %.8f,\n"
+                "  \"moving_square_trail_mean_error_auc\": %.8f,\n"
+                "  \"moving_square_recovery_frames_measured\": %d,\n"
+                "  \"moving_square_recovery_window_max_ms\": %.3f,\n"
+                "  \"moving_square_recovery_p99_auc\": %.8f,\n"
+                "  \"moving_square_recovery_area_above_0_05_auc\": %.8f,\n"
+                "  \"moving_square_recovery_p99_final\": %.8f,\n"
+                "  \"moving_square_clear_to_0_01_observed\": %s,\n"
+                "  \"moving_square_clear_to_0_02_observed\": %s,\n"
+                "  \"moving_square_clear_to_0_05_observed\": %s,\n"
                 "  \"moving_square_clear_to_0_01_ms\": %.3f,\n"
                 "  \"moving_square_clear_to_0_02_ms\": %.3f,\n"
                 "  \"moving_square_clear_to_0_05_ms\": %.3f,\n"
+                "  \"moving_square_clear_to_0_01_lower_bound_ms\": %.3f,\n"
+                "  \"moving_square_clear_to_0_02_lower_bound_ms\": %.3f,\n"
+                "  \"moving_square_clear_to_0_05_lower_bound_ms\": %.3f,\n"
                 "  \"small_moving_square_vacated_p99_max\": %.8f,\n"
                 "  \"small_moving_square_vacated_peak\": %.8f\n"
                 "}\n",
                 replayScreening ? "screening" : "full",
                 width, height, replayFps, motionScale, static_cast<unsigned>(sampleStride),
+                1000.0 * static_cast<double>(movingTrailHistoryFrames) /
+                    static_cast<double>(replayFps),
                 movingVacatedMean, movingVacatedP95Max, movingVacatedP99Max,
                 movingVacatedPeak, movingVacatedArea02Max, movingVacatedArea05Max,
+                movingTrailP99FrameMean, movingTrailP99FrameP50, movingTrailP99FrameP90,
+                movingTrailP99FrameP95, movingTrailArea05FrameMean,
+                movingTrailArea05FrameP95, movingTrailMeanErrorAuc,
+                trailRecoveryFramesMeasured, trailRecoveryWindowMaxMs,
+                trailRecoveryP99Auc, trailRecoveryArea05Auc, trailRecoveryP99Final,
+                trailClear01 >= 0 ? "true" : "false",
+                trailClear02 >= 0 ? "true" : "false",
+                trailClear05 >= 0 ? "true" : "false",
                 trailClear01Ms, trailClear02Ms, trailClear05Ms,
+                trailClear01LowerBoundMs, trailClear02LowerBoundMs,
+                trailClear05LowerBoundMs,
                 smallMovingVacatedP99Max, smallMovingVacatedPeak);
             std::fclose(trailMetricsReport);
 
