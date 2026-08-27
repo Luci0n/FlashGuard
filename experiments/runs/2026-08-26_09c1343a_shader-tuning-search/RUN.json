@@ -1,0 +1,43 @@
+{
+  "schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-26_09c1343a_shader-tuning-search",
+  "tested_commit": "09c1343a7f919ea0a72fa074cf48b765395fca15",
+  "software_version": "0.3.0-alpha.1",
+  "timestamp_utc": "2026-08-26T19:20:27Z",
+  "ci_run_id": 33003587193,
+  "ci_artifact_id": 9619996306,
+  "ci_artifact_sha256": "4acc75305e7fb0b8cf817abfde2dbb001167694719ff4746674762d65903eb50",
+  "result": "SUCCESS",
+  "intervention": "Expose 24 benchmark-only full-resolution shader transport, hold, memory and temporal-state constants through P10-P15, accept 42-column persistent replay plans, and screen 33 shader-layer configurations with matrix-v5 while preserving production defaults.",
+  "quantitative_observation": {
+    "screen_elapsed_ms": 262903,
+    "candidate_count": 33,
+    "selected": "exact_hold_higher",
+    "production_moving_vacated_p99_max": 0.82726907,
+    "all_candidates_moving_vacated_p99_max": 0.82726907,
+    "production_moving_clear_05_ms": 233.333,
+    "all_candidates_moving_clear_05_ms": 233.333,
+    "production_small_vacated_p99_max": 0.30553767,
+    "best_small_vacated_p99_max": 0.00012639,
+    "production_perceptual_sweep_min_reduction": -0.00387579,
+    "intrinsic_sensitive_perceptual_sweep_min_reduction": 0.604848,
+    "low_contrast_priority_perceptual_sweep_min_reduction": 0.88327026,
+    "production_moving_flash_reduction": 0.54866618,
+    "event_delta_conservative_moving_flash_reduction": 0.56517988
+  },
+  "qualitative_observation": "Shader-layer controls are demonstrably active: small-object trail and low-contrast flash metrics change dramatically, so the benchmark-only constant path is valid. However, the large-object p99_max is saturated at essentially the full 235-to-24 sRGB object/background contrast for every candidate, and the reported 233.333 ms clear time is the seven-frame screening recovery ceiling when no clear is observed, not an actual measured clearing time. Therefore matrix-v5 cannot reliably rank large visible trailing yet. Fix the trail measurement before promoting any shader candidate. low_contrast_priority is promising for weak flashes, but its higher peak output delta and the censored large-trail metrics require re-evaluation under the corrected metric.",
+  "raw_file_sha256": {
+    "artifact.zip": "4acc75305e7fb0b8cf817abfde2dbb001167694719ff4746674762d65903eb50",
+    "summary.json": "d70dbc95d3878ded12a968394df3c2d7b00dda3709bd92bb0115b17824cb3e83",
+    "flash-sweep.json": "1bb21f07b59952f65516b86a71f4bb3879cedae415185c66392b10374340e0fa",
+    "synthetic-replay.json": "a0c3bd646383e4c2c05b2ee8e26288a0e1195231b3a00a75b5712743a98e81f6",
+    "trail-metrics.json": "8f5812cbc711f81120d3ffce1843a4282a10fea8f7e40d9557f0a539c1989ac0",
+    "perceptual-sweep.json": "789b5815490a29af0ee5b7bd4eb20a1a4e1b5dc238e60625f2f75b6a8a333d59",
+    "motion-diagnostics.json": "9cc91c66f8ce3e6aa858c446935fba3eb1a93c1b76225f0f6bbe97076f738e63",
+    "motion-realization.json": "ddb0838b040af1e13e22b65699bd4952c782592f919e181c90de0a57bc8040ae",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "red-flash-trace-15hz.json": "48a23ce4f2f8f598597fe2b341df941c8e49bc519e93edde8a8244dd0d15aa86",
+    "matrix/matrix.json": "2393424f3e73f16855fda2cad38f51f626dcfa95f3cb0d70e0352f1829d92fd0",
+    "matrix/screen/batch.json": "b6481c0d9a99ee3c4588e99f818b99555f004f39afcb09d64e20c314c1fc7602"
+  }
+}
