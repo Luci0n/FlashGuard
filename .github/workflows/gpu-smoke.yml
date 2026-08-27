@@ -113,8 +113,27 @@ jobs:
           & .\flashbench\run.ps1 -Mode gpu-smoke `
             -TestTier $env:TEST_TIER -OutputDir flashbench/results
           exit $LASTEXITCODE
+      - name: Print GPU result diagnostics
+        if: always()
+        shell: powershell
+        run: |
+          foreach ($path in @(
+            'flashbench/results/summary.json',
+            'flashbench/results/synthetic-replay.json'
+          )) {
+            if (Test-Path -LiteralPath $path) {
+              Write-Host "===== $path ====="
+              Get-Content -LiteralPath $path -Raw
+            }
+          }
+          $log = 'flashbench/results/flashbench.log'
+          if (Test-Path -LiteralPath $log) {
+            Write-Host "===== tail $log ====="
+            Get-Content -LiteralPath $log -Tail 160
+          }
       - name: Upload GPU smoke report
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: flashbench-gpu-${{ github.sha }}
@@ -122,7 +141,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Stage tested build outside runner workspace
-        if: steps.gpu.outcome == 'success'
+        if: always() && steps.gpu.outcome == 'success'
         shell: powershell
         run: |
           $root = 'C:\FlashGuard-Tested'
@@ -132,7 +151,7 @@ jobs:
           Copy-Item -Force .\FlashGuard.exe (Join-Path $dest 'FlashGuard.exe')
           Set-Content -Path (Join-Path $root 'LATEST.txt') -Value (Join-Path $dest 'FlashGuard.exe')
       - name: Upload tested FlashGuard executable
-        if: steps.gpu.outcome == 'success'
+        if: always() && steps.gpu.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
           name: flashguard-tested-${{ github.sha }}
