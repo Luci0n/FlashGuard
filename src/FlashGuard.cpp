@@ -240,6 +240,8 @@ namespace
         float releaseTime = -1.0f;
         float cameraMotionSuppression = -1.0f;
         int architectureMode = -1;
+        float riskOnlyNeutralLuma = -1.0f;
+        float riskOnlyGain = -1.0f;
         ShaderTuningSettings shader{};
     };
 
@@ -465,7 +467,7 @@ cbuffer Safety : register(b0)
     float4 P13; // transport confidence / disocclusion / risk decay
     float4 P14; // temporal-state tau scales / exact hold / moving floor
     float4 P15; // direct-intrinsic display / event-seed gates
-    float4 P16; // x = benchmark mitigation architecture: 0 legacy, 1 risk-only, 2 hybrid
+    float4 P16; // x = architecture, y = risk-only neutral luma, z = risk-only gain
 };
 
 struct VSOut
@@ -769,8 +771,11 @@ R"HLSL(
             transportedSurfaceRisk = 0.0;
             transportedRedAuthority = 0.0;
         }
-        finalRedSafetyAuthority = max(
-            finalRedSafetyAuthority, transportedRedAuthority);
+        // Architecture 3 validates red memory with the same surface-continuity
+        // rule used for risk memory below. Earlier modes remain byte-equivalent.
+        if (P16.x <= 2.5)
+            finalRedSafetyAuthority = max(
+                finalRedSafetyAuthority, transportedRedAuthority);
 
         // Validate a CURRENT luminance transition against optical transport before
         // treating it as a flash. A translating surface compares against its
@@ -959,12 +964,44 @@ R"HLSL(
             verifiedFlashOverride, coarseMotionGate,
             cpuCameraMotionGate, temporalMask);
 
-        // Benchmark architectures 1/2 deliberately keep temporal memory out of
-        // displayed luminance. Risk may persist, but mitigation always remaps the
-        // CURRENT candidate image. A verified disocclusion is a hard reset for
-        // surface-local mitigation and can never inherit the departed surface's
-        // protected luminance. Production remains architecture 0.
-        if (P16.x > 0.5)
+        // Architecture 3 is the actual risk-only design: persistent LOCAL risk
+        // survives only on the same raw surface or on a validated current-surface
+        // optical transport. Screen-coordinate temporal/coarse memory never drives
+        // display mitigation, and disocclusion/content replacement kills memory.
+        if (P16.x > 2.5)
+        {
+            const float hardDisocclusion =
+                smoothstep(0.30, 0.60, explicitDisocclusionGate);
+            const float surfaceContinuity = saturate(max(
+                stableSourceGate, verifiedCurrentSurfaceTransport)) *
+                (1.0 - hardDisocclusion);
+            transportedSurfaceRisk *= surfaceContinuity;
+            transportedRedAuthority *= surfaceContinuity;
+            finalRedSafetyAuthority = max(
+                finalRedSafetyAuthority, transportedRedAuthority);
+
+            // Analyzer current-event evidence is accepted on stationary content.
+            // A moving surface must instead show an intrinsic compensated residual;
+            // ordinary translation therefore cannot become a display mask.
+            const float stationaryCurrentEvent =
+                eventGate * eventDeltaGate * (1.0 - correspondenceGate);
+            const float currentIntrinsicEvent =
+                max(directIntrinsicEvent, stationaryCurrentEvent);
+            const float surfaceMemoryMitigation =
+                smoothstep(0.06, 0.45, transportedSurfaceRisk);
+            const float currentFrameStrength = saturate(max(
+                currentIntrinsicEvent, surfaceMemoryMitigation));
+
+            const float resolvedL = lerp(
+                candidateL, saturate(P16.y),
+                saturate(currentFrameStrength * max(P16.z, 0.0)));
+            cur = RemapGlobalLuminance(cur, candidateL, resolvedL);
+            candidateL = Luma(cur);
+            safetyHistoryL = candidateL;
+        }
+        // Keep architectures 1/2 intact as failed controls. They remove displayed
+        // luminance history but still let screen-space risk/hold memory drive output.
+        else if (P16.x > 0.5)
         {
             const float hardDisocclusion =
                 smoothstep(0.30, 0.60, explicitDisocclusionGate);
@@ -4126,6 +4163,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             m_safety.cameraMotionSuppression = 0.32f;
             m_shaderTuning = ShaderTuningSettings{};
             m_benchmarkArchitectureMode = 0;
+            m_benchmarkRiskOnlyNeutralLuma = 0.18f;
+            m_benchmarkRiskOnlyGain = 0.92f;
             m_debugEnabled.store(options.debugOverlay, std::memory_order_release);
         }
 
@@ -4163,7 +4202,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 2);
+                    std::clamp(tuning.architectureMode, 0, 3);
+            apply(m_benchmarkRiskOnlyNeutralLuma,
+                tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
+            apply(m_benchmarkRiskOnlyGain,
+                tuning.riskOnlyGain, 0.20f, 1.20f);
 
             // Shader candidates are generated by FlashBench with ordered pairs.
             // Clamp every scalar defensively, then reject malformed pairs back to
@@ -6026,6 +6069,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             c.p15[2] = m_shaderTuning.eventSeedLow;
             c.p15[3] = m_shaderTuning.eventSeedHigh;
             c.p16[0] = static_cast<float>(m_benchmarkArchitectureMode);
+            c.p16[1] = m_benchmarkRiskOnlyNeutralLuma;
+            c.p16[2] = m_benchmarkRiskOnlyGain;
 
             D3D11_MAPPED_SUBRESOURCE mapped{};
             ThrowIfFailed(m_context->Map(m_constants.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
@@ -6342,6 +6387,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         SafetySettings m_safety{};
         ShaderTuningSettings m_shaderTuning{};
         int m_benchmarkArchitectureMode = 0;
+        float m_benchmarkRiskOnlyNeutralLuma = 0.18f;
+        float m_benchmarkRiskOnlyGain = 0.92f;
         float m_contrastReduction = 2.0f / 3.0f;
         int m_profilePreset = 1;
         int m_fullScreenSensitivity = 1;
@@ -7646,8 +7693,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                 // Six columns remains backward compatible. Matrix v4 appends
                 // twelve outer detector/temporal settings; matrix v5 appends 24
                 // full-resolution shader transport/hold settings after those.
-                // Matrix v7 adds one benchmark-only mitigation architecture mode.
-                std::vector<std::array<std::wstring, 43>> specs;
+                // Matrix v7 adds architecture mode; v8 adds risk neutral/gain.
+                std::vector<std::array<std::wstring, 45>> specs;
                 wchar_t line[4096]{};
                 while (std::fgetws(line, static_cast<int>(std::size(line)), plan))
                 {
@@ -7667,13 +7714,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         start = tab + 1;
                     }
                     if (fields.size() != 6 && fields.size() != 18 &&
-                        fields.size() != 42 && fields.size() != 43)
+                        fields.size() != 42 && fields.size() != 43 &&
+                        fields.size() != 45)
                     {
                         std::fclose(plan);
                         DestroyWindow(replayWindow);
                         return 10;
                     }
-                    std::array<std::wstring, 43> spec{};
+                    std::array<std::wstring, 45> spec{};
                     for (size_t i = 0; i < fields.size(); ++i) spec[i] = fields[i];
                     const bool safeName = !spec[0].empty() && spec[0].size() <= 80 &&
                         std::all_of(spec[0].begin(), spec[0].end(), [](wchar_t c) {
@@ -7761,9 +7809,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     if (!spec[42].empty())
                     {
                         tuning.architectureMode =
-                            std::clamp(_wtoi(spec[42].c_str()), 0, 2);
+                            std::clamp(_wtoi(spec[42].c_str()), 0, 3);
                         tuning.enabled = true;
                     }
+                    tune(43, tuning.riskOnlyNeutralLuma);
+                    tune(44, tuning.riskOnlyGain);
                     app.ApplyRuntimeOptions(replayOptions);
                     app.ApplyBenchmarkTuning(tuning);
                     const auto caseDir = std::filesystem::path(replayBatchOutput) / spec[0];

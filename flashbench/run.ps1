@@ -286,18 +286,17 @@ try {
             }
         }
 
-        # Targeted runs compare mitigation architectures in one persistent 320x180
-        # GPU session: legacy transported luminance, risk-only current-frame, and
-        # hybrid one-frame raw-source limiting. Full/tuning runs verify the selected
-        # architecture and legacy default at 640x360.
+        # Targeted runs compare legacy, failed risk-only v1, and surface-validated
+        # risk-only v2 in one persistent 320x180 GPU session. Full/tuning runs
+        # verify only the selected architecture and legacy default at 640x360.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
             if ($TestTier -eq 'targeted' -and -not $TuneMatrix) {
-                & (Join-Path $PSScriptRoot 'matrix-v7.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v8.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir -ScreenOnly
             } else {
-                & (Join-Path $PSScriptRoot 'matrix-v7.ps1') `
+                & (Join-Path $PSScriptRoot 'matrix-v8.ps1') `
                     -Executable (Join-Path $root 'FlashGuard.exe') `
                     -OutputDir $matrixDir
             }
