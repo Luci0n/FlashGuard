@@ -13,7 +13,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 if ($Mode -eq 'gpu-smoke' -and
     ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full')) {
-    & (Join-Path $PSScriptRoot 'apply-matrix36-source.ps1') `
+    & (Join-Path $PSScriptRoot 'apply-matrix37-source.ps1') `
         -SourcePath (Join-Path $root 'src/FlashGuard.cpp')
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -291,11 +291,12 @@ try {
             }
         }
 
-        # Canonical same-binary repeatability check and decomposition of the
-        # Matrix-35 B factor into state semantics versus qualified risk lifetime.
+        # Matrix 37 keeps Matrix 36's surface-ownership fix and tests whether an
+        # already opposition-qualified weak stationary reversal may seed the next
+        # frame's surface-local risk without being attenuated by the same gate twice.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v36.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v37.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE
