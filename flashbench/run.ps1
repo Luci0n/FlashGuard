@@ -13,7 +13,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 if ($Mode -eq 'gpu-smoke' -and
     ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full')) {
-    & (Join-Path $PSScriptRoot 'apply-matrix41-source.ps1') `
+    & (Join-Path $PSScriptRoot 'apply-matrix42-source.ps1') `
         -SourcePath (Join-Path $root 'src/FlashGuard.cpp')
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -291,12 +291,12 @@ try {
             }
         }
 
-        # Matrix 41 resumes causal architecture work with a 2^3 decomposition
-        # of mode-35 state semantics: state-disocclusion ownership, qualified
-        # restoration sequence gating, and qualified-risk sequence gating.
+        # Matrix 42 fixes Matrix 41's R-only restoration ownership and retests
+        # direct qualified weak-risk seeding plus the 0.40 s qualified-risk
+        # lifetime as a 2^2 weak-protection factorial.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v41.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v42.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE
