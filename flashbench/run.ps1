@@ -291,12 +291,12 @@ try {
             }
         }
 
-        # Matrix 37 keeps Matrix 36's surface-ownership fix and tests whether an
-        # already opposition-qualified weak stationary reversal may seed the next
-        # frame's surface-local risk without being attenuated by the same gate twice.
+        # Matrix 38 verifies replay reset determinism by repeating identical mode
+        # 35 and mode 29 candidates three times each in mixed order while keeping
+        # the established full replay corpus and tuning unchanged.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v37.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v38.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE
