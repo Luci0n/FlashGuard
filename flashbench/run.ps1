@@ -13,7 +13,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 if ($Mode -eq 'gpu-smoke' -and
     ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full')) {
-    & (Join-Path $PSScriptRoot 'apply-matrix35-source.ps1') `
+    & (Join-Path $PSScriptRoot 'apply-matrix36-source.ps1') `
         -SourcePath (Join-Path $root 'src/FlashGuard.cpp')
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -291,11 +291,11 @@ try {
             }
         }
 
-        # Canonical full-replay factorial of the residual mode-20 -> mode-21
-        # changes after Matrices 32-34 eliminated the other camera-guard branches.
+        # Canonical same-binary repeatability check and decomposition of the
+        # Matrix-35 B factor into state semantics versus qualified risk lifetime.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v35.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v36.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE

@@ -73,7 +73,8 @@
     "FLASHGUARD_MATRIX/31",
     "FLASHGUARD_MATRIX/32",
     "FLASHGUARD_MATRIX/33",
-    "FLASHGUARD_MATRIX/34"
+    "FLASHGUARD_MATRIX/34",
+    "FLASHGUARD_MATRIX/35"
   ],
   "runs": [
     {
@@ -304,6 +305,11 @@
     {
       "run_id": "2026-08-27_b7f7325a_display-authority-isolation",
       "commit": "b7f7325aa1b7610fea5d2ba7257e0e5c24d98eb0",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_48e4f32c_residual-mode21-factorial",
+      "commit": "48e4f32c4c72d3b44ae7b9ca04e91c44e9fcf5ec",
       "result": "SUCCESS"
     }
   ]
