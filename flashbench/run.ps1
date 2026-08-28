@@ -13,7 +13,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 if ($Mode -eq 'gpu-smoke' -and
     ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full')) {
-    & (Join-Path $PSScriptRoot 'apply-matrix37-source.ps1') `
+    & (Join-Path $PSScriptRoot 'apply-matrix41-source.ps1') `
         -SourcePath (Join-Path $root 'src/FlashGuard.cpp')
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -291,12 +291,12 @@ try {
             }
         }
 
-        # Matrix 40 isolates persistent-batch candidate-order contamination by
-        # comparing a fresh BBBBBB mode-29 control process against the exact
-        # Matrix-38-style ABABBA mode35/mode29 mixed order in another fresh process.
+        # Matrix 41 resumes causal architecture work with a 2^3 decomposition
+        # of mode-35 state semantics: state-disocclusion ownership, qualified
+        # restoration sequence gating, and qualified-risk sequence gating.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v40.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v41.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE
