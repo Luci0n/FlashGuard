@@ -8481,10 +8481,45 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             mi.rcMonitor.left, mi.rcMonitor.top, replayWidth, replayHeight,
             nullptr, nullptr, instance, nullptr);
     }
+
+    HWND CreateStartupStatusWindow(HINSTANCE instance, HMONITOR mon)
+    {
+        MONITORINFO mi{ sizeof(mi) };
+        if (!GetMonitorInfoW(mon, &mi)) return nullptr;
+
+        constexpr int width = 420;
+        constexpr int height = 64;
+        const int x = mi.rcWork.left +
+            (mi.rcWork.right - mi.rcWork.left - width) / 2;
+        const int y = mi.rcWork.top +
+            (mi.rcWork.bottom - mi.rcWork.top - height) / 2;
+        HWND hwnd = CreateWindowExW(
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            L"STATIC",
+            L"FlashGuard is starting... Initializing GPU capture.",
+            WS_POPUP | WS_BORDER | SS_CENTER | SS_CENTERIMAGE,
+            x, y, width, height,
+            nullptr, nullptr, instance, nullptr);
+        if (!hwnd) return nullptr;
+
+        // The startup indicator exists during Desktop Duplication pre-roll.
+        // Never show it unless Windows can keep it out of the captured desktop.
+        if (!SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE))
+        {
+            DestroyWindow(hwnd);
+            return nullptr;
+        }
+        SendMessageW(hwnd, WM_SETFONT,
+            reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        UpdateWindow(hwnd);
+        return hwnd;
+    }
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 {
+    HWND startupWindow = nullptr;
     try
     {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -8833,9 +8868,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             GetCursorPos(&cursor);
             monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
         }
+
+        // Give immediate feedback before synchronous D3D/shader/capture setup.
+        // This is best-effort and never participates in the captured desktop.
+        startupWindow = CreateStartupStatusWindow(instance, monitor);
+
         HWND output = CreateOutputWindow(instance, monitor);
         if (!output)
         {
+            if (startupWindow) DestroyWindow(startupWindow);
+            startupWindow = nullptr;
             MessageBoxW(nullptr,
                 L"FlashGuard could not create a capture-excluded overlay.\n\n"
                 L"For safety, display-capture mode will not run unless Windows accepts WDA_EXCLUDEFROMCAPTURE, because otherwise the overlay could capture itself.",
@@ -8860,6 +8902,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 
         if (!app.ReadyToShow())
         {
+            if (startupWindow) DestroyWindow(startupWindow);
+            startupWindow = nullptr;
             app.Stop();
             g_app = nullptr;
             DestroyWindow(output);
@@ -8870,6 +8914,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             return 5;
         }
 
+        if (startupWindow) DestroyWindow(startupWindow);
+        startupWindow = nullptr;
         ShowWindow(output, SW_SHOWNOACTIVATE);
         SetWindowPos(output, HWND_TOPMOST, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
@@ -8908,6 +8954,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     }
     catch (HRESULT hr)
     {
+        if (startupWindow) DestroyWindow(startupWindow);
+        startupWindow = nullptr;
         wchar_t buf[256]{};
         swprintf_s(buf, L"FlashGuard failed with HRESULT 0x%08X.\n\nThe filter was not started. Do not assume the screen is protected.", static_cast<unsigned>(hr));
         MessageBoxW(nullptr, buf, L"FlashGuard", MB_ICONERROR | MB_OK);
@@ -8915,6 +8963,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     }
     catch (...)
     {
+        if (startupWindow) DestroyWindow(startupWindow);
+        startupWindow = nullptr;
         MessageBoxW(nullptr,
             L"FlashGuard failed unexpectedly. The display filter was not started. Do not assume the screen is protected.",
             L"FlashGuard", MB_ICONERROR | MB_OK);
