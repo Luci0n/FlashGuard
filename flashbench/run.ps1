@@ -13,7 +13,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 if ($Mode -eq 'gpu-smoke' -and
     ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full')) {
-    & (Join-Path $PSScriptRoot 'apply-matrix43-source.ps1') `
+    & (Join-Path $PSScriptRoot 'apply-matrix44-source.ps1') `
         -SourcePath (Join-Path $root 'src/FlashGuard.cpp')
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -291,12 +291,11 @@ try {
             }
         }
 
-        # Matrix 43 fixes the clean R+L baseline and separates signed-PRIME
-        # establishment amplitude from signed-PRIME survival duration to explain
-        # the remaining 5 Hz phase-0 weakness.
+        # Matrix 44 keeps the clean R+L behavior fixed and records the exact
+        # post-PRIME activation chain behind the remaining 5 Hz phase asymmetry.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v43.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v44.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE
