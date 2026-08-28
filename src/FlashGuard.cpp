@@ -6032,6 +6032,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             m_havePrevAnalysis = false;
             m_instantHistoryValid = false;
             m_instantSafetyIndex = 0;
+            // Protection state uses the output-history ping-pong index.
+            m_outputHistoryIndex = 0;
+            m_sourceHistoryIndex = 0;
             m_outputHistoryValid = false;
             m_sourceHistoryValid = false;
             m_idleReleaseUntilMs.store(0, std::memory_order_release);
@@ -7189,6 +7192,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             for (auto& rtv : m_outputHistoryRTVs)
                 if (rtv) m_context->ClearRenderTargetView(rtv.get(), historyBlack);
             for (auto& rtv : m_sourceHistoryRTVs)
+                if (rtv) m_context->ClearRenderTargetView(rtv.get(), historyBlack);
+            // Protection-state alpha is its validity. Clear both ping-pong buffers
+            // so risk/signed-prime state cannot survive a replay/capture reset.
+            for (auto& rtv : m_protectionStateRTVs)
                 if (rtv) m_context->ClearRenderTargetView(rtv.get(), historyBlack);
             for (auto& rtv : m_motionDiagnosticRTVs)
                 if (rtv) m_context->ClearRenderTargetView(rtv.get(), historyBlack);
