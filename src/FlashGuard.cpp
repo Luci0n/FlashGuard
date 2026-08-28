@@ -5289,22 +5289,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     }
                 }
 
-                // Keep the present queue empty BEFORE acquiring the next active
-                // desktop frame. Waiting after capture makes the captured image
-                // older while DXGI/DWM catches up, which is especially visible in
-                // sharp, high-FPS windowed games. Skip the wait after true idle so
-                // a newly changing desktop can wake capture immediately.
-                const int64_t previousCaptureMs =
-                    m_lastRealCaptureMs.load(std::memory_order_acquire);
-                const auto presentReadyWaitStart = std::chrono::steady_clock::now();
-                if (m_frameLatencyWaitableObject && previousCaptureMs > 0 &&
-                    NowMs() - previousCaptureMs < 50)
-                {
-                    WaitForSingleObjectEx(m_frameLatencyWaitableObject, 20, FALSE);
-                }
-                m_presentReadyWaitMs.store(std::chrono::duration<float, std::milli>(
-                    std::chrono::steady_clock::now() - presentReadyWaitStart).count(),
-                    std::memory_order_release);
+                // Latency experiment 1: Desktop Duplication already blocks for the
+                // next desktop update. Do not additionally pace acquisition behind
+                // FlashGuard's own swap-chain readiness; use the existing F9 timing
+                // diagnostics to determine whether this reduces displayed frame age.
+                m_presentReadyWaitMs.store(0.0f, std::memory_order_release);
 
                 DXGI_OUTDUPL_FRAME_INFO info{};
                 winrt::com_ptr<IDXGIResource> resource;
