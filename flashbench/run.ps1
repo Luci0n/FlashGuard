@@ -291,12 +291,12 @@ try {
             }
         }
 
-        # Matrix 38 verifies replay reset determinism by repeating identical mode
-        # 35 and mode 29 candidates three times each in mixed order while keeping
-        # the established full replay corpus and tuning unchanged.
+        # Matrix 39 isolates NVOFA temporal hints as the remaining source of
+        # weak 5 Hz replay nondeterminism. It repeats identical mode-29 candidates
+        # in separate normal-hints and forced-hints-off processes.
         if ($TuneMatrix -or $TestTier -eq 'targeted' -or $TestTier -eq 'full') {
             $matrixDir = Join-Path $OutputDir 'matrix'
-            & (Join-Path $PSScriptRoot 'matrix-v38.ps1') `
+            & (Join-Path $PSScriptRoot 'matrix-v39.ps1') `
                 -Executable (Join-Path $root 'FlashGuard.exe') `
                 -OutputDir $matrixDir
             $matrixExit = $LASTEXITCODE

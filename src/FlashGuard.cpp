@@ -262,6 +262,8 @@ namespace
         HotkeyBinding{ 0, VK_F10 }
     };
     std::atomic<ULONGLONG> g_lastShieldToggleMs{ 0 };
+    // Replay-only diagnostic switch used by Matrix 39. Production leaves this false.
+    bool g_replayDisableNvofTemporalHints = false;
 
     struct WindowSearch
     {
@@ -8512,6 +8514,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         const std::wstring replayWidthArg = ParseArgumentValue(L"--replay-width");
         const std::wstring replayHeightArg = ParseArgumentValue(L"--replay-height");
         const bool replayScreening = HasCommandLineFlag(L"--replay-screening");
+        g_replayDisableNvofTemporalHints =
+            HasCommandLineFlag(L"--replay-disable-nvof-temporal-hints");
         const int replayWidth = replayWidthArg.empty() ? (replayScreening ? 320 : 640) :
             std::clamp(_wtoi(replayWidthArg.c_str()), 160, 1920);
         const int replayHeight = replayHeightArg.empty() ? (replayScreening ? 180 : 360) :

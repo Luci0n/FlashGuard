@@ -340,8 +340,9 @@
                 // solves on ordinary frames, so a solve after any skipped/failed
                 // execute must start without a stale hint. Consecutive successful
                 // solves may keep temporal hints for quality and speed.
-                in.disableTemporalHints = previousExecuteSuccessful ?
-                    nvof5::NV_OF_FALSE : nvof5::NV_OF_TRUE;
+                in.disableTemporalHints =
+                    (g_replayDisableNvofTemporalHints || !previousExecuteSuccessful) ?
+                        nvof5::NV_OF_TRUE : nvof5::NV_OF_FALSE;
                 nvof5::NV_OF_EXECUTE_OUTPUT_PARAMS out{};
                 out.outputBuffer = m_nvofForwardHandle;
                 out.bwdOutputBuffer = m_nvofBackwardHandle;
