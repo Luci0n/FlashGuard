@@ -264,6 +264,8 @@ namespace
     std::atomic<ULONGLONG> g_lastShieldToggleMs{ 0 };
     // Replay-only diagnostic switch used by Matrix 39. Production leaves this false.
     bool g_replayDisableNvofTemporalHints = false;
+    // Live-only A/B switch for latency diagnosis. Replay behavior never uses it.
+    bool g_liveDisableNvofForLatencyTest = false;
 
     struct WindowSearch
     {
@@ -6758,11 +6760,13 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_latestStats.visualFieldAffectedArea * 100.0f,
                 m_latestStats.flashEnergy,
                 m_latestStats.cameraMotionScore * 100.0f,
-                m_nvofHandle ?
-                    (m_nvofFlowValid ?
-                        (m_nvofCostEnabled ? L"NVOFA ACTIVE+COST 0.5x FAST" : L"NVOFA ACTIVE 0.5x FAST") :
-                        (m_nvofCostEnabled ? L"NVOFA ANCHOR+COST 0.5x FAST" : L"NVOFA ANCHOR 0.5x FAST")) :
-                    L"FALLBACK",
+                (g_liveDisableNvofForLatencyTest && !m_replayMode) ?
+                    L"NVOFA BYPASSED (LATENCY TEST)" :
+                    (m_nvofHandle ?
+                        (m_nvofFlowValid ?
+                            (m_nvofCostEnabled ? L"NVOFA ACTIVE+COST 0.5x FAST" : L"NVOFA ACTIVE 0.5x FAST") :
+                            (m_nvofCostEnabled ? L"NVOFA ANCHOR+COST 0.5x FAST" : L"NVOFA ANCHOR 0.5x FAST")) :
+                        L"FALLBACK"),
                 static_cast<unsigned>(m_nvofGridSize),
                 m_latestStats.patternScore * 100.0f,
                 m_latestStats.redAffectedArea * 100.0f,
@@ -6919,7 +6923,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                           bool useOpticalFlow = true,
                           bool idleReleaseTick = false)
         {
-            if (useOpticalFlow)
+            const bool bypassLiveNvof =
+                g_liveDisableNvofForLatencyTest && !m_replayMode;
+            if (useOpticalFlow && !bypassLiveNvof)
             {
                 // NVOFA runs on its dedicated hardware engine and is current-frame
                 // evidence. Execute it for every new captured source frame instead
@@ -8514,6 +8520,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         INITCOMMONCONTROLSEX controls{ sizeof(controls), ICC_WIN95_CLASSES };
         InitCommonControlsEx(&controls);
+        g_liveDisableNvofForLatencyTest =
+            HasCommandLineFlag(L"--latency-disable-nvof");
         if (HasCommandLineFlag(L"--validate-shaders"))
             return ValidateShaderSource() ? 0 : 2;
         if (HasCommandLineFlag(L"--validate-risk-integrator"))
