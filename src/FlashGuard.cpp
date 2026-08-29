@@ -267,6 +267,9 @@ namespace
     bool g_replayDisableNvofTemporalHints = false;
     // Live-only A/B switch for latency diagnosis. Replay behavior never uses it.
     bool g_liveDisableNvofForLatencyTest = false;
+    // Strong live-only A/B: copy the newest Desktop Duplication image directly
+    // to the output swapchain. This intentionally disables flash protection.
+    bool g_liveRawPassthroughForLatencyTest = false;
 
     struct WindowSearch
     {
@@ -2140,26 +2143,63 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
     public:
         ~FlashGuardApp() { Stop(); }
 
-        void Initialize(HWND output, HMONITOR monitor)
+        void Initialize(HWND output, HMONITOR monitor,
+                        HWND startupStatus = nullptr, HWND startupProgress = nullptr)
         {
+            const auto setStartupProgress = [&](int percent, const wchar_t* text)
+            {
+                if (startupStatus && text)
+                {
+                    std::wstring label;
+                    if (g_liveRawPassthroughForLatencyTest)
+                        label = L"RAW PASSTHROUGH - NO PROTECTION\n";
+                    label += text;
+                    SetWindowTextW(startupStatus, label.c_str());
+                    RedrawWindow(startupStatus, nullptr, nullptr,
+                        RDW_INVALIDATE | RDW_UPDATENOW);
+                }
+                if (startupProgress)
+                {
+                    SendMessageW(startupProgress, PBM_SETPOS,
+                        static_cast<WPARAM>(std::clamp(percent, 0, 100)), 0);
+                    UpdateWindow(startupProgress);
+                }
+            };
+
             m_output = output;
             m_monitor = monitor;
             m_debugEnabled.store(m_safety.debugOverlay, std::memory_order_release);
+
+            setStartupProgress(5, L"Selecting display and GPU...");
             FindOutputAndCreateDevice();
 
+            setStartupProgress(15, L"Creating Direct3D presentation path...");
             winrtlessEnableMultithreadProtection();
             CreateSwapChain();
+
+            setStartupProgress(24, L"Compiling protection shaders...");
             CreatePipeline();
+
+            setStartupProgress(48, L"Allocating analysis resources...");
             CreateAnalysisResources();
+
+            setStartupProgress(58, L"Preparing output history...");
             RecreateOutputResources();
+
+            setStartupProgress(68, L"Preparing safety and diagnostics...");
             CreateShieldTexture();
             CreateDebugResources();
+
+            setStartupProgress(76, L"Preparing overlay resources...");
             CreateHintResources();
             ClearAllToBlack();
+
+            setStartupProgress(84, L"Starting Desktop Duplication...");
             CreateDuplication();
 
             m_lastFrameMs.store(NowMs(), std::memory_order_release);
             m_captureThread = std::thread([this] { CaptureLoop(); });
+            setStartupProgress(90, L"Warming up desktop capture...");
         }
 
         void InitializeReplay(HWND output, HMONITOR monitor)
@@ -5320,7 +5360,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         m_lastRealCaptureMs.load(std::memory_order_acquire);
                     const bool trulyIdle = lastRealCaptureMs > 0 &&
                         nowMs - lastRealCaptureMs >= 40;
-                    if (trulyIdle &&
+                    if (!g_liveRawPassthroughForLatencyTest && trulyIdle &&
                         nowMs < m_idleReleaseUntilMs.load(std::memory_order_acquire) &&
                         !m_manualShield.load(std::memory_order_acquire) &&
                         !m_automaticShieldActive.load(std::memory_order_acquire))
@@ -5404,7 +5444,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         {
                             std::scoped_lock lock(m_mutex);
                             if (!m_stopped.load())
-                                QueueCapturedFrame(texture.get(), dt);
+                            {
+                                if (g_liveRawPassthroughForLatencyTest)
+                                    PresentRawCapturedFrame(texture.get());
+                                else
+                                    QueueCapturedFrame(texture.get(), dt);
+                            }
                         }
                         m_captureProcessMs.store(std::chrono::duration<float, std::milli>(
                             std::chrono::steady_clock::now() - processingStart).count(),
@@ -5427,6 +5472,36 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     }
                 }
             }
+        }
+
+        void PresentRawCapturedFrame(ID3D11Texture2D* source)
+        {
+            if (!source || !m_backBuffer || !m_swapChain) return;
+
+            D3D11_TEXTURE2D_DESC sourceDesc{};
+            D3D11_TEXTURE2D_DESC backBufferDesc{};
+            source->GetDesc(&sourceDesc);
+            m_backBuffer->GetDesc(&backBufferDesc);
+            if (sourceDesc.Width != backBufferDesc.Width ||
+                sourceDesc.Height != backBufferDesc.Height ||
+                sourceDesc.Format != backBufferDesc.Format ||
+                sourceDesc.SampleDesc.Count != backBufferDesc.SampleDesc.Count ||
+                sourceDesc.SampleDesc.Quality != backBufferDesc.SampleDesc.Quality)
+                throw E_INVALIDARG;
+
+            // Latency experiment: no analysis ring, instant-safety pass, NVOFA,
+            // temporal/history processing, protection shader, or diagnostic overlay.
+            m_context->OMSetRenderTargets(0, nullptr, nullptr);
+            m_context->CopyResource(m_backBuffer.get(), source);
+
+            const auto presentStart = std::chrono::steady_clock::now();
+            const UINT presentFlags =
+                m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0;
+            const HRESULT presentHr = m_swapChain->Present(0, presentFlags);
+            m_presentCallMs.store(std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - presentStart).count(),
+                std::memory_order_release);
+            ThrowIfFailed(presentHr);
         }
 
         void CreateSwapChain()
@@ -8501,37 +8576,65 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             nullptr, nullptr, instance, nullptr);
     }
 
-    HWND CreateStartupStatusWindow(HINSTANCE instance, HMONITOR mon)
+    HWND CreateStartupStatusWindow(HINSTANCE instance, HMONITOR mon,
+                                   HWND& statusText, HWND& progress)
     {
+        statusText = nullptr;
+        progress = nullptr;
+
         MONITORINFO mi{ sizeof(mi) };
         if (!GetMonitorInfoW(mon, &mi)) return nullptr;
 
-        constexpr int width = 420;
-        constexpr int height = 64;
+        constexpr int width = 440;
+        constexpr int height = 94;
         const int x = mi.rcWork.left +
             (mi.rcWork.right - mi.rcWork.left - width) / 2;
         const int y = mi.rcWork.top +
             (mi.rcWork.bottom - mi.rcWork.top - height) / 2;
         HWND hwnd = CreateWindowExW(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-            L"STATIC",
-            L"FlashGuard is starting... Initializing GPU capture.",
-            WS_POPUP | WS_BORDER | SS_CENTER | SS_CENTERIMAGE,
+            L"STATIC", L"",
+            WS_POPUP | WS_BORDER | WS_CLIPCHILDREN,
             x, y, width, height,
             nullptr, nullptr, instance, nullptr);
         if (!hwnd) return nullptr;
 
-        // The startup indicator exists during Desktop Duplication pre-roll.
-        // Never show it unless Windows can keep it out of the captured desktop.
+        // The complete startup UI is one top-level capture-excluded window.
+        // Child controls share that visual ownership, avoiding a second
+        // WDA_EXCLUDEFROMCAPTURE failure point for the progress bar.
         if (!SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE))
         {
             DestroyWindow(hwnd);
             return nullptr;
         }
-        SendMessageW(hwnd, WM_SETFONT,
+
+        statusText = CreateWindowExW(
+            0, L"STATIC",
+            L"FlashGuard is starting...\nPreparing GPU capture.",
+            WS_CHILD | WS_VISIBLE | SS_CENTER,
+            12, 8, width - 24, 50,
+            hwnd, nullptr, instance, nullptr);
+        progress = CreateWindowExW(
+            0, PROGRESS_CLASSW, nullptr,
+            WS_CHILD | WS_VISIBLE | PBS_SMOOTH,
+            18, 65, width - 36, 16,
+            hwnd, nullptr, instance, nullptr);
+        if (!statusText || !progress)
+        {
+            DestroyWindow(hwnd);
+            statusText = nullptr;
+            progress = nullptr;
+            return nullptr;
+        }
+
+        SendMessageW(statusText, WM_SETFONT,
             reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+        SendMessageW(progress, PBM_SETRANGE32, 0, 100);
+        SendMessageW(progress, PBM_SETPOS, 2, 0);
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         UpdateWindow(hwnd);
+        UpdateWindow(statusText);
+        UpdateWindow(progress);
         return hwnd;
     }
 }
@@ -8539,6 +8642,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 {
     HWND startupWindow = nullptr;
+    HWND startupStatus = nullptr;
+    HWND startupProgress = nullptr;
     try
     {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -8546,6 +8651,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         InitCommonControlsEx(&controls);
         g_liveDisableNvofForLatencyTest =
             HasCommandLineFlag(L"--latency-disable-nvof");
+        g_liveRawPassthroughForLatencyTest =
+            HasCommandLineFlag(L"--latency-raw-passthrough");
         if (HasCommandLineFlag(L"--validate-shaders"))
             return ValidateShaderSource() ? 0 : 2;
         if (HasCommandLineFlag(L"--validate-risk-integrator"))
@@ -8891,14 +8998,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         }
 
         // Give immediate feedback before synchronous D3D/shader/capture setup.
-        // This is best-effort and never participates in the captured desktop.
-        startupWindow = CreateStartupStatusWindow(instance, monitor);
+        // The same capture-excluded parent owns both status text and progress.
+        startupWindow = CreateStartupStatusWindow(
+            instance, monitor, startupStatus, startupProgress);
 
         HWND output = CreateOutputWindow(instance, monitor);
         if (!output)
         {
             if (startupWindow) DestroyWindow(startupWindow);
-            startupWindow = nullptr;
+            startupWindow = startupStatus = startupProgress = nullptr;
             MessageBoxW(nullptr,
                 L"FlashGuard could not create a capture-excluded overlay.\n\n"
                 L"For safety, display-capture mode will not run unless Windows accepts WDA_EXCLUDEFROMCAPTURE, because otherwise the overlay could capture itself.",
@@ -8910,7 +9018,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         FlashGuardApp app;
         g_app = &app;
         app.ApplyRuntimeOptions(savedOptions);
-        app.Initialize(output, monitor);
+        app.Initialize(output, monitor, startupStatus, startupProgress);
 
         // Desktop Duplication pre-rolls while the overlay is still hidden. It
         // duplicates the selected monitor rather than capturing one app window.
@@ -8924,7 +9032,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         if (!app.ReadyToShow())
         {
             if (startupWindow) DestroyWindow(startupWindow);
-            startupWindow = nullptr;
+            startupWindow = startupStatus = startupProgress = nullptr;
             app.Stop();
             g_app = nullptr;
             DestroyWindow(output);
@@ -8935,8 +9043,21 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             return 5;
         }
 
+        if (startupProgress)
+        {
+            SendMessageW(startupProgress, PBM_SETPOS, 100, 0);
+            UpdateWindow(startupProgress);
+        }
+        if (startupStatus)
+        {
+            SetWindowTextW(startupStatus,
+                g_liveRawPassthroughForLatencyTest ?
+                    L"RAW PASSTHROUGH - NO PROTECTION\nReady." :
+                    L"FlashGuard is ready.");
+            UpdateWindow(startupStatus);
+        }
         if (startupWindow) DestroyWindow(startupWindow);
-        startupWindow = nullptr;
+        startupWindow = startupStatus = startupProgress = nullptr;
         ShowWindow(output, SW_SHOWNOACTIVATE);
         SetWindowPos(output, HWND_TOPMOST, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
@@ -8976,7 +9097,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     catch (HRESULT hr)
     {
         if (startupWindow) DestroyWindow(startupWindow);
-        startupWindow = nullptr;
+        startupWindow = startupStatus = startupProgress = nullptr;
         wchar_t buf[256]{};
         swprintf_s(buf, L"FlashGuard failed with HRESULT 0x%08X.\n\nThe filter was not started. Do not assume the screen is protected.", static_cast<unsigned>(hr));
         MessageBoxW(nullptr, buf, L"FlashGuard", MB_ICONERROR | MB_OK);
@@ -8985,7 +9106,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     catch (...)
     {
         if (startupWindow) DestroyWindow(startupWindow);
-        startupWindow = nullptr;
+        startupWindow = startupStatus = startupProgress = nullptr;
         MessageBoxW(nullptr,
             L"FlashGuard failed unexpectedly. The display filter was not started. Do not assume the screen is protected.",
             L"FlashGuard", MB_ICONERROR | MB_OK);
