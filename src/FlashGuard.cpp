@@ -151,6 +151,7 @@ namespace
         float p14[4];
         float p15[4];
         float p16[4];
+        float p17[4];
     };
     static_assert(sizeof(ShaderConstants) % 16 == 0);
 
@@ -271,6 +272,9 @@ namespace
     // Strong live-only A/B: copy the newest Desktop Duplication image directly
     // to the output swapchain. This intentionally disables flash protection.
     bool g_liveRawPassthroughForLatencyTest = false;
+    // Live-only experiment: keep the cheap current-frame safety detector active,
+    // but wake expensive optical-flow refinement only around suspicious changes.
+    bool g_liveAdaptiveProtectionForLatencyTest = false;
 
     struct WindowSearch
     {
@@ -478,6 +482,7 @@ cbuffer Safety : register(b0)
     float4 P14; // temporal-state tau scales / exact hold / moving floor
     float4 P15; // direct-intrinsic display / event-seed gates
     float4 P16; // x = benchmark architecture, y/z = risk params, w = live safe fast path
+    float4 P17; // x = adaptive live latency experiment
 };
 
 struct VSOut
@@ -834,8 +839,12 @@ MainOutput PSMain(VSOut i)
         const bool unchangedStatic = staticResidual < 0.004;
         const bool verifiedOrdinaryTransport =
             fastTransportConfidence > 0.62 && fastResidual < 0.010;
+        const bool verifiedCoarseMotion =
+            P17.x > 0.5 && coarseMotion > 0.82 &&
+            coarseEvent < 0.006 && coarseRisk < 0.006 &&
+            redMitigationGate < 0.006 && temporalRisk < 0.006;
 
-        if ((unchangedStatic || verifiedOrdinaryTransport) &&
+        if ((unchangedStatic || verifiedOrdinaryTransport || verifiedCoarseMotion) &&
             previousRiskFast < 0.015 && previousRedFast < 0.015)
         {
             const float fastL = Luma(cur);
@@ -6473,6 +6482,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             m_nvofPreviousValid = false;
             m_nvofFlowValid = false;
             m_nvofLastExecuteSuccessful = false;
+            m_liveNvofWakeFrames = 0;
             m_haveDisplayedLuma = false;
             m_haveHardRiseLuma = false;
             m_hardGlobalActive = false;
@@ -7347,6 +7357,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             c.p16[1] = m_benchmarkRiskOnlyNeutralLuma;
             c.p16[2] = m_benchmarkRiskOnlyGain;
             c.p16[3] = m_replayMode ? 0.0f : 1.0f;
+            c.p17[0] = (g_liveAdaptiveProtectionForLatencyTest && !m_replayMode) ?
+                1.0f : 0.0f;
 
             D3D11_MAPPED_SUBRESOURCE mapped{};
             ThrowIfFailed(m_context->Map(m_constants.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
@@ -7553,10 +7565,39 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     m_latestStats.directionalCoherence >= m_safety.coherenceThreshold * 0.85f &&
                     !hardGlobalTrigger &&
                     m_latestStats.cameraMotionScore < m_safety.cameraMotionSuppression;
+                bool useOpticalFlow = true;
+                if (g_liveAdaptiveProtectionForLatencyTest && !m_replayMode)
+                {
+                    const bool lowSceneMotion =
+                        m_latestStats.cameraMotionScore <
+                        m_safety.cameraMotionSuppression * 0.85f;
+                    const bool suspiciousAnalysis = m_latestStats.validDelta &&
+                        lowSceneMotion &&
+                        (std::fabs(m_latestStats.globalDelta) >=
+                            m_safety.localGlobalSupportThreshold ||
+                         m_latestStats.strongAffectedArea >=
+                            m_safety.smallFlashAreaThreshold ||
+                         m_latestStats.redAffectedArea >=
+                            m_safety.redAffectedAreaThreshold * 0.35f ||
+                         m_latestStats.patternScore >=
+                            m_safety.patternScoreThreshold * 0.50f ||
+                         (m_latestStats.affectedArea >=
+                            m_safety.affectedAreaThreshold * 0.55f &&
+                          m_latestStats.directionalCoherence >=
+                            m_safety.coherenceThreshold * 0.80f));
+                    if (hardRiseLimited || broadTransition || suspiciousAnalysis)
+                        m_liveNvofWakeFrames = 8;
+                    useOpticalFlow = m_liveNvofWakeFrames > 0;
+                    if (m_liveNvofWakeFrames > 0)
+                        --m_liveNvofWakeFrames;
+                    if (!useOpticalFlow)
+                        m_nvofPreviousValid = false;
+                }
                 RenderSource(incoming.srv.get(),
                     m_haveHardRiseLuma ? m_latestStats.globalLuma : 0.5f,
                     m_haveHardRiseLuma ? m_hardRiseLuma : 0.5f,
-                    hardRiseLimited ? -1.0f : 0.0f, 0.0f, false, broadTransition);
+                    hardRiseLimited ? -1.0f : 0.0f, 0.0f, false, broadTransition,
+                    useOpticalFlow);
                 m_context->CopyResource(m_instantPreviousAnalysis.get(), m_analysisTex.get());
                 m_instantHistoryValid = true;
                 m_ringRead = m_ringWrite;
@@ -7696,6 +7737,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         size_t m_liveProcessingSlot = 3;
         uint64_t m_liveCaptureSequence = 0;
         std::atomic<uint64_t> m_liveFrameGeneration{ 1 };
+        int m_liveNvofWakeFrames = 0;
         std::atomic<bool> m_stopped{ false };
         std::atomic<bool> m_cleanupDone{ false };
         std::atomic<bool> m_manualShield{ false };
@@ -9010,6 +9052,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             HasCommandLineFlag(L"--latency-disable-nvof");
         g_liveRawPassthroughForLatencyTest =
             HasCommandLineFlag(L"--latency-raw-passthrough");
+        g_liveAdaptiveProtectionForLatencyTest =
+            HasCommandLineFlag(L"--latency-adaptive-protection");
         if (HasCommandLineFlag(L"--validate-shaders"))
             return ValidateShaderSource() ? 0 : 2;
         if (HasCommandLineFlag(L"--validate-risk-integrator"))
