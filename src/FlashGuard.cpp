@@ -5255,7 +5255,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 faultSince > 0 && now - faultSince >= kAutomaticShieldFaultDelayMs;
             if ((sustainedFault || age > kDefaultStaleFrameMs) &&
                 !m_automaticShieldActive.exchange(true, std::memory_order_acq_rel))
+            {
+                DiscardPendingLiveFrames();
                 m_captureRecoveryFrames.store(8, std::memory_order_release);
+            }
             if (m_manualShield.load(std::memory_order_acquire) ||
                 m_automaticShieldActive.load(std::memory_order_acquire))
             {
@@ -5265,6 +5268,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
         void ResizeOutput()
         {
+            DiscardPendingLiveFrames();
             std::scoped_lock lock(m_mutex);
             if (!m_swapChain) return;
             m_backBuffer = nullptr;
@@ -5305,6 +5309,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         {
             winrt::com_ptr<ID3D11Texture2D> texture;
             uint64_t sequence = 0;
+            uint64_t generation = 0;
             std::chrono::steady_clock::time_point capturedAt{};
             bool ready = false;
         };
@@ -5414,6 +5419,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
         void SignalCaptureFault()
         {
+            DiscardPendingLiveFrames();
             m_captureFault.store(true, std::memory_order_release);
             int64_t expected = 0;
             m_captureFaultSinceMs.compare_exchange_strong(expected, NowMs(),
@@ -5449,6 +5455,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             }
             if (matches) return;
 
+            m_liveFrameGeneration.fetch_add(1, std::memory_order_acq_rel);
             D3D11_TEXTURE2D_DESC copyDesc = sourceDesc;
             copyDesc.MipLevels = 1;
             copyDesc.ArraySize = 1;
@@ -5462,6 +5469,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             {
                 slot.texture = nullptr;
                 slot.sequence = 0;
+                slot.generation = 0;
                 slot.ready = false;
                 ThrowIfFailed(m_device->CreateTexture2D(
                     &copyDesc, nullptr, slot.texture.put()));
@@ -5472,6 +5480,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         void DiscardPendingLiveFrames()
         {
             std::scoped_lock lock(m_liveFrameMutex);
+            m_liveFrameGeneration.fetch_add(1, std::memory_order_acq_rel);
             for (auto& slot : m_liveCaptureSlots)
                 slot.ready = false;
         }
@@ -5480,6 +5489,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         {
             std::unique_lock lock(m_liveFrameMutex);
             EnsureLiveCaptureSlotsLocked(source);
+            const uint64_t generation =
+                m_liveFrameGeneration.load(std::memory_order_acquire);
 
             // Keep at most one not-yet-processed frame. If processing falls
             // behind, newer desktop content replaces stale intermediate frames
@@ -5509,6 +5520,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             LiveCaptureSlot& slot = m_liveCaptureSlots[writeIndex];
             m_context->CopyResource(slot.texture.get(), source);
             slot.sequence = ++m_liveCaptureSequence;
+            slot.generation = generation;
             slot.capturedAt = std::chrono::steady_clock::now();
             slot.ready = true;
             m_liveWriteCursor = (writeIndex + 1) % m_liveCaptureSlots.size();
@@ -5519,10 +5531,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
         void ProcessingLoop()
         {
+            uint64_t lastRenderedGeneration = 0;
             while (!m_stopped.load(std::memory_order_acquire))
             {
                 winrt::com_ptr<ID3D11Texture2D> texture;
                 std::chrono::steady_clock::time_point capturedAt{};
+                uint64_t frameGeneration = 0;
                 size_t processingSlot = m_liveCaptureSlots.size();
                 {
                     std::unique_lock lock(m_liveFrameMutex);
@@ -5549,6 +5563,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                         LiveCaptureSlot& slot = m_liveCaptureSlots[processingSlot];
                         texture = slot.texture;
                         capturedAt = slot.capturedAt;
+                        frameGeneration = slot.generation;
                         slot.ready = false;
                         m_liveProcessingSlot = processingSlot;
                     }
@@ -5556,10 +5571,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
                 if (texture)
                 {
-                    float dt = std::chrono::duration<float>(
-                        capturedAt - m_lastFrameTime).count();
-                    if (!std::isfinite(dt) || dt <= 0.0f || dt > 0.5f)
-                        dt = 1.0f / 60.0f;
+                    float dt = 1.0f / 60.0f;
+                    if (frameGeneration == lastRenderedGeneration)
+                    {
+                        dt = std::chrono::duration<float>(
+                            capturedAt - m_lastFrameTime).count();
+                        if (!std::isfinite(dt) || dt <= 0.0f || dt > 0.5f)
+                            dt = 1.0f / 60.0f;
+                    }
 
                     const auto processingStart = std::chrono::steady_clock::now();
                     bool rendered = false;
@@ -5567,6 +5586,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     {
                         std::scoped_lock lock(m_mutex);
                         if (!m_stopped.load() &&
+                            frameGeneration == m_liveFrameGeneration.load(
+                                std::memory_order_acquire) &&
                             !m_manualShield.load(std::memory_order_acquire) &&
                             !m_automaticShieldActive.load(std::memory_order_acquire))
                         {
@@ -5584,6 +5605,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
                     if (rendered)
                     {
+                        lastRenderedGeneration = frameGeneration;
                         m_lastFrameTime = capturedAt;
                         m_captureProcessMs.store(
                             std::chrono::duration<float, std::milli>(
@@ -6391,6 +6413,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
         void ResetDelayedPipeline()
         {
+            DiscardPendingLiveFrames();
             m_ringRead = 0;
             m_ringWrite = 0;
             m_bufferedFrameCount = 0;
@@ -7634,6 +7657,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         size_t m_liveWriteCursor = 0;
         size_t m_liveProcessingSlot = 3;
         uint64_t m_liveCaptureSequence = 0;
+        std::atomic<uint64_t> m_liveFrameGeneration{ 1 };
         std::atomic<bool> m_stopped{ false };
         std::atomic<bool> m_cleanupDone{ false };
         std::atomic<bool> m_manualShield{ false };
