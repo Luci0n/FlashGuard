@@ -17,6 +17,7 @@
 #include <d3d11_4.h>
 #include <dxgi1_2.h>
 #include <dxgi1_3.h>
+#include <dxgi1_5.h>
 #include <d3dcompiler.h>
 #include <winrt/base.h>
 
@@ -5124,8 +5125,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             if (!m_swapChain) return;
             m_backBuffer = nullptr;
             m_backBufferRTV = nullptr;
-            HRESULT hr = m_swapChain->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN,
-                DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
+            UINT resizeFlags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+            if (m_allowTearing)
+                resizeFlags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+            HRESULT hr = m_swapChain->ResizeBuffers(
+                0, 0, 0, DXGI_FORMAT_UNKNOWN, resizeFlags);
             if (FAILED(hr)) return;
             RecreateOutputResources();
             ClearAllToBlack();
@@ -5434,6 +5438,21 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             winrt::com_ptr<IDXGIFactory2> factory;
             ThrowIfFailed(adapter->GetParent(__uuidof(IDXGIFactory2), factory.put_void()));
 
+            // Query tearing support once for the FlashGuard presentation swapchain.
+            // When available, sync-interval-0 presents do not have to wait for the
+            // next compositor vblank, reducing the capture-to-display leg.
+            m_allowTearing = false;
+            winrt::com_ptr<IDXGIFactory5> factory5;
+            if (SUCCEEDED(factory->QueryInterface(
+                    __uuidof(IDXGIFactory5), factory5.put_void())))
+            {
+                BOOL allowTearing = FALSE;
+                if (SUCCEEDED(factory5->CheckFeatureSupport(
+                        DXGI_FEATURE_PRESENT_ALLOW_TEARING,
+                        &allowTearing, sizeof(allowTearing))))
+                    m_allowTearing = allowTearing == TRUE;
+            }
+
             RECT rc{};
             GetClientRect(m_output, &rc);
             DXGI_SWAP_CHAIN_DESC1 desc{};
@@ -5447,6 +5466,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
             desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
             desc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+            if (m_allowTearing)
+                desc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 
             ThrowIfFailed(factory->CreateSwapChainForHwnd(
                 m_device.get(), m_output, &desc, nullptr, nullptr, m_swapChain.put()));
@@ -7039,7 +7060,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 // this frame immediately but do not discard it: DO_NOT_WAIT produced
                 // visible motion judder whenever the compositor was briefly busy.
                 const auto presentStart = std::chrono::steady_clock::now();
-                const HRESULT presentHr = m_swapChain->Present(0, 0);
+                const UINT presentFlags =
+                    m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0;
+                const HRESULT presentHr = m_swapChain->Present(0, presentFlags);
                 m_presentCallMs.store(std::chrono::duration<float, std::milli>(
                     std::chrono::steady_clock::now() - presentStart).count(),
                     std::memory_order_release);
@@ -7267,6 +7290,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         winrt::com_ptr<IDXGIOutputDuplication> m_duplication;
         winrt::com_ptr<IDXGISwapChain1> m_swapChain;
         HANDLE m_frameLatencyWaitableObject = nullptr;
+        bool m_allowTearing = false;
         winrt::com_ptr<ID3D11Texture2D> m_backBuffer;
         winrt::com_ptr<ID3D11RenderTargetView> m_backBufferRTV;
         std::array<winrt::com_ptr<ID3D11Texture2D>, 2> m_outputHistoryTextures;
