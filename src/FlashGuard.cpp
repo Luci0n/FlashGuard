@@ -2296,7 +2296,6 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             CreateDuplication();
 
             m_lastFrameMs.store(NowMs(), std::memory_order_release);
-            m_processingThread = std::thread([this] { ProcessingLoop(); });
             m_captureThread = std::thread([this] { CaptureLoop(); });
             setStartupProgress(90, L"Warming up desktop capture...");
         }
@@ -5686,12 +5685,31 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
                 if (hr == DXGI_ERROR_WAIT_TIMEOUT)
                 {
-                    // No desktop change is a healthy capture heartbeat. Idle
-                    // feedback rendering belongs to ProcessingLoop so acquisition
-                    // never blocks behind the protection/presentation pipeline.
+                    // No desktop change is a healthy capture heartbeat. However,
+                    // temporal protection is feedback-based: if we stop rendering
+                    // here, a partially filtered image remains frozen until some
+                    // unrelated desktop event (often cursor motion) arrives.
                     m_lastFrameMs.store(NowMs(), std::memory_order_release);
                     m_captureFault.store(false, std::memory_order_release);
                     m_captureFaultSinceMs.store(0, std::memory_order_release);
+
+                    const int64_t nowMs = NowMs();
+                    const int64_t lastRealCaptureMs =
+                        m_lastRealCaptureMs.load(std::memory_order_acquire);
+                    const bool trulyIdle = lastRealCaptureMs > 0 &&
+                        nowMs - lastRealCaptureMs >= 40;
+                    if (!g_liveRawPassthroughForLatencyTest && trulyIdle &&
+                        nowMs < m_idleReleaseUntilMs.load(std::memory_order_acquire) &&
+                        !m_manualShield.load(std::memory_order_acquire) &&
+                        !m_automaticShieldActive.load(std::memory_order_acquire))
+                    {
+                        auto now = std::chrono::steady_clock::now();
+                        float dt = std::chrono::duration<float>(now - m_lastFrameTime).count();
+                        if (!std::isfinite(dt) || dt <= 0.0f || dt > 0.10f)
+                            dt = 1.0f / 60.0f;
+                        m_lastFrameTime = now;
+                        RenderIdleReleaseStep(dt);
+                    }
                     continue;
                 }
 
@@ -5755,7 +5773,27 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     if (!m_manualShield.load(std::memory_order_acquire) && !captureRecovering)
                     {
                         auto texture = resource.as<ID3D11Texture2D>();
-                        QueueLatestLiveFrame(texture.get());
+                        auto now = std::chrono::steady_clock::now();
+                        float dt = std::chrono::duration<float>(now - m_lastFrameTime).count();
+                        if (!std::isfinite(dt) || dt <= 0.0f || dt > 0.5f)
+                            dt = 1.0f / 60.0f;
+                        m_lastFrameTime = now;
+
+                        const auto processingStart = std::chrono::steady_clock::now();
+                        {
+                            std::scoped_lock lock(m_mutex);
+                            if (!m_stopped.load())
+                            {
+                                if (g_liveRawPassthroughForLatencyTest)
+                                    PresentRawCapturedFrame(texture.get());
+                                else
+                                    QueueCapturedFrame(texture.get(), dt);
+                            }
+                        }
+                        m_captureProcessMs.store(std::chrono::duration<float, std::milli>(
+                            std::chrono::steady_clock::now() - processingStart).count(),
+                            std::memory_order_release);
+                        m_validCaptureFrames.fetch_add(1, std::memory_order_release);
                     }
                 }
                 catch (...)
