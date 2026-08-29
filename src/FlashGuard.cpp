@@ -278,6 +278,9 @@ namespace
     // Keeps F9 useful while profiling without enabling its three expensive
     // full-resolution motion-diagnostic render targets.
     bool g_liveStageTimingForLatencyTest = false;
+    // Live-only alternate motion backend: stronger 128x72 patch correspondence,
+    // adaptive protection, and no NVOFA execution.
+    bool g_liveBlockMatchOnlyForLatencyTest = false;
 
     struct WindowSearch
     {
@@ -485,7 +488,7 @@ cbuffer Safety : register(b0)
     float4 P14; // temporal-state tau scales / exact hold / moving floor
     float4 P15; // direct-intrinsic display / event-seed gates
     float4 P16; // x = benchmark architecture, y/z = risk params, w = live safe fast path
-    float4 P17; // x = adaptive live latency experiment
+    float4 P17; // x = adaptive live latency experiment, y = analyzer block-match v2
 };
 
 struct VSOut
@@ -1939,7 +1942,27 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
     const float coherence = affected > 0.0 ? matching / affected : 0.0;
 
     // Fractional-cell translation search preserves the v1 scrolling fix.
+    // Block-match v2 scores the complete 3x3 analyzer patch for every candidate
+    // instead of choosing an offset from one center luminance sample. The later
+    // structural-correlation test remains mandatory, so this only strengthens
+    // ordinary-motion evidence; it does not turn a loose match into a bypass.
     float bestError = absDelta;
+    if (P17.y > 0.5)
+    {
+        bestError = 0.0;
+        [unroll]
+        for (int by = -1; by <= 1; ++by)
+        {
+            [unroll]
+            for (int bx = -1; bx <= 1; ++bx)
+            {
+                const float2 buv = i.uv + float2(bx, by) * cell;
+                bestError += abs(AnalysisLuma(CurrentAnalysis.SampleLevel(
+                    LinearClamp, buv, 0.0).rgb) - AnalysisLuma(
+                    PreviousAnalysis.SampleLevel(LinearClamp, buv, 0.0).rgb));
+            }
+        }
+    }
     float2 bestOffset = float2(0.0, 0.0);
     [unroll]
     for (int ri = 0; ri < 7; ++ri)
@@ -1954,8 +1977,28 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 if (mx != 0 || my != 0)
                 {
                     const float2 offset = float2(mx, my) * cell * radius;
-                    const float error = abs(curL - AnalysisLuma(
-                        PreviousAnalysis.SampleLevel(LinearClamp, i.uv + offset, 0.0).rgb));
+                    float error = 0.0;
+                    if (P17.y > 0.5)
+                    {
+                        [unroll]
+                        for (int cy = -1; cy <= 1; ++cy)
+                        {
+                            [unroll]
+                            for (int cx = -1; cx <= 1; ++cx)
+                            {
+                                const float2 cuv = i.uv + float2(cx, cy) * cell;
+                                error += abs(AnalysisLuma(CurrentAnalysis.SampleLevel(
+                                    LinearClamp, cuv, 0.0).rgb) - AnalysisLuma(
+                                    PreviousAnalysis.SampleLevel(
+                                        LinearClamp, cuv + offset, 0.0).rgb));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        error = abs(curL - AnalysisLuma(PreviousAnalysis.SampleLevel(
+                            LinearClamp, i.uv + offset, 0.0).rgb));
+                    }
                     if (error < bestError)
                     {
                         bestError = error;
@@ -7213,13 +7256,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_latestStats.visualFieldAffectedArea * 100.0f,
                 m_latestStats.flashEnergy,
                 m_latestStats.cameraMotionScore * 100.0f,
-                (g_liveDisableNvofForLatencyTest && !m_replayMode) ?
+                (g_liveBlockMatchOnlyForLatencyTest && !m_replayMode) ?
+                    L"128x72 BLOCK MATCH V2" :
+                ((g_liveDisableNvofForLatencyTest && !m_replayMode) ?
                     L"NVOFA BYPASSED (LATENCY TEST)" :
                     (m_nvofHandle ?
                         (m_nvofFlowValid ?
                             (m_nvofCostEnabled ? L"NVOFA ACTIVE+COST 0.5x FAST" : L"NVOFA ACTIVE 0.5x FAST") :
                             (m_nvofCostEnabled ? L"NVOFA ANCHOR+COST 0.5x FAST" : L"NVOFA ANCHOR 0.5x FAST")) :
-                        L"FALLBACK"),
+                        L"FALLBACK")),
                 static_cast<unsigned>(m_nvofGridSize),
                 m_latestStats.patternScore * 100.0f,
                 m_latestStats.redAffectedArea * 100.0f,
@@ -7374,6 +7419,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             c.p16[2] = m_benchmarkRiskOnlyGain;
             c.p16[3] = m_replayMode ? 0.0f : 1.0f;
             c.p17[0] = (g_liveAdaptiveProtectionForLatencyTest && !m_replayMode) ?
+                1.0f : 0.0f;
+            c.p17[1] = (g_liveBlockMatchOnlyForLatencyTest && !m_replayMode) ?
                 1.0f : 0.0f;
 
             D3D11_MAPPED_SUBRESOURCE mapped{};
@@ -9099,12 +9146,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         INITCOMMONCONTROLSEX controls{ sizeof(controls), ICC_WIN95_CLASSES };
         InitCommonControlsEx(&controls);
+        g_liveBlockMatchOnlyForLatencyTest =
+            HasCommandLineFlag(L"--latency-blockmatch-only");
         g_liveDisableNvofForLatencyTest =
-            HasCommandLineFlag(L"--latency-disable-nvof");
+            HasCommandLineFlag(L"--latency-disable-nvof") ||
+            g_liveBlockMatchOnlyForLatencyTest;
         g_liveRawPassthroughForLatencyTest =
             HasCommandLineFlag(L"--latency-raw-passthrough");
         g_liveAdaptiveProtectionForLatencyTest =
-            HasCommandLineFlag(L"--latency-adaptive-protection");
+            HasCommandLineFlag(L"--latency-adaptive-protection") ||
+            g_liveBlockMatchOnlyForLatencyTest;
         g_liveStageTimingForLatencyTest =
             HasCommandLineFlag(L"--latency-stage-timing");
         if (HasCommandLineFlag(L"--validate-shaders"))
