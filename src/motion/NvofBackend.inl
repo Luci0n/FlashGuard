@@ -137,9 +137,15 @@
             const auto supportsGrid = [&grids](uint32_t g) {
                 return std::find(grids.begin(), grids.end(), g) != grids.end();
             };
-            // Prefer the finest hardware-supported field for motion boundaries.
-            // Ampere-class GPUs commonly expose grid 1; fall back to 2 then 4.
-            m_nvofGridSize = supportsGrid(1) ? 1u : (supportsGrid(2) ? 2u : (supportsGrid(4) ? 4u : 0u));
+            // The lite profile keeps enough spatial detail for object boundaries
+            // while reducing the amount of vector data consumed by PSMain. At
+            // half-resolution input, grid 2 is roughly 4x4 full-resolution motion.
+            if (g_liveNvofLiteForLatencyTest && !m_replayMode)
+                m_nvofGridSize = supportsGrid(2) ? 2u :
+                    (supportsGrid(4) ? 4u : (supportsGrid(1) ? 1u : 0u));
+            else
+                m_nvofGridSize = supportsGrid(1) ? 1u :
+                    (supportsGrid(2) ? 2u : (supportsGrid(4) ? 4u : 0u));
             if (!m_nvofGridSize)
             {
                 DestroyOpticalFlow();
@@ -149,9 +155,12 @@
 
             // Use NVOFA's native 8-bit cost/confidence when exposed by the
             // D3D11 driver. NVIDIA recommends this over legacy 32-bit cost.
-            m_nvofCostEnabled = !m_nvofCostDisabledByRuntime && NvofHasFormat(
+            const bool liteProfile =
+                g_liveNvofLiteForLatencyTest && !m_replayMode;
+            m_nvofCostEnabled = !liteProfile &&
+                !m_nvofCostDisabledByRuntime && NvofHasFormat(
                 nvof5::NV_OF_BUFFER_USAGE_COST, DXGI_FORMAT_R8_UINT);
-            m_nvofGlobalFlowEnabled =
+            m_nvofGlobalFlowEnabled = !liteProfile &&
                 !m_nvofGlobalFlowDisabledByRuntime &&
                 NvofHasFormat(nvof5::NV_OF_BUFFER_USAGE_GLOBAL_FLOW,
                     DXGI_FORMAT_R16G16_SINT);
@@ -162,7 +171,9 @@
             init.outGridSize = static_cast<nvof5::NV_OF_OUTPUT_VECTOR_GRID_SIZE>(m_nvofGridSize);
             init.hintGridSize = nvof5::NV_OF_HINT_VECTOR_GRID_SIZE_UNDEFINED;
             init.mode = nvof5::NV_OF_MODE_OPTICALFLOW;
-            init.perfLevel = nvof5::NV_OF_PERF_LEVEL_MEDIUM;
+            init.perfLevel = liteProfile ?
+                nvof5::NV_OF_PERF_LEVEL_FAST :
+                nvof5::NV_OF_PERF_LEVEL_MEDIUM;
             init.enableExternalHints = nvof5::NV_OF_FALSE;
             init.enableOutputCost = m_nvofCostEnabled ?
                 nvof5::NV_OF_TRUE : nvof5::NV_OF_FALSE;

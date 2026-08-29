@@ -281,6 +281,9 @@ namespace
     // Live-only alternate motion backend: stronger 128x72 patch correspondence,
     // adaptive protection, and no NVOFA execution.
     bool g_liveBlockMatchOnlyForLatencyTest = false;
+    // Live-only alternate NVOFA profile: keep continuous motion correspondence
+    // while reducing vector density and optional OF outputs.
+    bool g_liveNvofLiteForLatencyTest = false;
 
     struct WindowSearch
     {
@@ -7256,6 +7259,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_latestStats.visualFieldAffectedArea * 100.0f,
                 m_latestStats.flashEnergy,
                 m_latestStats.cameraMotionScore * 100.0f,
+                (g_liveNvofLiteForLatencyTest && !m_replayMode) ?
+                    (m_nvofHandle ?
+                        (m_nvofFlowValid ?
+                            L"NVOFA LITE ACTIVE 0.5x FAST" :
+                            L"NVOFA LITE ANCHOR 0.5x FAST") :
+                        L"NVOFA LITE FALLBACK") :
                 (g_liveBlockMatchOnlyForLatencyTest && !m_replayMode) ?
                     L"128x72 BLOCK MATCH V2" :
                 ((g_liveDisableNvofForLatencyTest && !m_replayMode) ?
@@ -9146,6 +9155,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         INITCOMMONCONTROLSEX controls{ sizeof(controls), ICC_WIN95_CLASSES };
         InitCommonControlsEx(&controls);
+        g_liveNvofLiteForLatencyTest =
+            HasCommandLineFlag(L"--latency-nvof-lite");
         g_liveBlockMatchOnlyForLatencyTest =
             HasCommandLineFlag(L"--latency-blockmatch-only");
         g_liveDisableNvofForLatencyTest =
