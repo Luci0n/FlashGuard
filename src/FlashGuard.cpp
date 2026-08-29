@@ -476,7 +476,7 @@ cbuffer Safety : register(b0)
     float4 P13; // transport confidence / disocclusion / risk decay
     float4 P14; // temporal-state tau scales / exact hold / moving floor
     float4 P15; // direct-intrinsic display / event-seed gates
-    float4 P16; // x = benchmark architecture (0-8), y = risk neutral, z = risk gain
+    float4 P16; // x = benchmark architecture, y/z = risk params, w = live safe fast path
 };
 
 struct VSOut
@@ -753,6 +753,103 @@ MainOutput PSMain(VSOut i)
     float authorityArchitectureLumaDelta = 0.0;
     float authorityCurrentEventStrength = 0.0;
     float authoritySurfaceMemoryStrength = 0.0;
+
+    // Ordinary live pixels should not pay the full per-pixel motion/disocclusion
+    // search once their transport is already proven. The 128x72 current-frame
+    // safety map remains authoritative: any event/risk/red/global signal keeps
+    // the complete protection path. This continuation path is disabled in replay
+    // so Matrix evidence remains exactly on the fully instrumented shader path.
+    if (P16.w > 0.5 && P7.y > 0.5 && P7.z > 0.5 &&
+        P2.y < 0.5 && P3.x < 0.5 && P3.w < 0.5 &&
+        protectionGate < 0.001 && overloadGate < 0.5 && P6.x < 0.5 &&
+        coarseEvent < 0.015 && coarseRisk < 0.015 &&
+        redMitigationGate < 0.015 && temporalRisk < 0.015)
+    {
+        const float4 previousSourceSameFast = PreviousSource.SampleLevel(
+            LinearClamp, i.uv, 0.0);
+        const float staticResidual = SourceMatchError(
+            rawSourceColor, previousSourceSameFast.rgb);
+        float fastResidual = staticResidual;
+        float2 fastPreviousUv = i.uv;
+        float fastTransportConfidence = 0.0;
+
+        // A stationary unchanged pixel is intrinsically safe. For moving pixels,
+        // reuse only an already-established geometry track and cheaply revalidate
+        // it with current NVOFA forward/backward consistency, cost, and raw-source
+        // appearance. A moving flash changes the compensated raw appearance and
+        // therefore falls through to FullResolutionMotion on this same frame.
+        if (P8.x > 0.75)
+        {
+            const float2 outputSize = max(
+                float2(P2.z, P2.w), float2(1.0, 1.0));
+            const float2 forwardPixels =
+                LoadOpticalFlow(ForwardOpticalFlow, i.uv);
+            const float flowMagnitude = length(forwardPixels);
+            const float2 previousUv = i.uv + forwardPixels / outputSize;
+            const bool insidePrevious =
+                all(previousUv >= float2(0.0, 0.0)) &&
+                all(previousUv <= float2(1.0, 1.0));
+            if (insidePrevious && flowMagnitude > 0.10)
+            {
+                const float4 previousWarpedState = PreviousSource.SampleLevel(
+                    LinearClamp, previousUv, 0.0);
+                const float warpedResidual = SourceMatchError(
+                    rawSourceColor, previousWarpedState.rgb);
+                const float2 backwardPixels = LoadOpticalFlow(
+                    BackwardOpticalFlow, previousUv);
+                const float roundTripError =
+                    length(forwardPixels + backwardPixels);
+                const float allowedRoundTrip =
+                    max(1.25, 0.65 + flowMagnitude * 0.22);
+                const float fbConfidence = 1.0 - smoothstep(
+                    allowedRoundTrip, allowedRoundTrip + 2.0,
+                    roundTripError);
+                float costConfidence = 1.0;
+                if (P9.w > 0.5)
+                    costConfidence = 1.0 - smoothstep(0.28, 0.78,
+                        LoadOpticalCost(ForwardOpticalCost, i.uv));
+                const float continuityConfidence = smoothstep(
+                    0.30, 0.70, saturate(previousWarpedState.a));
+                fastTransportConfidence =
+                    fbConfidence * continuityConfidence *
+                    lerp(0.35, 1.0, costConfidence);
+                if (fastTransportConfidence > 0.0)
+                {
+                    fastResidual = warpedResidual;
+                    fastPreviousUv = previousUv;
+                }
+            }
+        }
+
+        const float4 previousProtectionFast =
+            PreviousProtectionState.SampleLevel(
+                LinearClamp, fastPreviousUv, 0.0);
+        const bool previousProtectionValidFast =
+            previousProtectionFast.a >= 0.5;
+        const float previousRiskFast = previousProtectionValidFast ?
+            saturate(previousProtectionFast.g) : 0.0;
+        const float previousRedFast = previousProtectionValidFast ?
+            saturate(previousProtectionFast.b) : 0.0;
+        const bool unchangedStatic = staticResidual < 0.004;
+        const bool verifiedOrdinaryTransport =
+            fastTransportConfidence > 0.62 && fastResidual < 0.010;
+
+        if ((unchangedStatic || verifiedOrdinaryTransport) &&
+            previousRiskFast < 0.015 && previousRedFast < 0.015)
+        {
+            const float fastL = Luma(cur);
+            output.color = float4(saturate(cur), 1.0);
+            output.historyColor = float4(saturate(cur), saturate(fastL));
+            output.sourceHistoryColor = float4(
+                saturate(sourceHistoryColor),
+                verifiedOrdinaryTransport ?
+                    saturate(fastTransportConfidence) : 0.0);
+            output.protectionState = float4(
+                saturate(fastL), 0.0, 0.0, 1.0);
+            return output;
+        }
+    }
+
     if (P7.y > 0.5)
     {
 )HLSL"
@@ -7005,6 +7102,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             c.p16[0] = static_cast<float>(m_benchmarkArchitectureMode);
             c.p16[1] = m_benchmarkRiskOnlyNeutralLuma;
             c.p16[2] = m_benchmarkRiskOnlyGain;
+            c.p16[3] = m_replayMode ? 0.0f : 1.0f;
 
             D3D11_MAPPED_SUBRESOURCE mapped{};
             ThrowIfFailed(m_context->Map(m_constants.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
