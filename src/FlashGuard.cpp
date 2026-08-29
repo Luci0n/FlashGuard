@@ -7045,6 +7045,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
             const size_t historyWriteIndex = 1 - m_outputHistoryIndex;
             const size_t sourceHistoryWriteIndex = 1 - m_sourceHistoryIndex;
+            // The three full-resolution motion diagnostic targets are expensive
+            // bandwidth and are not part of protection state. Keep them enabled
+            // for synthetic replay/Matrix evidence and while F9 diagnostics are
+            // actively requested, but do not write them during ordinary live use.
+            const bool writeMotionDiagnostics =
+                m_replayMode || m_debugEnabled.load(std::memory_order_acquire);
             ID3D11RenderTargetView* rtvs[] = {
                 m_backBufferRTV.get(),
                 m_outputHistoryRTVs[historyWriteIndex].get(),
@@ -7054,7 +7060,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_motionDiagnosticRTVs[1].get(),
                 m_motionDiagnosticRTVs[2].get()
             };
-            const UINT rtvCount = m_motionDiagnosticRTVs[0] ? 7u : 4u;
+            const UINT rtvCount =
+                writeMotionDiagnostics && m_motionDiagnosticRTVs[0] ? 7u : 4u;
             m_context->OMSetRenderTargets(rtvCount, rtvs, nullptr);
             m_context->IASetInputLayout(nullptr);
             m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
