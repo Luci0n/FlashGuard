@@ -25,6 +25,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -2295,6 +2296,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             CreateDuplication();
 
             m_lastFrameMs.store(NowMs(), std::memory_order_release);
+            m_processingThread = std::thread([this] { ProcessingLoop(); });
             m_captureThread = std::thread([this] { CaptureLoop(); });
             setStartupProgress(90, L"Warming up desktop capture...");
         }
@@ -4969,9 +4971,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         {
             if (m_cleanupDone.exchange(true)) return;
             m_stopped.store(true, std::memory_order_release);
+            m_liveFrameCv.notify_all();
 
             if (m_captureThread.joinable())
                 m_captureThread.join();
+            if (m_processingThread.joinable())
+                m_processingThread.join();
 
             if (m_frameLatencyWaitableObject)
             {
@@ -4989,10 +4994,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             m_manualShield.store(enabled, std::memory_order_release);
             if (enabled)
             {
+                DiscardPendingLiveFrames();
                 RenderShieldStep();
             }
             else
             {
+                DiscardPendingLiveFrames();
                 {
                     std::scoped_lock lock(m_mutex);
                     ResetDelayedPipeline();
@@ -5294,6 +5301,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             bool pending = false;
         };
 
+        struct LiveCaptureSlot
+        {
+            winrt::com_ptr<ID3D11Texture2D> texture;
+            uint64_t sequence = 0;
+            std::chrono::steady_clock::time_point capturedAt{};
+            bool ready = false;
+        };
+
         struct FlashEvent
         {
             float time = 0.0f;
@@ -5405,12 +5420,217 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 std::memory_order_acq_rel);
         }
 
+
+        void EnsureLiveCaptureSlotsLocked(ID3D11Texture2D* source)
+        {
+            if (!source) return;
+
+            D3D11_TEXTURE2D_DESC sourceDesc{};
+            source->GetDesc(&sourceDesc);
+            bool matches = true;
+            for (const auto& slot : m_liveCaptureSlots)
+            {
+                if (!slot.texture)
+                {
+                    matches = false;
+                    break;
+                }
+                D3D11_TEXTURE2D_DESC slotDesc{};
+                slot.texture->GetDesc(&slotDesc);
+                if (slotDesc.Width != sourceDesc.Width ||
+                    slotDesc.Height != sourceDesc.Height ||
+                    slotDesc.Format != sourceDesc.Format ||
+                    slotDesc.SampleDesc.Count != sourceDesc.SampleDesc.Count ||
+                    slotDesc.SampleDesc.Quality != sourceDesc.SampleDesc.Quality)
+                {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) return;
+
+            D3D11_TEXTURE2D_DESC copyDesc = sourceDesc;
+            copyDesc.MipLevels = 1;
+            copyDesc.ArraySize = 1;
+            copyDesc.SampleDesc.Count = 1;
+            copyDesc.SampleDesc.Quality = 0;
+            copyDesc.Usage = D3D11_USAGE_DEFAULT;
+            copyDesc.BindFlags = 0;
+            copyDesc.CPUAccessFlags = 0;
+            copyDesc.MiscFlags = 0;
+            for (auto& slot : m_liveCaptureSlots)
+            {
+                slot.texture = nullptr;
+                slot.sequence = 0;
+                slot.ready = false;
+                ThrowIfFailed(m_device->CreateTexture2D(
+                    &copyDesc, nullptr, slot.texture.put()));
+            }
+            m_liveWriteCursor = 0;
+        }
+
+        void DiscardPendingLiveFrames()
+        {
+            std::scoped_lock lock(m_liveFrameMutex);
+            for (auto& slot : m_liveCaptureSlots)
+                slot.ready = false;
+        }
+
+        void QueueLatestLiveFrame(ID3D11Texture2D* source)
+        {
+            std::unique_lock lock(m_liveFrameMutex);
+            EnsureLiveCaptureSlotsLocked(source);
+
+            // Keep at most one not-yet-processed frame. If processing falls
+            // behind, newer desktop content replaces stale intermediate frames
+            // instead of turning GPU cost into visible input latency.
+            for (auto& slot : m_liveCaptureSlots)
+            {
+                if (slot.ready)
+                {
+                    slot.ready = false;
+                    m_droppedPresents.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+
+            size_t writeIndex = m_liveCaptureSlots.size();
+            for (size_t attempt = 0; attempt < m_liveCaptureSlots.size(); ++attempt)
+            {
+                const size_t candidate =
+                    (m_liveWriteCursor + attempt) % m_liveCaptureSlots.size();
+                if (candidate != m_liveProcessingSlot)
+                {
+                    writeIndex = candidate;
+                    break;
+                }
+            }
+            if (writeIndex >= m_liveCaptureSlots.size()) return;
+
+            LiveCaptureSlot& slot = m_liveCaptureSlots[writeIndex];
+            m_context->CopyResource(slot.texture.get(), source);
+            slot.sequence = ++m_liveCaptureSequence;
+            slot.capturedAt = std::chrono::steady_clock::now();
+            slot.ready = true;
+            m_liveWriteCursor = (writeIndex + 1) % m_liveCaptureSlots.size();
+
+            lock.unlock();
+            m_liveFrameCv.notify_one();
+        }
+
+        void ProcessingLoop()
+        {
+            while (!m_stopped.load(std::memory_order_acquire))
+            {
+                winrt::com_ptr<ID3D11Texture2D> texture;
+                std::chrono::steady_clock::time_point capturedAt{};
+                size_t processingSlot = m_liveCaptureSlots.size();
+                {
+                    std::unique_lock lock(m_liveFrameMutex);
+                    m_liveFrameCv.wait_for(lock, std::chrono::milliseconds(16), [&] {
+                        if (m_stopped.load(std::memory_order_acquire)) return true;
+                        for (const auto& slot : m_liveCaptureSlots)
+                            if (slot.ready) return true;
+                        return false;
+                    });
+                    if (m_stopped.load(std::memory_order_acquire)) break;
+
+                    uint64_t newestSequence = 0;
+                    for (size_t i = 0; i < m_liveCaptureSlots.size(); ++i)
+                    {
+                        if (m_liveCaptureSlots[i].ready &&
+                            m_liveCaptureSlots[i].sequence >= newestSequence)
+                        {
+                            newestSequence = m_liveCaptureSlots[i].sequence;
+                            processingSlot = i;
+                        }
+                    }
+                    if (processingSlot < m_liveCaptureSlots.size())
+                    {
+                        LiveCaptureSlot& slot = m_liveCaptureSlots[processingSlot];
+                        texture = slot.texture;
+                        capturedAt = slot.capturedAt;
+                        slot.ready = false;
+                        m_liveProcessingSlot = processingSlot;
+                    }
+                }
+
+                if (texture)
+                {
+                    float dt = std::chrono::duration<float>(
+                        capturedAt - m_lastFrameTime).count();
+                    if (!std::isfinite(dt) || dt <= 0.0f || dt > 0.5f)
+                        dt = 1.0f / 60.0f;
+
+                    const auto processingStart = std::chrono::steady_clock::now();
+                    bool rendered = false;
+                    try
+                    {
+                        std::scoped_lock lock(m_mutex);
+                        if (!m_stopped.load() &&
+                            !m_manualShield.load(std::memory_order_acquire) &&
+                            !m_automaticShieldActive.load(std::memory_order_acquire))
+                        {
+                            if (g_liveRawPassthroughForLatencyTest)
+                                PresentRawCapturedFrame(texture.get());
+                            else
+                                QueueCapturedFrame(texture.get(), dt);
+                            rendered = true;
+                        }
+                    }
+                    catch (...)
+                    {
+                        SignalCaptureFault();
+                    }
+
+                    if (rendered)
+                    {
+                        m_lastFrameTime = capturedAt;
+                        m_captureProcessMs.store(
+                            std::chrono::duration<float, std::milli>(
+                                std::chrono::steady_clock::now() -
+                                processingStart).count(),
+                            std::memory_order_release);
+                        m_validCaptureFrames.fetch_add(
+                            1, std::memory_order_release);
+                    }
+
+                    {
+                        std::scoped_lock lock(m_liveFrameMutex);
+                        if (m_liveProcessingSlot == processingSlot)
+                            m_liveProcessingSlot = m_liveCaptureSlots.size();
+                    }
+                    continue;
+                }
+
+                const int64_t nowMs = NowMs();
+                const int64_t lastRealCaptureMs =
+                    m_lastRealCaptureMs.load(std::memory_order_acquire);
+                const bool trulyIdle = lastRealCaptureMs > 0 &&
+                    nowMs - lastRealCaptureMs >= 40;
+                if (!g_liveRawPassthroughForLatencyTest && trulyIdle &&
+                    nowMs < m_idleReleaseUntilMs.load(std::memory_order_acquire) &&
+                    !m_manualShield.load(std::memory_order_acquire) &&
+                    !m_automaticShieldActive.load(std::memory_order_acquire))
+                {
+                    const auto now = std::chrono::steady_clock::now();
+                    float dt = std::chrono::duration<float>(
+                        now - m_lastFrameTime).count();
+                    if (!std::isfinite(dt) || dt <= 0.0f || dt > 0.10f)
+                        dt = 1.0f / 60.0f;
+                    m_lastFrameTime = now;
+                    try { RenderIdleReleaseStep(dt); }
+                    catch (...) { SignalCaptureFault(); }
+                }
+            }
+        }
+
         void CaptureLoop()
         {
             while (!m_stopped.load(std::memory_order_acquire))
             {
                 if (m_captureRestartRequested.exchange(false, std::memory_order_acq_rel))
                 {
+                    DiscardPendingLiveFrames();
                     m_duplication = nullptr;
                     SignalCaptureFault();
                 }
@@ -5444,31 +5664,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
                 if (hr == DXGI_ERROR_WAIT_TIMEOUT)
                 {
-                    // No desktop change is a healthy capture heartbeat. However,
-                    // temporal protection is feedback-based: if we stop rendering
-                    // here, a partially filtered image remains frozen until some
-                    // unrelated desktop event (often cursor motion) arrives.
+                    // No desktop change is a healthy capture heartbeat. Idle
+                    // feedback rendering belongs to ProcessingLoop so acquisition
+                    // never blocks behind the protection/presentation pipeline.
                     m_lastFrameMs.store(NowMs(), std::memory_order_release);
                     m_captureFault.store(false, std::memory_order_release);
                     m_captureFaultSinceMs.store(0, std::memory_order_release);
-
-                    const int64_t nowMs = NowMs();
-                    const int64_t lastRealCaptureMs =
-                        m_lastRealCaptureMs.load(std::memory_order_acquire);
-                    const bool trulyIdle = lastRealCaptureMs > 0 &&
-                        nowMs - lastRealCaptureMs >= 40;
-                    if (!g_liveRawPassthroughForLatencyTest && trulyIdle &&
-                        nowMs < m_idleReleaseUntilMs.load(std::memory_order_acquire) &&
-                        !m_manualShield.load(std::memory_order_acquire) &&
-                        !m_automaticShieldActive.load(std::memory_order_acquire))
-                    {
-                        auto now = std::chrono::steady_clock::now();
-                        float dt = std::chrono::duration<float>(now - m_lastFrameTime).count();
-                        if (!std::isfinite(dt) || dt <= 0.0f || dt > 0.10f)
-                            dt = 1.0f / 60.0f;
-                        m_lastFrameTime = now;
-                        RenderIdleReleaseStep(dt);
-                    }
                     continue;
                 }
 
@@ -5532,26 +5733,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     if (!m_manualShield.load(std::memory_order_acquire) && !captureRecovering)
                     {
                         auto texture = resource.as<ID3D11Texture2D>();
-                        auto now = std::chrono::steady_clock::now();
-                        float dt = std::chrono::duration<float>(now - m_lastFrameTime).count();
-                        if (!std::isfinite(dt) || dt <= 0.0f || dt > 0.5f) dt = 1.0f / 60.0f;
-                        m_lastFrameTime = now;
-
-                        const auto processingStart = std::chrono::steady_clock::now();
-                        {
-                            std::scoped_lock lock(m_mutex);
-                            if (!m_stopped.load())
-                            {
-                                if (g_liveRawPassthroughForLatencyTest)
-                                    PresentRawCapturedFrame(texture.get());
-                                else
-                                    QueueCapturedFrame(texture.get(), dt);
-                            }
-                        }
-                        m_captureProcessMs.store(std::chrono::duration<float, std::milli>(
-                            std::chrono::steady_clock::now() - processingStart).count(),
-                            std::memory_order_release);
-                        m_validCaptureFrames.fetch_add(1, std::memory_order_release);
+                        QueueLatestLiveFrame(texture.get());
                     }
                 }
                 catch (...)
@@ -6977,7 +7159,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_presentReadyWaitMs.load(std::memory_order_acquire),
                 m_presentCallMs.load(std::memory_order_acquire),
                 static_cast<unsigned long long>(m_analysisDeadlineMisses),
-                static_cast<unsigned long long>(m_droppedPresents));
+                static_cast<unsigned long long>(
+                    m_droppedPresents.load(std::memory_order_acquire)));
 
             BITMAPINFO bmi{};
             bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -7444,6 +7627,13 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         int m_viewingDistancePreset = 1;
         std::mutex m_mutex;
         std::thread m_captureThread;
+        std::thread m_processingThread;
+        std::mutex m_liveFrameMutex;
+        std::condition_variable m_liveFrameCv;
+        std::array<LiveCaptureSlot, 3> m_liveCaptureSlots;
+        size_t m_liveWriteCursor = 0;
+        size_t m_liveProcessingSlot = 3;
+        uint64_t m_liveCaptureSequence = 0;
         std::atomic<bool> m_stopped{ false };
         std::atomic<bool> m_cleanupDone{ false };
         std::atomic<bool> m_manualShield{ false };
@@ -7618,7 +7808,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         int m_pendingTransitionDirection = 0;
         float m_pendingTransitionTime = -100.0f;
         uint64_t m_analysisDeadlineMisses = 0;
-        uint64_t m_droppedPresents = 0;
+        std::atomic<uint64_t> m_droppedPresents{ 0 };
         int m_predictionFrames = 0;
         bool m_patternProtectionActive = false;
         HazardPrediction m_latestPrediction{};
