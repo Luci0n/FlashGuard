@@ -275,6 +275,9 @@ namespace
     // Live-only experiment: keep the cheap current-frame safety detector active,
     // but wake expensive optical-flow refinement only around suspicious changes.
     bool g_liveAdaptiveProtectionForLatencyTest = false;
+    // Keeps F9 useful while profiling without enabling its three expensive
+    // full-resolution motion-diagnostic render targets.
+    bool g_liveStageTimingForLatencyTest = false;
 
     struct WindowSearch
     {
@@ -7193,6 +7196,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 L"Desktop frame age: %.2f ms\n"
                 L"Desktop accumulated: %u\n"
                 L"Capture processing: %.2f ms\n"
+                L"Copy / analysis:    %.2f / %.2f ms\n"
+                L"Resolve / safety:   %.2f / %.2f ms\n"
+                L"Render / NVOFA:     %.2f / %.2f ms\n"
+                L"Adaptive NVOFA:     %s (%d wake frames)\n"
                 L"Present queue wait: %.2f ms\n"
                 L"Present call:       %.2f ms\n"
                 L"Analysis misses:   %llu\n"
@@ -7227,6 +7234,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_captureImageAgeMs.load(std::memory_order_acquire),
                 m_captureAccumulatedFrames.load(std::memory_order_acquire),
                 m_captureProcessMs.load(std::memory_order_acquire),
+                m_stageCopyMs.load(std::memory_order_acquire),
+                m_stageAnalysisMs.load(std::memory_order_acquire),
+                m_stageResolveMs.load(std::memory_order_acquire),
+                m_stageSafetyMs.load(std::memory_order_acquire),
+                m_stageRenderMs.load(std::memory_order_acquire),
+                m_stageNvofMs.load(std::memory_order_acquire),
+                g_liveAdaptiveProtectionForLatencyTest ?
+                    (m_liveNvofWakeFrames > 0 ? L"AWAKE" : L"ASLEEP") : L"OFF",
+                m_liveNvofWakeFrames,
                 m_presentReadyWaitMs.load(std::memory_order_acquire),
                 m_presentCallMs.load(std::memory_order_acquire),
                 static_cast<unsigned long long>(m_analysisDeadlineMisses),
@@ -7382,10 +7398,17 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 // of asking delayed CPU readback whether motion is worth measuring.
                 // Idle-release/shield renders pass useOpticalFlow=false and do not
                 // spend an optical-flow solve.
+                const auto nvofStart = std::chrono::steady_clock::now();
                 UpdateOpticalFlow(source, true);
+                m_stageNvofMs.store(std::chrono::duration<float, std::milli>(
+                    std::chrono::steady_clock::now() - nvofStart).count(),
+                    std::memory_order_release);
             }
             else
+            {
                 m_nvofFlowValid = false;
+                m_stageNvofMs.store(0.0f, std::memory_order_release);
+            }
             if (m_debugEnabled.load(std::memory_order_acquire)) UpdateDebugTexture();
             UpdateConstants(rawMean, permittedMean, protectionGate, redGate,
                 overloadFallback, broadLocalTransition, idleReleaseTick);
@@ -7404,7 +7427,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             // for synthetic replay/Matrix evidence and while F9 diagnostics are
             // actively requested, but do not write them during ordinary live use.
             const bool writeMotionDiagnostics =
-                m_replayMode || m_debugEnabled.load(std::memory_order_acquire);
+                m_replayMode ||
+                (m_debugEnabled.load(std::memory_order_acquire) &&
+                 !g_liveStageTimingForLatencyTest);
             ID3D11RenderTargetView* rtvs[] = {
                 m_backBufferRTV.get(),
                 m_outputHistoryRTVs[historyWriteIndex].get(),
@@ -7539,19 +7564,35 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             incoming.stats = {};
             incoming.stats.dt = dt;
             incoming.captureDt = dt;
+            const auto copyStart = std::chrono::steady_clock::now();
             m_context->CopyResource(incoming.texture.get(), source);
+            m_stageCopyMs.store(std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - copyStart).count(),
+                std::memory_order_release);
+            const auto analysisStart = std::chrono::steady_clock::now();
             DrawAnalysis(incoming.srv.get(), incoming.sequence, dt);
+            m_stageAnalysisMs.store(std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - analysisStart).count(),
+                std::memory_order_release);
             m_ringWrite = (m_ringWrite + 1) % m_rawFrames.size();
             ++m_bufferedFrameCount;
             m_bufferedDuration += dt;
 
+            const auto resolveStart = std::chrono::steady_clock::now();
             if (m_replayMode)
                 ResolveAnalysisResults(incoming.sequence, true);
             else
                 ResolveAnalysisResults(0, false);
+            m_stageResolveMs.store(std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - resolveStart).count(),
+                std::memory_order_release);
             if (m_safety.lookaheadMs == 0)
             {
+                const auto safetyStart = std::chrono::steady_clock::now();
                 DrawInstantSafetyMap(dt);
+                m_stageSafetyMs.store(std::chrono::duration<float, std::milli>(
+                    std::chrono::steady_clock::now() - safetyStart).count(),
+                    std::memory_order_release);
                 const bool hardGlobalTrigger = m_latestStats.validDelta &&
                     m_latestStats.affectedArea >= m_safety.globalAreaThreshold &&
                     m_latestStats.directionalCoherence >= m_safety.coherenceThreshold;
@@ -7593,11 +7634,15 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     if (!useOpticalFlow)
                         m_nvofPreviousValid = false;
                 }
+                const auto renderStart = std::chrono::steady_clock::now();
                 RenderSource(incoming.srv.get(),
                     m_haveHardRiseLuma ? m_latestStats.globalLuma : 0.5f,
                     m_haveHardRiseLuma ? m_hardRiseLuma : 0.5f,
                     hardRiseLimited ? -1.0f : 0.0f, 0.0f, false, broadTransition,
                     useOpticalFlow);
+                m_stageRenderMs.store(std::chrono::duration<float, std::milli>(
+                    std::chrono::steady_clock::now() - renderStart).count(),
+                    std::memory_order_release);
                 m_context->CopyResource(m_instantPreviousAnalysis.get(), m_analysisTex.get());
                 m_instantHistoryValid = true;
                 m_ringRead = m_ringWrite;
@@ -7754,6 +7799,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         std::atomic<float> m_captureImageAgeMs{ 0.0f };
         std::atomic<uint32_t> m_captureAccumulatedFrames{ 0 };
         std::atomic<float> m_captureProcessMs{ 0.0f };
+        std::atomic<float> m_stageCopyMs{ 0.0f };
+        std::atomic<float> m_stageAnalysisMs{ 0.0f };
+        std::atomic<float> m_stageResolveMs{ 0.0f };
+        std::atomic<float> m_stageSafetyMs{ 0.0f };
+        std::atomic<float> m_stageRenderMs{ 0.0f };
+        std::atomic<float> m_stageNvofMs{ 0.0f };
         std::atomic<float> m_presentReadyWaitMs{ 0.0f };
         std::atomic<float> m_presentCallMs{ 0.0f };
         std::chrono::steady_clock::time_point m_lastFrameTime{ std::chrono::steady_clock::now() };
@@ -9054,6 +9105,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             HasCommandLineFlag(L"--latency-raw-passthrough");
         g_liveAdaptiveProtectionForLatencyTest =
             HasCommandLineFlag(L"--latency-adaptive-protection");
+        g_liveStageTimingForLatencyTest =
+            HasCommandLineFlag(L"--latency-stage-timing");
         if (HasCommandLineFlag(L"--validate-shaders"))
             return ValidateShaderSource() ? 0 : 2;
         if (HasCommandLineFlag(L"--validate-risk-integrator"))
