@@ -284,6 +284,9 @@ namespace
     // Live-only alternate NVOFA profile: keep continuous motion correspondence
     // while reducing vector density and optional OF outputs.
     bool g_liveNvofLiteForLatencyTest = false;
+    // Live-only low-latency architecture: current-frame 128x72 protection remains
+    // active, but ordinary presentation skips NVOFA, PSMain, and history MRTs.
+    bool g_liveCoarseProtectForLatencyTest = false;
 
     struct WindowSearch
     {
@@ -567,6 +570,135 @@ float AnalysisLuma(float3 linearColor);
 float4 PSOpticalFlowCopy(VSOut i) : SV_TARGET
 {
     return float4(CurrentFrame.SampleLevel(LinearClamp, i.uv, 0.0).rgb, 1.0);
+}
+
+// Low-latency live composite. The expensive full-resolution motion/history shader
+// is deliberately absent here: the current-frame 128x72 safety map and its compact
+// temporal state decide where mitigation is required. Safe cells remain the newest
+// raw image, while suspicious cells are driven toward a fixed neutral luminance.
+float4 PSLiveCoarseProtect(VSOut i) : SV_TARGET
+{
+    float3 cur = CurrentFrame.SampleLevel(LinearClamp, i.uv, 0.0).rgb;
+
+    // Preserve the user's optional static range compression on the cheap path.
+    if (P1.z > 0.5)
+    {
+        const float l = Luma(cur);
+        const float linearFloor = SrgbToLinear(float3(P1.w, P1.w, P1.w)).x;
+        const float linearCeil = SrgbToLinear(float3(P2.x, P2.x, P2.x)).x;
+        const float mappedL = linearFloor + (linearCeil - linearFloor) * l;
+        cur = RemapGlobalLuminance(cur, l, mappedL);
+    }
+
+    float coarseRisk = 0.0;
+    float coarseEvent = 0.0;
+    float localRedGate = 0.0;
+    if (P5.z > 0.5)
+    {
+        uint safetyWidth = 0;
+        uint safetyHeight = 0;
+        LocalSafetyMap.GetDimensions(safetyWidth, safetyHeight);
+        const float2 safetyTexel =
+            1.0 / max(float2(safetyWidth, safetyHeight), float2(1.0, 1.0));
+        [unroll]
+        for (int sy = -1; sy <= 1; ++sy)
+        {
+            [unroll]
+            for (int sx = -1; sx <= 1; ++sx)
+            {
+                const float2 uv =
+                    i.uv + float2((float)sx, (float)sy) * safetyTexel;
+                const float4 safety =
+                    LocalSafetyMap.SampleLevel(LinearClamp, uv, 0.0);
+                const float spatial = (sx == 0 && sy == 0) ? 1.0 :
+                    ((sx == 0 || sy == 0) ? 0.88 : 0.72);
+                coarseRisk = max(coarseRisk, saturate(safety.b * spatial));
+                coarseEvent = max(coarseEvent,
+                    saturate(max(safety.g, 0.0) * spatial));
+                localRedGate = max(localRedGate,
+                    saturate(safety.a * spatial));
+            }
+        }
+    }
+
+    const float temporalRisk = P5.z > 0.5 ?
+        saturate(PreviousTemporal.SampleLevel(
+            LinearClamp, i.uv, 0.0).g) : 0.0;
+    const float riskGate = max(
+        smoothstep(0.05, 0.40, coarseRisk),
+        smoothstep(0.05, 0.40, temporalRisk));
+    const float protectionStrength =
+        saturate(max(coarseEvent, riskGate));
+
+    // Unaffected pixels take the exact current source color (apart from optional
+    // static range compression). Only cells with current/remembered flash authority
+    // are compressed, so normal game motion has no temporal/display dependency.
+    const float currentL = Luma(cur);
+    const float resolvedL = lerp(
+        currentL, 0.18, saturate(protectionStrength * 0.92));
+    cur = RemapGlobalLuminance(cur, currentL, resolvedL);
+
+    const float gray = Luma(cur);
+    const float3 graySrgb = LinearToSrgb(gray.xxx);
+    const float redThreshold = saturate(P1.x);
+    const float isolatedRed = saturate(
+        (cur.r - max(cur.g, cur.b) - redThreshold) /
+        max(1.0 - redThreshold, 0.01));
+    const float redMemoryGate = max(localRedGate, riskGate);
+    const float repeatedRedDesat = smoothstep(0.18, 0.58, redMemoryGate);
+    const float effectiveRedDesat =
+        saturate(lerp(saturate(P1.y), 1.0, repeatedRedDesat));
+    cur = lerp(cur, graySrgb,
+        isolatedRed * effectiveRedDesat * redMemoryGate);
+
+    if (P2.y > 0.5)
+    {
+        const float2 debugUv =
+            i.uv * float2(P2.z / 560.0, P2.w / 640.0);
+        if (debugUv.x <= 1.0 && debugUv.y <= 1.0)
+        {
+            const float4 d =
+                DebugOverlay.SampleLevel(LinearClamp, debugUv, 0.0);
+            cur = lerp(cur, d.rgb, d.a);
+        }
+    }
+
+    if (P3.x > 0.5)
+    {
+        const float hintWidthUv = 900.0 / max(P2.z, 1.0);
+        const float hintHeightUv = 48.0 / max(P2.w, 1.0);
+        if (i.uv.x <= hintWidthUv && i.uv.y >= 1.0 - hintHeightUv)
+        {
+            const float2 hintUv = float2(
+                i.uv.x / max(hintWidthUv, 0.0001),
+                (i.uv.y - (1.0 - hintHeightUv)) /
+                    max(hintHeightUv, 0.0001));
+            const float4 h =
+                HotkeyHint.SampleLevel(LinearClamp, hintUv, 0.0);
+            cur = lerp(cur, h.rgb, h.a);
+        }
+    }
+
+    if (P3.w > 0.5)
+    {
+        const float labelWidthUv = 520.0 / max(P2.z, 1.0);
+        const float labelHeightUv = 64.0 / max(P2.w, 1.0);
+        const float2 labelMin = float2(
+            0.5 - labelWidthUv * 0.5, 0.5 - labelHeightUv * 0.5);
+        if (i.uv.x >= labelMin.x &&
+            i.uv.x <= labelMin.x + labelWidthUv &&
+            i.uv.y >= labelMin.y &&
+            i.uv.y <= labelMin.y + labelHeightUv)
+        {
+            const float2 labelUv = (i.uv - labelMin) /
+                float2(labelWidthUv, labelHeightUv);
+            const float4 label =
+                PreviousSafety.SampleLevel(LinearClamp, labelUv, 0.0);
+            cur = lerp(cur, label.rgb, label.a);
+        }
+    }
+
+    return float4(saturate(cur), 1.0);
 }
 
 float2 LoadOpticalFlow(Texture2D<int2> flowTexture, float2 uv)
@@ -2212,6 +2344,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         constexpr ShaderTarget targets[] = {
             { "VSMain", "vs_5_0" }, { "PSMain", "ps_5_0" },
             { "PSAnalyze", "ps_5_0" }, { "PSInstantSafety", "ps_5_0" },
+            { "PSLiveCoarseProtect", "ps_5_0" },
             { "PSOpticalFlowCopy", "ps_5_0" }
         };
         for (const auto& target : targets)
@@ -6002,6 +6135,24 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 instantBlob->GetBufferSize(), nullptr, m_psInstantSafety.put()));
 
             errors = nullptr;
+            winrt::com_ptr<ID3DBlob> coarseProtectBlob;
+            hr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1,
+                            "FlashGuard", nullptr, nullptr,
+                            "PSLiveCoarseProtect", "ps_5_0",
+                            D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
+                            coarseProtectBlob.put(), errors.put());
+            if (FAILED(hr))
+            {
+                if (errors) OutputDebugStringA(
+                    static_cast<const char*>(errors->GetBufferPointer()));
+                ThrowIfFailed(hr);
+            }
+            ThrowIfFailed(m_device->CreatePixelShader(
+                coarseProtectBlob->GetBufferPointer(),
+                coarseProtectBlob->GetBufferSize(), nullptr,
+                m_psLiveCoarseProtect.put()));
+
+            errors = nullptr;
             winrt::com_ptr<ID3DBlob> opticalFlowCopyBlob;
             hr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1, "FlashGuard", nullptr, nullptr,
                             "PSOpticalFlowCopy", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
@@ -7438,6 +7589,73 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             m_context->Unmap(m_constants.get(), 0);
         }
 
+        void RenderCoarseProtectedSource(ID3D11ShaderResourceView* source)
+        {
+            if (!source || !m_psLiveCoarseProtect || !m_backBufferRTV ||
+                !m_swapChain)
+                return;
+
+            m_stageNvofMs.store(0.0f, std::memory_order_release);
+            if (m_debugEnabled.load(std::memory_order_acquire))
+                UpdateDebugTexture();
+            UpdateConstants(0.5f, 0.5f, 0.0f, 0.0f,
+                false, false, false);
+
+            D3D11_VIEWPORT vp{};
+            vp.Width = static_cast<float>(m_outputWidth);
+            vp.Height = static_cast<float>(m_outputHeight);
+            vp.MinDepth = 0.0f;
+            vp.MaxDepth = 1.0f;
+            m_context->RSSetViewports(1, &vp);
+
+            ID3D11RenderTargetView* rtv = m_backBufferRTV.get();
+            m_context->OMSetRenderTargets(1, &rtv, nullptr);
+            m_context->IASetInputLayout(nullptr);
+            m_context->IASetPrimitiveTopology(
+                D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            m_context->VSSetShader(m_vs.get(), nullptr, 0);
+            m_context->PSSetShader(m_psLiveCoarseProtect.get(), nullptr, 0);
+
+            ID3D11ShaderResourceView* srvs[8] = {
+                source,
+                m_debugSRV.get(),
+                m_instantSafetySRVs[m_instantSafetyIndex].get(),
+                m_hintSRV.get(),
+                nullptr,
+                nullptr,
+                m_automaticShieldLabelSRV.get(),
+                m_instantTemporalSRVs[m_instantSafetyIndex].get()
+            };
+            m_context->PSSetShaderResources(0, 8, srvs);
+            ID3D11SamplerState* sampler = m_sampler.get();
+            m_context->PSSetSamplers(0, 1, &sampler);
+            ID3D11Buffer* cb = m_constants.get();
+            m_context->PSSetConstantBuffers(0, 1, &cb);
+            m_context->Draw(3, 0);
+
+            ID3D11ShaderResourceView* nullSRVs[8] = {
+                nullptr, nullptr, nullptr, nullptr,
+                nullptr, nullptr, nullptr, nullptr
+            };
+            m_context->PSSetShaderResources(0, 8, nullSRVs);
+            ID3D11RenderTargetView* nullRTV = nullptr;
+            m_context->OMSetRenderTargets(1, &nullRTV, nullptr);
+
+            // This mode deliberately owns no full-resolution temporal image state.
+            m_outputHistoryValid = false;
+            m_sourceHistoryValid = false;
+
+            const auto presentStart = std::chrono::steady_clock::now();
+            const UINT presentFlags =
+                m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0;
+            const HRESULT presentHr =
+                m_swapChain->Present(0, presentFlags);
+            m_presentCallMs.store(std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - presentStart).count(),
+                std::memory_order_release);
+            ThrowIfFailed(presentHr);
+        }
+
         void RenderSource(ID3D11ShaderResourceView* source, float rawMean,
                           float permittedMean, float protectionGate, float redGate,
                           bool overloadFallback = false,
@@ -7649,6 +7867,26 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_stageSafetyMs.store(std::chrono::duration<float, std::milli>(
                     std::chrono::steady_clock::now() - safetyStart).count(),
                     std::memory_order_release);
+
+                if (g_liveCoarseProtectForLatencyTest && !m_replayMode)
+                {
+                    const auto renderStart = std::chrono::steady_clock::now();
+                    RenderCoarseProtectedSource(incoming.srv.get());
+                    m_stageRenderMs.store(
+                        std::chrono::duration<float, std::milli>(
+                            std::chrono::steady_clock::now() -
+                            renderStart).count(),
+                        std::memory_order_release);
+                    m_liveCoarseLastSource = incoming.srv;
+                    m_context->CopyResource(
+                        m_instantPreviousAnalysis.get(), m_analysisTex.get());
+                    m_instantHistoryValid = true;
+                    m_ringRead = m_ringWrite;
+                    m_bufferedFrameCount = 0;
+                    m_bufferedDuration = 0.0f;
+                    return;
+                }
+
                 const bool hardGlobalTrigger = m_latestStats.validDelta &&
                     m_latestStats.affectedArea >= m_safety.globalAreaThreshold &&
                     m_latestStats.directionalCoherence >= m_safety.coherenceThreshold;
@@ -7753,15 +7991,28 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         void RenderIdleReleaseStep(float dt)
         {
             std::scoped_lock lock(m_mutex);
-            if (!m_context || !m_swapChain || m_stopped.load() ||
-                !m_outputHistoryValid || !m_sourceHistoryValid)
+            if (!m_context || !m_swapChain || m_stopped.load())
+                return;
+
+            m_instantFrameDt = std::clamp(dt, 1.0f / 240.0f, 0.05f);
+            if (g_liveCoarseProtectForLatencyTest && !m_replayMode)
+            {
+                if (!m_liveCoarseLastSource || !m_instantHistoryValid) return;
+                DrawInstantSafetyMap(dt);
+                RenderCoarseProtectedSource(m_liveCoarseLastSource.get());
+                m_context->CopyResource(
+                    m_instantPreviousAnalysis.get(), m_analysisTex.get());
+                m_instantHistoryValid = true;
+                return;
+            }
+
+            if (!m_outputHistoryValid || !m_sourceHistoryValid)
                 return;
 
             // Re-render the last RAW source through the feedback filter. P9.x tells
             // PSMain that there was no new desktop event, so stale CURRENT-event
             // bits cannot keep the strong attack filter engaged. Accumulated memory
             // may still perform the fast release until output catches the source.
-            m_instantFrameDt = std::clamp(dt, 1.0f / 240.0f, 0.05f);
             ID3D11ShaderResourceView* lastRawSource =
                 m_sourceHistorySRVs[m_sourceHistoryIndex].get();
             if (!lastRawSource) return;
@@ -7898,6 +8149,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         winrt::com_ptr<ID3D11PixelShader> m_ps;
         winrt::com_ptr<ID3D11PixelShader> m_psAnalyze;
         winrt::com_ptr<ID3D11PixelShader> m_psInstantSafety;
+        winrt::com_ptr<ID3D11PixelShader> m_psLiveCoarseProtect;
         winrt::com_ptr<ID3D11PixelShader> m_psOpticalFlowCopy;
         winrt::com_ptr<ID3D11SamplerState> m_sampler;
 
@@ -7991,6 +8243,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         size_t m_bufferedFrameCount = 0;
         float m_bufferedDuration = 0.0f;
         uint64_t m_nextSequence = 0;
+        winrt::com_ptr<ID3D11ShaderResourceView> m_liveCoarseLastSource;
         winrt::com_ptr<ID3D11Texture2D> m_shieldTex;
         winrt::com_ptr<ID3D11ShaderResourceView> m_shieldSRV;
         UINT m_inputWidth{};
@@ -9155,6 +9408,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         INITCOMMONCONTROLSEX controls{ sizeof(controls), ICC_WIN95_CLASSES };
         InitCommonControlsEx(&controls);
+        g_liveCoarseProtectForLatencyTest =
+            HasCommandLineFlag(L"--latency-coarse-protect");
         g_liveNvofLiteForLatencyTest =
             HasCommandLineFlag(L"--latency-nvof-lite");
         g_liveBlockMatchOnlyForLatencyTest =
