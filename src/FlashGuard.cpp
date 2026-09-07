@@ -34,6 +34,7 @@
 #include <cwctype>
 #include <deque>
 #include <filesystem>
+#include <future>
 #include <iterator>
 #include <mutex>
 #include <string>
@@ -42,6 +43,9 @@
 #include <vector>
 
 #include "motion/Nvof5.h"
+#include "render/ShaderCache.h"
+#include "analysis/SurfaceFrequency.h"
+#include "ui/BundledFonts.h"
 
 namespace
 {
@@ -63,6 +67,8 @@ namespace
     constexpr wchar_t kSettingsWindowClass[] = L"OutlastFlashGuardSettings";
     constexpr int kControlContrast = 2001;
     constexpr int kControlContrastValue = 2015;
+    constexpr int kControlMenuOpacity = 2016;
+    constexpr int kControlMenuOpacityValue = 2017;
     constexpr int kControlSensitivity = 2002;
     constexpr int kControlLatency = 2003;
     constexpr int kControlDebug = 2004;
@@ -287,6 +293,8 @@ namespace
     // Live-only low-latency architecture: current-frame 128x72 protection remains
     // active, but ordinary presentation skips NVOFA, PSMain, and history MRTs.
     bool g_liveCoarseProtectForLatencyTest = false;
+    // Explicit opt-in; identical detector/compositor in live capture and replay.
+    bool g_surfaceFrequency = false;
 
     struct WindowSearch
     {
@@ -1116,7 +1124,7 @@ R"HLSL(
         // overlap is too permissive: blend the event interpretation back to raw
         // disocclusion so fast pans cannot be mistaken for intrinsic flashes.
         const bool cameraAwareEventDisocclusionArchitecture =
-            P16.x > 15.5 && P16.x < 24.5;
+            P16.x > 15.5 && P16.x < 52.5;
         // Matrix 25 showed a separate stationary sequence problem: 5 Hz flashes
         // lose protection because the 100 ms surface-risk state decays between
         // opposing half-cycles, while a 4-code reversal is too weak to establish
@@ -1125,7 +1133,7 @@ R"HLSL(
         // is absent, and tiny changes still need an opposing signed reversal
         // before they are allowed to affect the display.
         const bool stationaryWeakRepetitionArchitecture =
-            P16.x > 16.5 && P16.x < 24.5;
+            P16.x > 16.5 && P16.x < 52.5;
         // Mode 18 preserves qualified state when CURRENT-surface geometry proves
         // continuity. Mode 19 attempted a textureless fallback, but Matrix 28
         // showed that max(localMotionGate, hardwareMotionGate) is itself polluted
@@ -1138,7 +1146,7 @@ R"HLSL(
         const bool stationaryMotionOnlyStateArchitecture =
             P16.x > 18.5 && P16.x < 19.5;
         const bool texturelessStationaryPrimeStateArchitecture =
-            P16.x > 19.5 && P16.x < 24.5;
+            P16.x > 19.5 && P16.x < 52.5;
         // Mode 23 keeps mode 20 semantics except that an unmasked whole-frame
         // camera translation veto is applied only to the textureless fallback.
         // It does not inherit mode 21/22's broader sequence-state rewrites.
@@ -1149,6 +1157,14 @@ R"HLSL(
         // unchanged, so Matrix 33 can attribute any pan change to this branch.
         const bool currentEventOnlyCameraGuardArchitecture =
             P16.x > 23.5 && P16.x < 24.5;
+        // Matrix 34 isolates mode 21's two remaining display-authority changes.
+        // Modes 25/26 apply them separately and mode 27 applies both; sequence
+        // state and current-event disocclusion remain mode-20 behavior.
+        const bool stableAuthorityCameraGuardArchitecture =
+            (P16.x > 24.5 && P16.x < 25.5) ||
+            (P16.x > 26.5 && P16.x < 27.5);
+        const bool holdAuthorizationCameraGuardArchitecture =
+            P16.x > 25.5 && P16.x < 27.5;
         // Modes 21/22 make the whole-frame translation score authoritative even
         // during active protection. Mode 22 receives a structural/gradient-
         // validated score in P6.y; mode 21 and production retain raw luminance.
@@ -1159,9 +1175,83 @@ R"HLSL(
             qualifiedStationaryCameraGuardArchitecture ?
                 max(corroboratedMotionGate, unmaskedCpuCameraMotionGate) :
                 corroboratedMotionGate;
+        const float stableAuthorityMotionGuardGate =
+            stableAuthorityCameraGuardArchitecture ?
+                max(corroboratedMotionGate, unmaskedCpuCameraMotionGate) :
+                stationaryMotionGuardGate;
+        const float holdAuthorizationMotionGuardGate =
+            holdAuthorizationCameraGuardArchitecture ?
+                max(corroboratedMotionGate, unmaskedCpuCameraMotionGate) :
+                stationaryMotionGuardGate;
+        const bool matrix35RepetitionGuardFactor =
+            (P16.x > 27.5 && P16.x < 28.5) ||
+            (P16.x > 30.5 && P16.x < 32.5) ||
+            (P16.x > 33.5 && P16.x < 34.5);
+        const bool matrix35RiskStateFactor =
+            (P16.x > 28.5 && P16.x < 29.5) ||
+            (P16.x > 30.5 && P16.x < 31.5) ||
+            (P16.x > 32.5 && P16.x < 34.5);
+        const bool matrix35PrimeLifetimeFactor =
+            (P16.x > 29.5 && P16.x < 30.5) ||
+            (P16.x > 31.5 && P16.x < 34.5);
+        // Matrix 36 splits Matrix 35 factor B into its two conceptual pieces.
+        // Mode 35: mode-21 sequence-conditioned risk/state semantics, base 0.22 s lifetime.
+        // Mode 36: mode-20 state semantics, but the qualified risk lifetime is 0.40 s.
+        const bool matrix36StateSemanticsFactor =
+            P16.x > 34.5 && P16.x < 35.5;
+        const bool matrix36RiskLifetimeFactor =
+            P16.x > 35.5 && P16.x < 36.5;
+        const bool matrix37DirectWeakRiskSeedFactor =
+            P16.x > 36.5 && P16.x < 38.5;
+        const bool matrix37ExtendedRiskLifetimeFactor =
+            P16.x > 37.5 && P16.x < 38.5;
+        // Matrix 41: 2^3 decomposition of mode 35 state semantics.
+        // 39=D, 40=R, 41=G, 42=D+R, 43=D+G, 44=R+G.
+        const bool matrix41DisocclusionFactor =
+            (P16.x > 38.5 && P16.x < 39.5) ||
+            (P16.x > 41.5 && P16.x < 43.5);
+        const bool matrix41RestoreFactor =
+            (P16.x > 39.5 && P16.x < 40.5) ||
+            (P16.x > 41.5 && P16.x < 42.5) ||
+            (P16.x > 43.5 && P16.x < 44.5);
+        const bool matrix41RiskGateFactor =
+            (P16.x > 40.5 && P16.x < 41.5) ||
+            (P16.x > 42.5 && P16.x < 44.5);
+        // Matrix 42 keeps only Matrix 41's restoration ownership fix, then
+        // independently varies weak-risk seeding and qualified-risk lifetime.
+        const bool matrix42RestoreBaseline =
+            P16.x > 44.5 && P16.x < 47.5;
+        const bool matrix42WeakSeedFactor =
+            (P16.x > 44.5 && P16.x < 45.5) ||
+            (P16.x > 46.5 && P16.x < 47.5);
+        const bool matrix42ExtendedRiskLifetimeFactor =
+            P16.x > 45.5 && P16.x < 47.5;
+        // Matrix 43 keeps Matrix 42's R+L result fixed, then splits PRIME
+        // establishment amplitude from PRIME survival duration.
+        const bool matrix43RestoreLongRiskBaseline =
+            P16.x > 47.5 && P16.x < 50.5;
+        const bool matrix43FullWeakPrimeWriteFactor =
+            (P16.x > 47.5 && P16.x < 48.5) ||
+            (P16.x > 49.5 && P16.x < 50.5);
+        const bool matrix43LongPrimeFactor =
+            P16.x > 48.5 && P16.x < 50.5;
+        // Matrix 44 changes diagnostics only. Its behavior is the R+L control:
+        // R restoration ownership ON, 0.40 s qualified surface-risk lifetime ON,
+        // D/G/S/A/P OFF.
+        const bool matrix44ActivationTraceArchitecture =
+            P16.x > 50.5 && P16.x < 51.5;
+        // Matrix 45 keeps the exact Matrix-44 R+L behavior. The new mode only
+        // exposes the PRIME-continuity veto inputs through replay diagnostic MRTs.
+        const bool matrix45PrimeContinuityTraceArchitecture =
+            P16.x > 51.5 && P16.x < 52.5;
+        const float matrix35RepetitionMotionGuardGate =
+            matrix35RepetitionGuardFactor ?
+                max(corroboratedMotionGate, unmaskedCpuCameraMotionGate) :
+                stationaryMotionGuardGate;
         const float stationaryRepetitionGate =
             stationaryWeakRepetitionArchitecture ?
-                (1.0 - smoothstep(0.08, 0.30, stationaryMotionGuardGate)) : 0.0;
+                (1.0 - smoothstep(0.08, 0.30,
+                    matrix35RepetitionMotionGuardGate)) : 0.0;
         const float localSequenceMotionGate = smoothstep(
             0.10, 0.45, max(localMotionGate, hardwareMotionGate));
         const float coherentSequenceMotionGate = smoothstep(
@@ -1189,14 +1279,29 @@ R"HLSL(
                 min(correctedCurrentPixelDisocclusionGate,
                     explicitDisocclusionGate *
                         (1.0 - texturelessStationaryFallbackGate));
+        const float matrix35RiskStateDisocclusionGate =
+            lerp(explicitDisocclusionGate,
+                correctedCurrentPixelDisocclusionGate,
+                stationaryRepetitionGate) *
+                (1.0 - texturelessStationaryFallbackGate);
         const float texturelessStateDisocclusionGate =
-            minimalTexturelessCameraVetoArchitecture ?
+            (matrix35RiskStateFactor || matrix36StateSemanticsFactor ||
+                matrix37DirectWeakRiskSeedFactor ||
+                matrix41DisocclusionFactor) ?
+                matrix35RiskStateDisocclusionGate :
+            (minimalTexturelessCameraVetoArchitecture ?
                 lerp(texturelessStateDisocclusionGateBase,
                     explicitDisocclusionGate, unmaskedCpuCameraMotionGate) :
-                texturelessStateDisocclusionGateBase;
+                texturelessStateDisocclusionGateBase);
         const bool restoreQualifiedState =
             texturelessStationaryPrimeStateArchitecture ?
-                ((qualifiedStationaryCameraGuardArchitecture ?
+                (((qualifiedStationaryCameraGuardArchitecture ||
+                    matrix35RiskStateFactor || matrix36StateSemanticsFactor ||
+                    matrix37DirectWeakRiskSeedFactor ||
+                    matrix41RestoreFactor || matrix42RestoreBaseline ||
+                    matrix43RestoreLongRiskBaseline ||
+                    matrix44ActivationTraceArchitecture ||
+                    matrix45PrimeContinuityTraceArchitecture) ?
                     stationarySequenceStateGate : stationaryRepetitionGate) > 0.0 &&
                  texturelessStateDisocclusionGate <= P13.z) :
             (stationaryMotionOnlyStateArchitecture ?
@@ -1212,13 +1317,23 @@ R"HLSL(
             transportedSurfaceRisk = max(transportedSurfaceRisk, restoredRisk);
         }
         const float stationaryRiskStateGate =
-            qualifiedStationaryCameraGuardArchitecture ?
+            (qualifiedStationaryCameraGuardArchitecture ||
+                matrix35RiskStateFactor || matrix36StateSemanticsFactor ||
+                matrix37DirectWeakRiskSeedFactor ||
+                matrix41RiskGateFactor) ?
                 stationarySequenceStateGate : stationaryRepetitionGate;
         if (stationaryRiskStateGate > 0.0 && transportedSurfaceRisk > 0.0)
         {
             const float baseRiskTau = max(P13.w, 0.005);
             const float stationaryRiskTau = max(baseRiskTau,
-                qualifiedStationaryCameraGuardArchitecture ? 0.40 : 0.22);
+                (qualifiedStationaryCameraGuardArchitecture ||
+                    matrix35RiskStateFactor || matrix36RiskLifetimeFactor ||
+                    matrix37ExtendedRiskLifetimeFactor ||
+                    matrix42ExtendedRiskLifetimeFactor ||
+                    matrix43RestoreLongRiskBaseline ||
+                    matrix44ActivationTraceArchitecture ||
+                    matrix45PrimeContinuityTraceArchitecture) ?
+                    0.40 : 0.22);
             const float decayCompensation = exp(dt *
                 (1.0 / baseRiskTau - 1.0 / stationaryRiskTau));
             transportedSurfaceRisk = saturate(transportedSurfaceRisk *
@@ -1277,7 +1392,7 @@ R"HLSL(
         const float repeatedCurrentIntrinsicAuthority =
             repeatedMemoryGate * eventMask * intrinsicResidualGate;
         const float stableMotionConflict =
-            smoothstep(0.10, 0.45, stationaryMotionGuardGate);
+            smoothstep(0.10, 0.45, stableAuthorityMotionGuardGate);
         const float repeatedStableIntrinsicAuthority =
             repeatedMemoryGate * holdGate * stableSourceGate *
             (1.0 - stableMotionConflict);
@@ -1350,7 +1465,7 @@ R"HLSL(
             max(currentSurfaceHoldVeto, disocclusionHoldVeto);
         const float stationaryCurrentHoldAuthorization =
             eventMask *
-            (1.0 - smoothstep(0.02, 0.12, stationaryMotionGuardGate)) *
+            (1.0 - smoothstep(0.02, 0.12, holdAuthorizationMotionGuardGate)) *
             (1.0 - verifiedLocalTransportGate);
         const float repeatedHoldMask =
             repeatedHoldAuthorization * (1.0 - effectiveMotionGate);
@@ -1708,11 +1823,14 @@ R"HLSL(
             const float currentSignedDirection =
                 signedIntrinsicDelta >= 0.0 ? 1.0 : -1.0;
             const float baseSignedPrimeTau = max(0.05, 0.18 * P14.x);
+            const bool extendedPrimeLifetime =
+                qualifiedStationaryCameraGuardArchitecture ||
+                matrix35PrimeLifetimeFactor || matrix43LongPrimeFactor;
             const float stationarySignedPrimeTau =
-                qualifiedStationaryCameraGuardArchitecture ?
+                extendedPrimeLifetime ?
                     max(baseSignedPrimeTau, 0.40) : baseSignedPrimeTau;
             const float effectiveSignedPrimeTau =
-                qualifiedStationaryCameraGuardArchitecture ?
+                extendedPrimeLifetime ?
                     lerp(baseSignedPrimeTau, stationarySignedPrimeTau,
                         stationarySequenceStateGate) : baseSignedPrimeTau;
             float transportedSignedPrime = oppositionGatedArchitecture &&
@@ -1733,6 +1851,9 @@ R"HLSL(
             const float signedPrimeContinuity =
                 saturate(signedPrimeContinuityEvidence) *
                 (1.0 - hardStateDisocclusion);
+            const float matrix45PrimeBeforeContinuity = transportedSignedPrime;
+            const float matrix45WouldBeOppositionStrength = max(
+                0.0, -matrix45PrimeBeforeContinuity * currentSignedDirection);
             transportedSignedPrime *= signedPrimeContinuity;
             const float oppositionStrength = max(
                 0.0, -transportedSignedPrime * currentSignedDirection);
@@ -1751,8 +1872,18 @@ R"HLSL(
             const float persistentSeedAuthority = repetitionGatedArchitecture ?
                 repeatedMemoryGate : (oppositionGatedArchitecture ?
                     effectiveOpposingTransitionGate : 1.0);
+            const float matrix37QualifiedWeakRiskSeed =
+                matrix37DirectWeakRiskSeedFactor ?
+                    weakOpposingTransitionGate *
+                    stationarySequenceStateGate * surfaceContinuity : 0.0;
+            const float matrix42QualifiedWeakRiskSeed =
+                matrix42WeakSeedFactor ?
+                    weakOpposingTransitionGate *
+                    stationarySequenceStateGate * surfaceContinuity : 0.0;
             surfaceRiskStateSeed = eventOnlyArchitecture ? 0.0 :
-                qualifiedIntrinsicEvent * persistentSeedAuthority;
+                max(qualifiedIntrinsicEvent * persistentSeedAuthority,
+                    max(matrix37QualifiedWeakRiskSeed,
+                        matrix42QualifiedWeakRiskSeed));
             const float surfaceMemoryMitigation = eventOnlyArchitecture ?
                 0.0 : smoothstep(0.06, 0.45, transportedSurfaceRisk);
 
@@ -1774,15 +1905,44 @@ R"HLSL(
             const float currentFrameStrength = saturate(max(max(
                 qualifiedIntrinsicEvent, surfaceMemoryMitigation),
                 phaseHoldMitigation));
+            if (matrix44ActivationTraceArchitecture)
+            {
+                output.motionDiagnostics0 = float4(
+                    saturate(weakSignedMagnitudeGate),
+                    saturate(0.5 + 0.5 * transportedSignedPrime),
+                    saturate(oppositionStrength),
+                    saturate(weakOpposingTransitionGate));
+                output.motionDiagnostics1 = float4(
+                    saturate(qualifiedIntrinsicEvent),
+                    saturate(surfaceRiskStateSeed),
+                    saturate(transportedSurfaceRisk),
+                    saturate(currentFrameStrength));
+            }
+            else if (matrix45PrimeContinuityTraceArchitecture)
+            {
+                output.motionDiagnostics0 = float4(
+                    saturate(stationaryPrimeContinuity),
+                    saturate(verifiedCurrentSurfaceTransport),
+                    saturate(texturelessStationaryFallbackGate),
+                    saturate(hardStateDisocclusion));
+                output.motionDiagnostics1 = float4(
+                    saturate(signedPrimeContinuityEvidence),
+                    saturate(signedPrimeContinuity),
+                    saturate(0.5 + 0.5 * matrix45PrimeBeforeContinuity),
+                    saturate(matrix45WouldBeOppositionStrength));
+            }
             if (phaseHoldArchitecture)
                 phaseHoldStateEncoded =
                     saturate(0.5 + 0.5 * currentIntrinsicEvent);
 
             if (oppositionGatedArchitecture)
             {
+                const float matrix43WeakPrimeWrite =
+                    matrix43FullWeakPrimeWriteFactor && weakSignedMagnitudeGate > 0.0 ?
+                        1.0 : weakSignedMagnitudeGate;
                 const float primeWrite = saturate(max(
                     2.0 * currentIntrinsicEvent * signedMagnitudeGate,
-                    weakSignedMagnitudeGate));
+                    matrix43WeakPrimeWrite));
                 const float nextSignedPrime = lerp(
                     transportedSignedPrime, currentSignedDirection, primeWrite);
                 signedPrimeStateEncoded =
@@ -2340,6 +2500,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
     bool ValidateShaderSource()
     {
+        if (!SurfaceFrequency::Validate()) return false;
         struct ShaderTarget { const char* entry; const char* profile; };
         constexpr ShaderTarget targets[] = {
             { "VSMain", "vs_5_0" }, { "PSMain", "ps_5_0" },
@@ -2431,6 +2592,10 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
     {
     public:
         ~FlashGuardApp() { Stop(); }
+        void WarmStartupShaders(HMONITOR monitor) {
+            m_monitor = monitor; FindOutputAndCreateDevice(); CreatePipeline();
+            m_surfaceFrequency.Initialize(m_device.get(), m_context.get());
+        }
 
         void Initialize(HWND output, HMONITOR monitor,
                         HWND startupStatus = nullptr, HWND startupProgress = nullptr)
@@ -2674,7 +2839,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     DeleteObject(background);
                     HFONT font = CreateFontW(-18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                        CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
+                        CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"JetBrains Mono");
                     HGDIOBJ oldFont = SelectObject(dc, font);
                     SetBkMode(dc, TRANSPARENT);
                     SetTextColor(dc, RGB(22, 22, 22));
@@ -4065,6 +4230,33 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     m_context->Unmap(m_replayReadback.get(), 0);
                     return std::pair<double, double>{ sourceLuma, outputLuma };
                 };
+                const auto readMatrix44CenterDiagnostics = [&](size_t group) {
+                    std::array<double, 4> values{};
+                    if (group >= m_motionDiagnosticTextures.size() ||
+                        !m_motionDiagnosticTextures[group] ||
+                        !m_motionDiagnosticReadbacks[group])
+                        return values;
+                    m_context->CopyResource(
+                        m_motionDiagnosticReadbacks[group].get(),
+                        m_motionDiagnosticTextures[group].get());
+                    D3D11_MAPPED_SUBRESOURCE mapped{};
+                    ThrowIfFailed(m_context->Map(
+                        m_motionDiagnosticReadbacks[group].get(), 0,
+                        D3D11_MAP_READ, 0, &mapped));
+                    const UINT x = width / 2u;
+                    const UINT y = height / 2u;
+                    const auto* row = reinterpret_cast<const uint16_t*>(
+                        static_cast<const uint8_t*>(mapped.pData) +
+                        static_cast<size_t>(y) * mapped.RowPitch);
+                    for (size_t channel = 0; channel < 4; ++channel)
+                        values[channel] = std::clamp(
+                            static_cast<double>(halfToFloat(
+                                row[static_cast<size_t>(x) * 4 + channel])),
+                            0.0, 1.0);
+                    m_context->Unmap(
+                        m_motionDiagnosticReadbacks[group].get(), 0);
+                    return values;
+                };
                 const auto perceptualPath =
                     std::filesystem::path(reportPath).parent_path() /
                     L"perceptual-sweep.json";
@@ -4087,6 +4279,22 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 const std::vector<double> phaseFrames = replayScreening ?
                     std::vector<double>{ 0.5 } :
                     std::vector<double>{ 0.0, 0.5 };
+                struct Matrix44ActivationTraceFrame
+                {
+                    int deltaCode = 0;
+                    double phaseFrames = 0.0;
+                    int frame = 0;
+                    bool high = false;
+                    double sourceLuma = 0.0;
+                    double outputLuma = 0.0;
+                    std::array<double, 4> diagnostics0{};
+                    std::array<double, 4> diagnostics1{};
+                    std::array<double, 4> diagnostics2{};
+                };
+                std::vector<Matrix44ActivationTraceFrame>
+                    matrix44ActivationTrace;
+                std::vector<Matrix44ActivationTraceFrame>
+                    matrix45PrimeContinuityTrace;
                 bool firstPerceptual = true;
                 perceptualMinReduction = 1.0;
                 for (int deltaCode : deltas)
@@ -4117,6 +4325,42 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                                 fillGray(static_cast<uint8_t>(
                                     phase < 0.5 ? highCode : lowCode));
                                 const auto currentCenter = renderCenterLuma();
+                                if (m_benchmarkArchitectureMode == 51 &&
+                                    std::fabs(frequencyHz - 5.0) < 0.001)
+                                {
+                                    Matrix44ActivationTraceFrame trace{};
+                                    trace.deltaCode = deltaCode;
+                                    trace.phaseFrames = phaseFrame;
+                                    trace.frame = i;
+                                    trace.high = phase < 0.5;
+                                    trace.sourceLuma = currentCenter.first;
+                                    trace.outputLuma = currentCenter.second;
+                                    trace.diagnostics0 =
+                                        readMatrix44CenterDiagnostics(0);
+                                    trace.diagnostics1 =
+                                        readMatrix44CenterDiagnostics(1);
+                                    trace.diagnostics2 =
+                                        readMatrix44CenterDiagnostics(2);
+                                    matrix44ActivationTrace.push_back(trace);
+                                }
+                                if (m_benchmarkArchitectureMode == 52 &&
+                                    std::fabs(frequencyHz - 5.0) < 0.001)
+                                {
+                                    Matrix44ActivationTraceFrame trace{};
+                                    trace.deltaCode = deltaCode;
+                                    trace.phaseFrames = phaseFrame;
+                                    trace.frame = i;
+                                    trace.high = phase < 0.5;
+                                    trace.sourceLuma = currentCenter.first;
+                                    trace.outputLuma = currentCenter.second;
+                                    trace.diagnostics0 =
+                                        readMatrix44CenterDiagnostics(0);
+                                    trace.diagnostics1 =
+                                        readMatrix44CenterDiagnostics(1);
+                                    trace.diagnostics2 =
+                                        readMatrix44CenterDiagnostics(2);
+                                    matrix45PrimeContinuityTrace.push_back(trace);
+                                }
                                 sourceVariation += std::fabs(
                                     currentCenter.first - previousCenter.first);
                                 const double outputDelta = std::fabs(
@@ -4146,6 +4390,123 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 }
                 std::fputs("\n  ]\n}\n", perceptualReport);
                 std::fclose(perceptualReport);
+
+                if (m_benchmarkArchitectureMode == 51 &&
+                    !matrix44ActivationTrace.empty())
+                {
+                    const auto tracePath =
+                        std::filesystem::path(reportPath).parent_path() /
+                        L"matrix44-activation-trace.json";
+                    FILE* traceReport = nullptr;
+                    if (_wfopen_s(&traceReport, tracePath.c_str(), L"wb") != 0 ||
+                        !traceReport)
+                        return false;
+                    std::fprintf(traceReport,
+                        "{\n"
+                        "  \"schema\": \"FLASHGUARD_MATRIX44_ACTIVATION_TRACE/1\",\n"
+                        "  \"fps\": %d,\n"
+                        "  \"architecture_mode\": 51,\n"
+                        "  \"diagnostic_only\": true,\n"
+                        "  \"frames\": [\n",
+                        replayFps);
+                    for (size_t traceIndex = 0;
+                         traceIndex < matrix44ActivationTrace.size(); ++traceIndex)
+                    {
+                        const auto& trace = matrix44ActivationTrace[traceIndex];
+                        std::fprintf(traceReport,
+                            "    {\"delta_code\":%d,\"phase_frames\":%.1f,"
+                            "\"frame\":%d,\"high\":%s,"
+                            "\"source_luma\":%.8f,\"output_luma\":%.8f,"
+                            "\"weak_signed_magnitude_gate\":%.8f,"
+                            "\"transported_prime_encoded\":%.8f,"
+                            "\"transported_prime_signed\":%.8f,"
+                            "\"opposition_strength\":%.8f,"
+                            "\"weak_opposing_transition_gate\":%.8f,"
+                            "\"qualified_intrinsic_event\":%.8f,"
+                            "\"surface_risk_seed\":%.8f,"
+                            "\"transported_surface_risk\":%.8f,"
+                            "\"current_frame_strength\":%.8f,"
+                            "\"preprocess_luma_delta\":%.8f,"
+                            "\"architecture_luma_delta\":%.8f,"
+                            "\"authority_current_event\":%.8f,"
+                            "\"surface_memory_strength\":%.8f}%s\n",
+                            trace.deltaCode, trace.phaseFrames, trace.frame,
+                            trace.high ? "true" : "false",
+                            trace.sourceLuma, trace.outputLuma,
+                            trace.diagnostics0[0], trace.diagnostics0[1],
+                            trace.diagnostics0[1] * 2.0 - 1.0,
+                            trace.diagnostics0[2], trace.diagnostics0[3],
+                            trace.diagnostics1[0], trace.diagnostics1[1],
+                            trace.diagnostics1[2], trace.diagnostics1[3],
+                            trace.diagnostics2[0], trace.diagnostics2[1],
+                            trace.diagnostics2[2], trace.diagnostics2[3],
+                            traceIndex + 1 < matrix44ActivationTrace.size() ?
+                                "," : "");
+                    }
+                    std::fputs("  ]\n}\n", traceReport);
+                    std::fclose(traceReport);
+                }
+
+                if (m_benchmarkArchitectureMode == 52 &&
+                    !matrix45PrimeContinuityTrace.empty())
+                {
+                    const auto continuityPath =
+                        std::filesystem::path(reportPath).parent_path() /
+                        L"matrix45-prime-continuity-trace.json";
+                    FILE* continuityReport = nullptr;
+                    if (_wfopen_s(&continuityReport, continuityPath.c_str(), L"wb") != 0 ||
+                        !continuityReport)
+                        return false;
+                    std::fprintf(continuityReport,
+                        "{\n"
+                        "  \"schema\": \"FLASHGUARD_MATRIX45_PRIME_CONTINUITY_TRACE/1\",\n"
+                        "  \"fps\": %d,\n"
+                        "  \"architecture_mode\": 52,\n"
+                        "  \"diagnostic_only\": true,\n"
+                        "  \"frames\": [\n",
+                        replayFps);
+                    for (size_t traceIndex = 0;
+                         traceIndex < matrix45PrimeContinuityTrace.size(); ++traceIndex)
+                    {
+                        const auto& trace =
+                            matrix45PrimeContinuityTrace[traceIndex];
+                        const double primeBefore =
+                            trace.diagnostics1[2] * 2.0 - 1.0;
+                        const double primeAfter =
+                            primeBefore * trace.diagnostics1[1];
+                        const double actualOpposition =
+                            trace.diagnostics1[3] * trace.diagnostics1[1];
+                        std::fprintf(continuityReport,
+                            "    {\"delta_code\":%d,\"phase_frames\":%.1f,"
+                            "\"frame\":%d,\"high\":%s,"
+                            "\"source_luma\":%.8f,\"output_luma\":%.8f,"
+                            "\"stationary_prime_continuity\":%.8f,"
+                            "\"verified_current_surface_transport\":%.8f,"
+                            "\"textureless_stationary_fallback_gate\":%.8f,"
+                            "\"hard_state_disocclusion\":%.8f,"
+                            "\"signed_prime_continuity_evidence\":%.8f,"
+                            "\"signed_prime_continuity\":%.8f,"
+                            "\"prime_before_continuity\":%.8f,"
+                            "\"prime_after_continuity\":%.8f,"
+                            "\"would_be_opposition_strength\":%.8f,"
+                            "\"actual_opposition_strength\":%.8f,"
+                            "\"architecture_luma_delta\":%.8f,"
+                            "\"surface_memory_strength\":%.8f}%s\n",
+                            trace.deltaCode, trace.phaseFrames, trace.frame,
+                            trace.high ? "true" : "false",
+                            trace.sourceLuma, trace.outputLuma,
+                            trace.diagnostics0[0], trace.diagnostics0[1],
+                            trace.diagnostics0[2], trace.diagnostics0[3],
+                            trace.diagnostics1[0], trace.diagnostics1[1],
+                            primeBefore, primeAfter,
+                            trace.diagnostics1[3], actualOpposition,
+                            trace.diagnostics2[1], trace.diagnostics2[3],
+                            traceIndex + 1 < matrix45PrimeContinuityTrace.size() ?
+                                "," : "");
+                    }
+                    std::fputs("  ]\n}\n", continuityReport);
+                    std::fclose(continuityReport);
+                }
 
                 if (replayScreening)
                 {
@@ -4818,7 +5179,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             const bool commonPass = staticMae < 0.005 &&
                 rawVariation > 0.10 && flashReduction > 0.90 &&
                 movingGhostMae < 0.005 && smallMovingGhostMae < 0.003 &&
-                panMae < 0.010 && flowFrames > 0;
+                panMae < 0.010 && (g_surfaceFrequency || flowFrames > 0);
             const bool pass = replayScreening ?
                 (screeningMetricsFinite && commonPass) :
                 (fullMetricsFinite && commonPass &&
@@ -5084,8 +5445,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             FILE* report = nullptr;
             if (_wfopen_s(&report, reportPath.c_str(), L"wb") != 0 || !report)
                 return false;
+            std::fprintf(report, "{\n  \"pipeline\":\"%s\",\n",
+                g_surfaceFrequency ? "surface-frequency-v1" : "legacy");
             std::fprintf(report,
-                "{\n"
                 "  \"schema\": \"FLASHGUARD_REPLAY/6\",\n"
                 "  \"status\": \"%s\",\n"
                 "  \"width\": %u,\n"
@@ -5154,6 +5516,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 static_cast<unsigned long long>(extremePanFlowFrames),
                 static_cast<unsigned long long>(flowFrames));
             std::fclose(report);
+            if (g_surfaceFrequency)
+                m_surfaceFrequency.WriteMetrics(std::filesystem::path(reportPath).parent_path() /
+                    L"surface-frequency-metrics.json");
             return pass;
         }
 
@@ -5174,6 +5539,9 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 m_frameLatencyWaitableObject = nullptr;
             }
             std::scoped_lock lock(m_mutex);
+            if (g_surfaceFrequency && !m_replayMode)
+                m_surfaceFrequency.WriteMetrics(std::filesystem::path(PreferencesPath()).parent_path() /
+                    L"surface-frequency-last-run.json");
             DestroyOpticalFlow();
             m_duplication = nullptr;
             m_dxgiOutput = nullptr;
@@ -5377,7 +5745,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 tuning.cameraMotionSuppression, 0.05f, 0.90f);
             if (tuning.architectureMode >= 0)
                 m_benchmarkArchitectureMode =
-                    std::clamp(tuning.architectureMode, 0, 24);
+                    std::clamp(tuning.architectureMode, 0, 52);
             apply(m_benchmarkRiskOnlyNeutralLuma,
                 tuning.riskOnlyNeutralLuma, 0.03f, 0.50f);
             apply(m_benchmarkRiskOnlyGain,
@@ -5977,6 +6345,26 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                             {
                                 if (g_liveRawPassthroughForLatencyTest)
                                     PresentRawCapturedFrame(texture.get());
+                                else if (g_surfaceFrequency)
+                                {
+                                    const auto timestamp = info.LastPresentTime.QuadPart;
+                                    const bool newSource = !m_surfaceFrequency.HasSource() ||
+                                        timestamp > m_surfaceLastCaptureQpc;
+                                    if (newSource)
+                                    {
+                                        if (m_surfaceLastCaptureQpc > 0 && timestamp > m_surfaceLastCaptureQpc)
+                                        {
+                                            LARGE_INTEGER frequency{};
+                                            if (QueryPerformanceFrequency(&frequency) && frequency.QuadPart > 0)
+                                                dt = static_cast<float>(static_cast<double>(
+                                                    timestamp - m_surfaceLastCaptureQpc) /
+                                                    static_cast<double>(frequency.QuadPart));
+                                        }
+                                        m_surfaceLastCaptureQpc = timestamp;
+                                        QueueCapturedFrame(texture.get(), dt);
+                                    }
+                                    else RenderSurfaceSource(nullptr, dt);
+                                }
                                 else
                                     QueueCapturedFrame(texture.get(), dt);
                             }
@@ -6088,7 +6476,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         void CreatePipeline()
         {
             winrt::com_ptr<ID3DBlob> vsBlob, psBlob, errors;
-            HRESULT hr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1, "FlashGuard", nullptr, nullptr,
+            HRESULT hr = fg_shader_cache::Compile(kShaderSource, sizeof(kShaderSource) - 1, "FlashGuard", nullptr, nullptr,
                                     "VSMain", "vs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
                                     vsBlob.put(), errors.put());
             if (FAILED(hr))
@@ -6097,7 +6485,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 ThrowIfFailed(hr);
             }
             errors = nullptr;
-            hr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1, "FlashGuard", nullptr, nullptr,
+            hr = fg_shader_cache::Compile(kShaderSource, sizeof(kShaderSource) - 1, "FlashGuard", nullptr, nullptr,
                             "PSMain", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
                             psBlob.put(), errors.put());
             if (FAILED(hr))
@@ -6111,7 +6499,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
             errors = nullptr;
             winrt::com_ptr<ID3DBlob> analyzeBlob;
-            hr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1, "FlashGuard", nullptr, nullptr,
+            hr = fg_shader_cache::Compile(kShaderSource, sizeof(kShaderSource) - 1, "FlashGuard", nullptr, nullptr,
                             "PSAnalyze", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
                             analyzeBlob.put(), errors.put());
             if (FAILED(hr))
@@ -6123,7 +6511,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
             errors = nullptr;
             winrt::com_ptr<ID3DBlob> instantBlob;
-            hr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1, "FlashGuard", nullptr, nullptr,
+            hr = fg_shader_cache::Compile(kShaderSource, sizeof(kShaderSource) - 1, "FlashGuard", nullptr, nullptr,
                             "PSInstantSafety", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
                             instantBlob.put(), errors.put());
             if (FAILED(hr))
@@ -6136,7 +6524,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
             errors = nullptr;
             winrt::com_ptr<ID3DBlob> coarseProtectBlob;
-            hr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1,
+            hr = fg_shader_cache::Compile(kShaderSource, sizeof(kShaderSource) - 1,
                             "FlashGuard", nullptr, nullptr,
                             "PSLiveCoarseProtect", "ps_5_0",
                             D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
@@ -6154,7 +6542,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
             errors = nullptr;
             winrt::com_ptr<ID3DBlob> opticalFlowCopyBlob;
-            hr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1, "FlashGuard", nullptr, nullptr,
+            hr = fg_shader_cache::Compile(kShaderSource, sizeof(kShaderSource) - 1, "FlashGuard", nullptr, nullptr,
                             "PSOpticalFlowCopy", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
                             opticalFlowCopyBlob.put(), errors.put());
             if (FAILED(hr))
@@ -6660,6 +7048,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
         void ResetDelayedPipeline()
         {
+            m_surfaceFrequency.Reset();
+            m_surfaceLastCaptureQpc = 0;
             DiscardPendingLiveFrames();
             m_ringRead = 0;
             m_ringWrite = 0;
@@ -7454,6 +7844,27 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 static_cast<unsigned long long>(
                     m_droppedPresents.load(std::memory_order_acquire)));
 
+            if (g_surfaceFrequency)
+                swprintf_s(text,
+                    L"FLASHGUARD: SURFACE FREQUENCY (experimental)\n"
+                    L"Frequency band: 5-30 Hz\n"
+                    L"Motion backend: GPU structural matcher\n"
+                    L"NVIDIA optical flow: not used\n"
+                    L"Displayed image history: not used\n"
+                    L"GPU passes (last): %.3f ms\n"
+                    L"Desktop frame age: %.2f ms\n"
+                    L"Accumulated desktop frames: %u\n"
+                    L"Present queue wait: %.2f ms\n"
+                    L"Present call: %.2f ms\n\n"
+                    L"GPU time excludes copy and presentation.\n"
+                    L"First-event attenuation is provisional.\n"
+                    L"F9: diagnostics   Ctrl+Shift+F12: exit",
+                    m_surfaceFrequency.LastGpuMs(),
+                    m_captureImageAgeMs.load(std::memory_order_acquire),
+                    m_captureAccumulatedFrames.load(std::memory_order_acquire),
+                    m_presentReadyWaitMs.load(std::memory_order_acquire),
+                    m_presentCallMs.load(std::memory_order_acquire));
+
             BITMAPINFO bmi{};
             bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
             bmi.bmiHeader.biWidth = static_cast<LONG>(kDebugWidth);
@@ -7477,7 +7888,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             DeleteObject(background);
             HFONT font = CreateFontW(-17, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
+                CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"JetBrains Mono");
             HGDIOBJ oldFont = SelectObject(dc, font);
             SetBkMode(dc, TRANSPARENT);
             SetTextColor(dc, RGB(110, 235, 145));
@@ -7809,8 +8220,39 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             }
         }
 
+        void RenderSurfaceSource(ID3D11Texture2D* source, float dt)
+        {
+            m_surfaceFrequency.Initialize(m_device.get(), m_context.get());
+            if (!source && !m_surfaceFrequency.HasSource()) return;
+            if (m_debugEnabled.load(std::memory_order_acquire)) UpdateDebugTexture();
+            auto* target = m_replayMode ?
+                m_outputHistoryRTVs[m_outputHistoryIndex].get() : m_backBufferRTV.get();
+            m_surfaceFrequency.Render(source, target, dt, m_safety.subtleToneMap,
+                m_safety.blackFloor, m_safety.whiteCeiling,
+                m_debugEnabled.load(std::memory_order_acquire) ? m_debugSRV.get() : nullptr);
+            m_nvofFlowValid = false;
+            m_stageNvofMs.store(0.0f, std::memory_order_release);
+            // Replay's output texture is a readback sink, never detector history.
+            if (!m_replayMode && m_swapChain)
+            {
+                const auto start = std::chrono::steady_clock::now();
+                const HRESULT hr = m_swapChain->Present(0,
+                    m_allowTearing ? DXGI_PRESENT_ALLOW_TEARING : 0);
+                m_presentCallMs.store(std::chrono::duration<float, std::milli>(
+                    std::chrono::steady_clock::now() - start).count(), std::memory_order_release);
+                ThrowIfFailed(hr);
+            }
+        }
+
         void QueueCapturedFrame(ID3D11Texture2D* source, float dt)
         {
+            if (g_surfaceFrequency)
+            {
+                if (m_replayMode) m_replayClockSeconds += static_cast<double>(dt);
+                m_idleReleaseUntilMs.store(NowMs() + 500, std::memory_order_release);
+                RenderSurfaceSource(source, dt);
+                return;
+            }
             m_instantFrameDt = std::clamp(dt, 1.0f / 240.0f, 0.05f);
             if (m_replayMode)
                 m_replayClockSeconds += static_cast<double>(m_instantFrameDt);
@@ -7994,6 +8436,12 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             if (!m_context || !m_swapChain || m_stopped.load())
                 return;
 
+            if (g_surfaceFrequency)
+            {
+                RenderSurfaceSource(nullptr, dt);
+                return;
+            }
+
             m_instantFrameDt = std::clamp(dt, 1.0f / 240.0f, 0.05f);
             if (g_liveCoarseProtectForLatencyTest && !m_replayMode)
             {
@@ -8023,6 +8471,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
         void ClearAllToBlack()
         {
+            m_surfaceFrequency.Reset();
             const float black[4] = { 0, 0, 0, 1 };
             if (m_backBufferRTV) m_context->ClearRenderTargetView(m_backBufferRTV.get(), black);
             const float historyBlack[4] = { 0, 0, 0, 0 };
@@ -8134,6 +8583,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         size_t m_outputHistoryIndex = 0;
         bool m_outputHistoryValid = false;
         bool m_replayMode = false;
+        SurfaceFrequency m_surfaceFrequency;
+        LONGLONG m_surfaceLastCaptureQpc = 0;
         double m_replayClockSeconds = 0.0;
         winrt::com_ptr<ID3D11Texture2D> m_replayReadback;
         std::array<winrt::com_ptr<ID3D11Texture2D>, 3> m_motionDiagnosticTextures;
@@ -8302,96 +8753,34 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
     HBITMAP g_settingsPanelBitmap = nullptr;
     HWND g_settingsTooltip = nullptr;
     UINT g_settingsDpi = 96;
+    int g_settingsOpacity = 92;
 
     int SettingsScale(int value)
     {
         return MulDiv(value, static_cast<int>(g_settingsDpi), 96);
     }
 
+    struct SettingsPageControl { HWND window; int page; int x, y, width, height; };
+    std::vector<SettingsPageControl> g_settingsPageControls;
+    bool g_collectSettingsControls = false;
+    int g_settingsPage = 0;
+    constexpr int kSettingsTab = 2100;
+
     HBITMAP CreateFrostedPanelBitmap(HWND hwnd)
     {
-        RECT client{};
-        GetClientRect(hwnd, &client);
-        const int width = client.right;
-        const int height = client.bottom;
-        if (width <= 0 || height <= 0) return nullptr;
-        BITMAPINFO info{};
-        info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        info.bmiHeader.biWidth = width;
-        info.bmiHeader.biHeight = -height;
-        info.bmiHeader.biPlanes = 1;
-        info.bmiHeader.biBitCount = 32;
-        info.bmiHeader.biCompression = BI_RGB;
-        void* rawPixels = nullptr;
-        HDC dc = GetDC(hwnd);
-        HBITMAP bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS,
-            &rawPixels, nullptr, 0);
-        ReleaseDC(hwnd, dc);
-        if (!bitmap || !rawPixels) return bitmap;
-
-        auto* pixels = static_cast<std::uint8_t*>(rawPixels);
-        for (int y = 0; y < height; ++y)
-        {
-            const float fy = static_cast<float>(y) / std::max(1, height - 1);
-            for (int x = 0; x < width; ++x)
-            {
-                const float fx = static_cast<float>(x) / std::max(1, width - 1);
-                const auto glow = [](float xDelta, float yDelta, float spread) {
-                    return std::exp(-(xDelta * xDelta + yDelta * yDelta) / spread);
-                };
-                const float blue = glow(fx - 0.88f, fy - 0.12f, 0.16f);
-                const float violet = glow(fx - 0.08f, fy - 0.78f, 0.22f);
-                const float amber = glow(fx - 0.65f, fy - 0.55f, 0.10f);
-                const float shade = 1.0f - 0.15f * fy;
-                const int red = static_cast<int>((20.0f + 16.0f * violet +
-                    9.0f * amber + 3.0f * blue) * shade);
-                const int green = static_cast<int>((23.0f + 8.0f * violet +
-                    7.0f * amber + 9.0f * blue) * shade);
-                const int blueChannel = static_cast<int>((31.0f + 21.0f * blue +
-                    13.0f * violet + 2.0f * amber) * shade);
-                const size_t index = (static_cast<size_t>(y) * width + x) * 4;
-                pixels[index + 0] = static_cast<std::uint8_t>(std::clamp(blueChannel, 0, 255));
-                pixels[index + 1] = static_cast<std::uint8_t>(std::clamp(green, 0, 255));
-                pixels[index + 2] = static_cast<std::uint8_t>(std::clamp(red, 0, 255));
-                pixels[index + 3] = 255;
-            }
-        }
-
-        HDC panelDc = CreateCompatibleDC(nullptr);
-        HGDIOBJ oldBitmap = SelectObject(panelDc, bitmap);
-        HBRUSH cardBrush = CreateSolidBrush(RGB(26, 29, 40));
-        HPEN cardPen = CreatePen(PS_SOLID, 1, RGB(49, 56, 75));
-        HGDIOBJ oldBrush = SelectObject(panelDc, cardBrush);
-        HGDIOBJ oldPen = SelectObject(panelDc, cardPen);
-        const auto card = [panelDc](int left, int top, int right, int bottom) {
-            RoundRect(panelDc, SettingsScale(left), SettingsScale(top),
-                SettingsScale(right), SettingsScale(bottom),
-                SettingsScale(12), SettingsScale(12));
-        };
-        card(14, 68, 546, 386);
-        card(14, 396, 546, 600);
-        card(14, 610, 546, 710);
-        HPEN separatorPen = CreatePen(PS_SOLID, 1, RGB(39, 45, 61));
-        SelectObject(panelDc, separatorPen);
-        const int mainSeparators[]{ 115, 153, 191, 229, 267, 305, 343 };
-        for (int y : mainSeparators)
-        {
-            MoveToEx(panelDc, SettingsScale(28), SettingsScale(y), nullptr);
-            LineTo(panelDc, SettingsScale(532), SettingsScale(y));
-        }
-        const int hotkeySeparators[]{ 466, 498, 530, 562 };
-        for (int y : hotkeySeparators)
-        {
-            MoveToEx(panelDc, SettingsScale(28), SettingsScale(y), nullptr);
-            LineTo(panelDc, SettingsScale(532), SettingsScale(y));
-        }
-        SelectObject(panelDc, oldPen);
-        SelectObject(panelDc, oldBrush);
-        SelectObject(panelDc, oldBitmap);
-        DeleteObject(separatorPen);
-        DeleteObject(cardPen);
-        DeleteObject(cardBrush);
-        DeleteDC(panelDc);
+        RECT rc{}; GetClientRect(hwnd, &rc);
+        HDC dc = GetDC(hwnd), memory = CreateCompatibleDC(dc);
+        HBITMAP bitmap = CreateCompatibleBitmap(dc, rc.right, rc.bottom);
+        HGDIOBJ old = SelectObject(memory, bitmap);
+        HBRUSH background = CreateSolidBrush(RGB(20, 22, 27));
+        FillRect(memory, &rc, background); DeleteObject(background);
+        RECT content{SettingsScale(10), SettingsScale(90), rc.right - SettingsScale(10), SettingsScale(306)};
+        HBRUSH card = CreateSolidBrush(RGB(27, 29, 36));
+        FillRect(memory, &content, card); DeleteObject(card);
+        RECT line{SettingsScale(16), SettingsScale(313), rc.right - SettingsScale(16), SettingsScale(314)};
+        HBRUSH border = CreateSolidBrush(RGB(48, 53, 64));
+        FillRect(memory, &line, border); DeleteObject(border);
+        SelectObject(memory, old); DeleteDC(memory); ReleaseDC(hwnd, dc);
         return bitmap;
     }
 
@@ -8420,6 +8809,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             RegisterHotKey(g_overlayWindow, static_cast<int>(i + 1),
                 g_hotkeys[i].modifiers | MOD_NOREPEAT, g_hotkeys[i].virtualKey);
         }
+    }
+
+    void RegisterMenuHotkey() {
+        if (IsWindow(g_overlayWindow) && g_hotkeys[4].virtualKey)
+            RegisterHotKey(g_overlayWindow, 5, g_hotkeys[4].modifiers | MOD_NOREPEAT, g_hotkeys[4].virtualKey);
     }
 
     bool InstallHotkeysTransactional(const std::array<HotkeyBinding, 5>& requested)
@@ -8455,7 +8849,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         if (installed)
         {
             g_hotkeys = requested;
-            if (g_hotkeysSuspended) UnregisterAllConfiguredHotkeys();
+            if (g_hotkeysSuspended) { UnregisterAllConfiguredHotkeys(); RegisterMenuHotkey(); }
             return true;
         }
 
@@ -8470,6 +8864,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     previous[i].modifiers | MOD_NOREPEAT, previous[i].virtualKey);
             }
         }
+        if (g_hotkeysSuspended) RegisterMenuHotkey();
         return false;
     }
 
@@ -8526,6 +8921,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             SettingsScale(x), SettingsScale(y), SettingsScale(width), SettingsScale(height), parent,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
             GetModuleHandleW(nullptr), nullptr);
+        if (control && g_collectSettingsControls)
+            g_settingsPageControls.push_back({control, -1, x, y, width, height});
         if (control) SetControlFont(control);
         if (control) SetWindowTheme(control, L"DarkMode_Explorer", nullptr);
         if (control && lstrcmpW(cls, L"COMBOBOX") == 0)
@@ -8536,6 +8933,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
     LRESULT CALLBACK HotkeySubclassProc(HWND hwnd, UINT msg, WPARAM wParam,
                                         LPARAM lParam, UINT_PTR, DWORD_PTR)
     {
+        if (g_hotkeysSuspended && msg == WM_SETFOCUS && IsWindow(g_overlayWindow)) UnregisterHotKey(g_overlayWindow, 5);
+        if (g_hotkeysSuspended && msg == WM_KILLFOCUS) RegisterMenuHotkey();
         if (msg == WM_PAINT)
         {
             PAINTSTRUCT paint{};
@@ -8688,27 +9087,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
 
     void PopulateSettingsWindow(HWND hwnd)
     {
-        const RuntimeOptions options = g_app ? g_app->GetRuntimeOptions() : RuntimeOptions{};
-
-        HWND profileLabel = AddSettingsControl(hwnd, 0, L"STATIC", L"Protection profile", WS_CHILD | WS_VISIBLE | SS_NOTIFY,
-            28, 88, 200, 20, 0);
-        HWND profile = AddSettingsControl(hwnd, 0, L"COMBOBOX", L"",
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
-            245, 82, 285, 150, kControlProfile);
-        const wchar_t* profileItems[] = {
-            L"Performance - instant / original", L"Balanced - instant / low contrast",
-            L"Maximum - instant / strongest"
-        };
-        for (const auto* item : profileItems)
-            SendMessageW(profile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item));
-        SendMessageW(profile, CB_SETCURSEL, options.profilePreset, 0);
-        AddSettingsTooltip(profile,
-            L"All profiles use current-frame GPU protection. Performance changes the least; Balanced adds reduced contrast; Maximum uses the strongest protection curves. Click Apply to save.");
-        AddSettingsTooltip(profileLabel,
-            L"All profiles use current-frame GPU protection. Performance changes the least; Balanced adds reduced contrast; Maximum uses the strongest protection curves. Click Apply to save.");
+        RuntimeOptions options = g_app ? g_app->GetRuntimeOptions() : RuntimeOptions{};
+        if (!g_app) LoadPreferences(options, g_hotkeys);
 
         wchar_t contrastText[64]{};
-        swprintf_s(contrastText, L"Contrast reduction: %.3f", options.contrastReduction);
+        swprintf_s(contrastText, L"Contrast: %.3f", options.contrastReduction);
         HWND contrastLabel = AddSettingsControl(hwnd, 0, L"STATIC", contrastText, WS_CHILD | WS_VISIBLE | SS_NOTIFY,
             28, 126, 205, 20, kControlContrastValue);
         HWND contrast = AddSettingsControl(hwnd, 0, L"STATIC", L"",
@@ -8845,49 +9228,81 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             WS_TABSTOP | BS_OWNERDRAW, 346, 670, 84, 30, kControlApply);
         AddSettingsControl(hwnd, 0, L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE |
             WS_TABSTOP | BS_OWNERDRAW, 446, 670, 84, 30, kControlClose);
-        SetFocus(profile);
+        SetFocus(contrast);
     }
 
-    void ApplyProfilePresetToControls(HWND hwnd)
+    void SelectSettingsPage(HWND hwnd, int page)
     {
-        const int profile = std::clamp(static_cast<int>(SendDlgItemMessageW(
-            hwnd, kControlProfile, CB_GETCURSEL, 0, 0)), 0, 2);
-        if (profile == 0)
-        {
-            SendDlgItemMessageW(hwnd, kControlContrast, TBM_SETPOS, TRUE, 0);
-            SendDlgItemMessageW(hwnd, kControlSensitivity, CB_SETCURSEL, 0, 0);
-            SendDlgItemMessageW(hwnd, kControlSmallSensitivity, CB_SETCURSEL, 0, 0);
-            SendDlgItemMessageW(hwnd, kControlLatency, CB_SETCURSEL, 0, 0);
+        g_settingsPage = page;
+        SendMessageW(hwnd, WM_SETREDRAW, FALSE, 0);
+        for (const auto& control : g_settingsPageControls)
+            ShowWindow(control.window, control.page == -1 || control.page == page ? SW_SHOW : SW_HIDE);
+        SendMessageW(hwnd, WM_SETREDRAW, TRUE, 0);
+        RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+    }
+
+    void LayoutSettingsPages(HWND hwnd)
+    {
+        for (auto& c : g_settingsPageControls) {
+            const int oldY = c.y, id = GetDlgCtrlID(c.window);
+            if (oldY >= 82 && oldY < 386) {
+                c.page = g_surfaceFrequency ? -2 : 0;
+                c.x = c.x >= 245 ? 200 : 16; c.width = c.x == 200 ? 224 : 174;
+                c.y = 102 + ((oldY - 116) / 38) * 32 + (oldY - 116) % 38;
+                if (id == kControlContrast || id == kControlContrastValue) { c.page = 0; c.y = id == kControlContrast ? 102 : 111; }
+                if (id == kControlDebug) { c.page = 2; c.x = 16; c.y = 108; c.width = 408; }
+            }
+            else if (oldY >= 408 && oldY < 600) {
+                c.page = oldY < 438 ? -2 : 1;
+                c.y = 108 + ((oldY - 438) / 32) * 36 + (oldY - 438) % 32;
+                c.x = c.x >= 330 ? 202 : 16; c.width = c.x == 202 ? 222 : 180;
+            }
+            else if (oldY == 622) {
+                c.page = 1; c.x = 16; c.y = 264; c.width = 408; c.height = 36;
+                SetWindowTextW(c.window, L"Select a shortcut, then press its new keys.");
+            }
+            else if (oldY >= 670) {
+                c.y = id == kControlStatus ? 328 : 322; c.height = id == kControlStatus ? 18 : 28;
+                c.x = id == kControlStatus ? 16 : id == kControlApply ? 198 : 342;
+                c.width = id == kControlStatus ? 174 : id == kControlApply ? 136 : 82;
+            }
+            MoveWindow(c.window, SettingsScale(c.x), SettingsScale(c.y), SettingsScale(c.width), SettingsScale(c.height), FALSE);
         }
-        else if (profile == 1)
-        {
-            SendDlgItemMessageW(hwnd, kControlContrast, TBM_SETPOS, TRUE, 667);
-            SendDlgItemMessageW(hwnd, kControlSensitivity, CB_SETCURSEL, 1, 0);
-            SendDlgItemMessageW(hwnd, kControlSmallSensitivity, CB_SETCURSEL, 1, 0);
-            SendDlgItemMessageW(hwnd, kControlLatency, CB_SETCURSEL, 0, 0);
+        const auto pageText = [&](const wchar_t* text, int y, int page) {
+            HWND label = AddSettingsControl(hwnd, 0, L"STATIC", text, WS_CHILD | WS_VISIBLE, 16, y, 408, 38, 0);
+            g_settingsPageControls.push_back({label, page, 16, y, 408, 38});
+        };
+        if (g_surfaceFrequency) {
+            pageText(L"5\u201330 Hz \u00b7 Brightness + color", 194, 0);
+            const auto hint = HotkeyName(g_hotkeys[4]) + L": menu \u00b7 Esc: close\nSave changes to keep your preferences.";
+            pageText(hint.c_str(), 246, 0);
         }
-        else
-        {
-            SendDlgItemMessageW(hwnd, kControlContrast, TBM_SETPOS, TRUE, 667);
-            SendDlgItemMessageW(hwnd, kControlSensitivity, CB_SETCURSEL, 2, 0);
-            SendDlgItemMessageW(hwnd, kControlSmallSensitivity, CB_SETCURSEL, 2, 0);
-            SendDlgItemMessageW(hwnd, kControlLatency, CB_SETCURSEL, 0, 0);
-        }
-        SetDlgItemTextW(hwnd, kControlStatus,
-            L"Preset loaded. Choose Apply to save it.");
-        const float contrast = static_cast<float>(SendDlgItemMessageW(
-            hwnd, kControlContrast, TBM_GETPOS, 0, 0)) / 1000.0f;
-        wchar_t contrastText[64]{};
-        swprintf_s(contrastText, L"Contrast reduction: %.3f", contrast);
-        SetDlgItemTextW(hwnd, kControlContrastValue, contrastText);
+        pageText(L"Live measurements for checking a scene\nor reporting an issue.", 152, 2);
+        pageText(g_surfaceFrequency ? L"Surface protection \u00b7 Current frame" : L"Legacy protection", g_surfaceFrequency ? 214 : 252, 2);
+        if (g_surfaceFrequency) pageText(L"Settings are stored on this computer.", 264, 2);
+        const int opacityPage = g_surfaceFrequency ? 0 : 2, opacityY = g_surfaceFrequency ? 151 : 211;
+        wchar_t opacityLabel[48]{}; swprintf_s(opacityLabel, L"Menu opacity: %d%%", g_settingsOpacity);
+        HWND label = AddSettingsControl(hwnd, 0, L"STATIC", opacityLabel, WS_CHILD | WS_VISIBLE, 16, opacityY, 174, 20, kControlMenuOpacityValue);
+        HWND slider = AddSettingsControl(hwnd, 0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | SS_NOTIFY, 200, opacityY - 9, 224, 28, kControlMenuOpacity);
+        SetWindowSubclass(slider, ContrastSliderSubclassProc, 3, 0);
+        SendMessageW(slider, TBM_SETPOS, TRUE, (g_settingsOpacity - 60) * 25);
+        g_settingsPageControls.push_back({label, opacityPage, 16, opacityY, 174, 20});
+        g_settingsPageControls.push_back({slider, opacityPage, 200, opacityY - 9, 224, 28});
+        AddSettingsTooltip(slider, L"Menu and loading-banner opacity. Preview immediately; Save changes to remember it.");
+        const wchar_t* tabs[] = {L"Home", L"Shortcuts", L"Advanced"};
+        for (int i = 0; i < 3; ++i)
+            AddSettingsControl(hwnd, 0, L"BUTTON", tabs[i], WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 16 + i * 137, 50, 134, 28, kSettingsTab + i);
+        SetDlgItemTextW(hwnd, kControlApply, L"Save changes");
+        if (g_settingsPreview) SetDlgItemTextW(hwnd, kControlStatus, L"Preview only");
+        SelectSettingsPage(hwnd, 0);
     }
 
     void ApplySettingsWindow(HWND hwnd)
     {
         if (!g_app) return;
-        RuntimeOptions options{};
-        options.profilePreset = static_cast<int>(SendDlgItemMessageW(
-            hwnd, kControlProfile, CB_GETCURSEL, 0, 0));
+        const auto opacity = std::to_wstring(g_settingsOpacity);
+        WritePrivateProfileStringW(L"FlashGuard", L"MenuOpacity", opacity.c_str(), PreferencesPath().c_str());
+        RuntimeOptions options = g_app->GetRuntimeOptions();
         options.contrastReduction = static_cast<float>(SendDlgItemMessageW(
             hwnd, kControlContrast, TBM_GETPOS, 0, 0)) / 1000.0f;
         options.fullScreenSensitivity = static_cast<int>(SendDlgItemMessageW(
@@ -8924,7 +9339,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         {
             SavePreferences(options, g_hotkeys);
             SetDlgItemTextW(hwnd, kControlStatus,
-                L"Settings saved; hotkey conflict restored.");
+                L"Hotkeys unchanged.");
         }
     }
 
@@ -8935,16 +9350,18 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         case WM_CREATE:
         {
             g_settingsDpi = GetDpiForWindow(hwnd);
+            g_settingsOpacity = std::clamp(ReadPreference(PreferencesPath(), L"MenuOpacity", 92), 60, 100);
+            SetLayeredWindowAttributes(hwnd, 0, static_cast<BYTE>(MulDiv(g_settingsOpacity, 255, 100)), LWA_ALPHA);
             g_settingsBrush = CreateSolidBrush(RGB(27, 29, 36));
-            g_settingsFont = CreateFontW(SettingsScale(-16), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            g_settingsFont = CreateFontW(SettingsScale(-13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-            g_settingsTitleFont = CreateFontW(SettingsScale(-27), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+                CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"JetBrains Mono");
+            g_settingsTitleFont = CreateFontW(SettingsScale(-20), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-            g_settingsSectionFont = CreateFontW(SettingsScale(-15), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+                CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"JetBrains Mono");
+            g_settingsSectionFont = CreateFontW(SettingsScale(-13), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+                CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"JetBrains Mono");
             EnableSettingsBackdrop(hwnd);
             g_settingsPanelBitmap = CreateFrostedPanelBitmap(hwnd);
             SetWindowTheme(hwnd, L"DarkMode_Explorer", nullptr);
@@ -8954,6 +9371,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                 hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
             if (g_settingsTooltip)
             {
+                SendMessageW(g_settingsTooltip, WM_SETFONT, reinterpret_cast<WPARAM>(g_settingsFont), TRUE);
                 SendMessageW(g_settingsTooltip, TTM_ACTIVATE, TRUE, 0);
                 SetWindowTheme(g_settingsTooltip, L"DarkMode_Explorer", nullptr);
                 SendMessageW(g_settingsTooltip, TTM_SETMAXTIPWIDTH, 0, SettingsScale(380));
@@ -8970,15 +9388,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             }
             HWND title = AddSettingsControl(hwnd, 0, L"STATIC", L"FlashGuard",
-                WS_CHILD | WS_VISIBLE, 24, 14, 300, 36, 0);
+                WS_CHILD | WS_VISIBLE, 16, 10, 300, 28, 0);
             if (title) SendMessageW(title, WM_SETFONT,
                 reinterpret_cast<WPARAM>(g_settingsTitleFont), TRUE);
-            HWND subtitle = AddSettingsControl(hwnd, 0, L"STATIC",
-                L"GPU protection and display preferences",
-                WS_CHILD | WS_VISIBLE, 26, 50, 430, 22, 0);
-            if (subtitle) SendMessageW(subtitle, WM_SETFONT,
-                reinterpret_cast<WPARAM>(g_settingsSectionFont), TRUE);
+            g_settingsPageControls.clear();
+            g_collectSettingsControls = true;
             PopulateSettingsWindow(hwnd);
+            g_collectSettingsControls = false;
+            LayoutSettingsPages(hwnd);
             return 0;
         }
         case WM_ERASEBKGND:
@@ -9004,7 +9421,14 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         {
             HDC dc = reinterpret_cast<HDC>(wParam);
             SetTextColor(dc, RGB(207, 213, 226));
-            if (GetDlgCtrlID(reinterpret_cast<HWND>(lParam)) == kControlContrastValue)
+            if (GetDlgCtrlID(reinterpret_cast<HWND>(lParam)) == kControlStatus)
+            {
+                SetBkMode(dc, OPAQUE); SetBkColor(dc, RGB(20, 22, 27));
+                SetDCBrushColor(dc, RGB(20, 22, 27));
+                return reinterpret_cast<LRESULT>(GetStockObject(DC_BRUSH));
+            }
+            if (GetDlgCtrlID(reinterpret_cast<HWND>(lParam)) == kControlContrastValue ||
+                GetDlgCtrlID(reinterpret_cast<HWND>(lParam)) == kControlMenuOpacityValue)
             {
                 SetBkMode(dc, OPAQUE);
                 SetBkColor(dc, RGB(26, 29, 40));
@@ -9025,9 +9449,11 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         case WM_DRAWITEM:
         {
             const auto* item = reinterpret_cast<const DRAWITEMSTRUCT*>(lParam);
-            if (!item || (item->CtlID != kControlApply && item->CtlID != kControlClose))
+            if (!item || (item->CtlID != kControlApply && item->CtlID != kControlClose &&
+                (item->CtlID < kSettingsTab || item->CtlID >= kSettingsTab + 3)))
                 return DefWindowProcW(hwnd, msg, wParam, lParam);
-            const bool apply = item->CtlID == kControlApply;
+            const bool apply = item->CtlID == kControlApply ||
+                (item->CtlID >= kSettingsTab && item->CtlID == UINT(kSettingsTab + g_settingsPage));
             const bool pressed = (item->itemState & ODS_SELECTED) != 0;
             const COLORREF color = apply ?
                 (pressed ? RGB(45, 104, 195) : RGB(61, 126, 224)) :
@@ -9045,7 +9471,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             SetBkMode(item->hDC, TRANSPARENT);
             SetTextColor(item->hDC, RGB(248, 249, 252));
             HGDIOBJ oldFont = SelectObject(item->hDC, g_settingsFont);
-            const wchar_t* label = apply ? L"Apply" : L"Close";
+            wchar_t label[80]{}; GetWindowTextW(item->hwndItem, label, 80);
             RECT textRect = item->rcItem;
             DrawTextW(item->hDC, label, -1, &textRect,
                 DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -9058,10 +9484,16 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             }
             return TRUE;
         }
+        case WM_NCHITTEST:
+        {
+            POINT point{static_cast<short>(LOWORD(lParam)), static_cast<short>(HIWORD(lParam))};
+            ScreenToClient(hwnd, &point);
+            return point.y < SettingsScale(44) ? HTCAPTION : HTCLIENT;
+        }
         case WM_COMMAND:
-            if (LOWORD(wParam) == kControlProfile && HIWORD(wParam) == CBN_SELCHANGE)
+            if (LOWORD(wParam) >= kSettingsTab && LOWORD(wParam) < kSettingsTab + 3 && HIWORD(wParam) == BN_CLICKED)
             {
-                ApplyProfilePresetToControls(hwnd);
+                SelectSettingsPage(hwnd, LOWORD(wParam) - kSettingsTab);
                 return 0;
             }
             if (LOWORD(wParam) == kControlApply && HIWORD(wParam) == BN_CLICKED)
@@ -9076,12 +9508,21 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             }
             return 0;
         case WM_HSCROLL:
+            if (reinterpret_cast<HWND>(lParam) == GetDlgItem(hwnd, kControlMenuOpacity))
+            {
+                int position = static_cast<int>(SendDlgItemMessageW(hwnd, kControlMenuOpacity, TBM_GETPOS, 0, 0));
+                g_settingsOpacity = 60 + MulDiv(position, 40, 1000);
+                SetLayeredWindowAttributes(hwnd, 0, static_cast<BYTE>(MulDiv(g_settingsOpacity, 255, 100)), LWA_ALPHA);
+                wchar_t label[48]{}; swprintf_s(label, L"Menu opacity: %d%%", g_settingsOpacity);
+                SetDlgItemTextW(hwnd, kControlMenuOpacityValue, label);
+                return 0;
+            }
             if (reinterpret_cast<HWND>(lParam) == GetDlgItem(hwnd, kControlContrast))
             {
                 const float value = static_cast<float>(SendDlgItemMessageW(
                     hwnd, kControlContrast, TBM_GETPOS, 0, 0)) / 1000.0f;
                 wchar_t contrastText[64]{};
-                swprintf_s(contrastText, L"Contrast reduction: %.3f", value);
+                swprintf_s(contrastText, L"Contrast: %.3f", value);
                 SetDlgItemTextW(hwnd, kControlContrastValue, contrastText);
                 return 0;
             }
@@ -9091,6 +9532,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             return 0;
         case WM_DESTROY:
             g_settingsWindow = nullptr;
+            g_settingsPageControls.clear();
             if (g_settingsFont) DeleteObject(g_settingsFont);
             if (g_settingsTitleFont) DeleteObject(g_settingsTitleFont);
             if (g_settingsSectionFont) DeleteObject(g_settingsSectionFont);
@@ -9105,6 +9547,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             if (g_hotkeysSuspended)
             {
                 g_hotkeysSuspended = false;
+                UnregisterAllConfiguredHotkeys();
                 RegisterCurrentConfiguredHotkeys();
             }
             if (IsWindow(g_gameWindow)) SetForegroundWindow(g_gameWindow);
@@ -9119,8 +9562,7 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
     {
         if (IsWindow(g_settingsWindow))
         {
-            ShowWindow(g_settingsWindow, SW_RESTORE);
-            SetForegroundWindow(g_settingsWindow);
+            DestroyWindow(g_settingsWindow);
             return;
         }
 
@@ -9144,29 +9586,30 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
         }
 
         g_settingsDpi = overlay ? GetDpiForWindow(overlay) : GetDpiForSystem();
-        RECT windowRect{ 0, 0, SettingsScale(560), SettingsScale(720) };
+        RECT windowRect{ 0, 0, SettingsScale(440), SettingsScale(360) };
         const DWORD settingsExStyle = g_settingsPreview ?
-            (WS_EX_APPWINDOW | WS_EX_CONTROLPARENT) :
-            (WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_CONTROLPARENT);
-        AdjustWindowRectExForDpi(&windowRect, WS_CAPTION | WS_SYSMENU,
+            (WS_EX_APPWINDOW | WS_EX_CONTROLPARENT | WS_EX_LAYERED) :
+            (WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_CONTROLPARENT | WS_EX_LAYERED);
+        AdjustWindowRectExForDpi(&windowRect, WS_POPUP | WS_BORDER,
             FALSE, settingsExStyle, g_settingsDpi);
         const int width = windowRect.right - windowRect.left;
         const int height = windowRect.bottom - windowRect.top;
         HMONITOR monitor = MonitorFromWindow(overlay, MONITOR_DEFAULTTONEAREST);
         MONITORINFO mi{ sizeof(mi) };
         GetMonitorInfoW(monitor, &mi);
-        const int x = mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - width) / 2;
-        const int y = mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - height) / 2;
+        const int x = mi.rcWork.left + 24;
+        const int y = mi.rcWork.top + std::max(0, std::min<int>(140, mi.rcWork.bottom - mi.rcWork.top - height));
 
         ClipCursor(nullptr);
         g_settingsWindow = CreateWindowExW(
             settingsExStyle,
             kSettingsWindowClass, L"FlashGuard Options",
-            WS_CAPTION | WS_SYSMENU,
+            WS_POPUP | WS_BORDER,
             x, y, width, height, nullptr, nullptr, instance, nullptr);
         if (!g_settingsWindow) return;
         UnregisterAllConfiguredHotkeys();
         g_hotkeysSuspended = true;
+        RegisterMenuHotkey();
         if (!g_settingsPreview)
             SetWindowDisplayAffinity(g_settingsWindow, WDA_EXCLUDEFROMCAPTURE);
         ShowWindow(g_settingsWindow, SW_SHOWNORMAL);
@@ -9335,67 +9778,8 @@ InstantSafetyOutput PSInstantSafety(VSOut i)
             nullptr, nullptr, instance, nullptr);
     }
 
-    HWND CreateStartupStatusWindow(HINSTANCE instance, HMONITOR mon,
-                                   HWND& statusText, HWND& progress)
-    {
-        statusText = nullptr;
-        progress = nullptr;
+#include "ui/StartupBanner.h"
 
-        MONITORINFO mi{ sizeof(mi) };
-        if (!GetMonitorInfoW(mon, &mi)) return nullptr;
-
-        constexpr int width = 440;
-        constexpr int height = 94;
-        const int x = mi.rcWork.left +
-            (mi.rcWork.right - mi.rcWork.left - width) / 2;
-        const int y = mi.rcWork.top +
-            (mi.rcWork.bottom - mi.rcWork.top - height) / 2;
-        HWND hwnd = CreateWindowExW(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-            L"STATIC", L"",
-            WS_POPUP | WS_BORDER | WS_CLIPCHILDREN,
-            x, y, width, height,
-            nullptr, nullptr, instance, nullptr);
-        if (!hwnd) return nullptr;
-
-        // The complete startup UI is one top-level capture-excluded window.
-        // Child controls share that visual ownership, avoiding a second
-        // WDA_EXCLUDEFROMCAPTURE failure point for the progress bar.
-        if (!SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE))
-        {
-            DestroyWindow(hwnd);
-            return nullptr;
-        }
-
-        statusText = CreateWindowExW(
-            0, L"STATIC",
-            L"FlashGuard is starting...\nPreparing GPU capture.",
-            WS_CHILD | WS_VISIBLE | SS_CENTER,
-            12, 8, width - 24, 50,
-            hwnd, nullptr, instance, nullptr);
-        progress = CreateWindowExW(
-            0, PROGRESS_CLASSW, nullptr,
-            WS_CHILD | WS_VISIBLE | PBS_SMOOTH,
-            18, 65, width - 36, 16,
-            hwnd, nullptr, instance, nullptr);
-        if (!statusText || !progress)
-        {
-            DestroyWindow(hwnd);
-            statusText = nullptr;
-            progress = nullptr;
-            return nullptr;
-        }
-
-        SendMessageW(statusText, WM_SETFONT,
-            reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
-        SendMessageW(progress, PBM_SETRANGE32, 0, 100);
-        SendMessageW(progress, PBM_SETPOS, 2, 0);
-        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-        UpdateWindow(hwnd);
-        UpdateWindow(statusText);
-        UpdateWindow(progress);
-        return hwnd;
-    }
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
@@ -9408,8 +9792,55 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         INITCOMMONCONTROLSEX controls{ sizeof(controls), ICC_WIN95_CLASSES };
         InitCommonControlsEx(&controls);
+        LoadBundledFonts(instance);
         g_liveCoarseProtectForLatencyTest =
             HasCommandLineFlag(L"--latency-coarse-protect");
+        g_surfaceFrequency = HasCommandLineFlag(L"--surface-frequency");
+#ifdef FLASHGUARD_SURFACE_DEFAULT
+        g_surfaceFrequency = !HasCommandLineFlag(L"--legacy");
+#endif
+        if (HasCommandLineFlag(L"--validate-surface-frequency"))
+            return SurfaceFrequency::Validate() ? 0 : 10;
+        const auto liveProbeDirectory = ParseArgumentValue(L"--surface-frequency-live-probe");
+        const auto replayStateDirectory = ParseArgumentValue(L"--surface-frequency-replay-state");
+        if (!replayStateDirectory.empty())
+        {
+            RuntimeOptions probeOptions;
+            auto probeHotkeys = g_hotkeys;
+            LoadPreferences(probeOptions, probeHotkeys);
+            return SurfaceFrequency::LiveProbe(replayStateDirectory, probeOptions.contrastReduction, true) ? 0 : 14;
+        }
+        if (!liveProbeDirectory.empty())
+        {
+            RuntimeOptions probeOptions;
+            auto probeHotkeys = g_hotkeys;
+            LoadPreferences(probeOptions, probeHotkeys);
+            return SurfaceFrequency::LiveProbe(liveProbeDirectory, probeOptions.contrastReduction) ? 0 : 13;
+        }
+        const auto warmReport = ParseArgumentValue(L"--warm-shaders");
+        if (!warmReport.empty()) {
+            FILE* report = nullptr;
+            if (_wfopen_s(&report, warmReport.c_str(), L"wb") || !report) return 15;
+            std::fputs("{\"runs\":[", report);
+            for (int run = 0; run < 2; ++run) {
+                const auto start = std::chrono::steady_clock::now();
+                const auto hits = fg_shader_cache::hits.load(), misses = fg_shader_cache::misses.load();
+                FlashGuardApp probe;
+                probe.WarmStartupShaders(MonitorFromWindow(nullptr, MONITOR_DEFAULTTOPRIMARY));
+                double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+                std::fprintf(report, "%s{\"ms\":%.3f,\"hits\":%u,\"compiles\":%u}", run ? "," : "", ms,
+                    fg_shader_cache::hits.load() - hits, fg_shader_cache::misses.load() - misses);
+            }
+            std::fputs("]}\n", report); fclose(report); return 0;
+        }
+        const auto surfaceTestReport = ParseArgumentValue(L"--surface-frequency-self-test");
+        if (!surfaceTestReport.empty())
+            return SurfaceFrequency::SelfTest(surfaceTestReport,
+                ParseArgumentValue(L"--surface-frequency-test-scene").empty() ? -1 :
+                std::stoi(ParseArgumentValue(L"--surface-frequency-test-scene"))) ? 0 : 11;
+        const auto surfaceBenchmarkReport = ParseArgumentValue(L"--surface-frequency-benchmark");
+        if (!surfaceBenchmarkReport.empty())
+            return SurfaceFrequency::Benchmark(surfaceBenchmarkReport) ? 0 : 12;
         g_liveNvofLiteForLatencyTest =
             HasCommandLineFlag(L"--latency-nvof-lite");
         g_liveBlockMatchOnlyForLatencyTest =
@@ -9596,7 +10027,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         const int requestedArchitecture =
                             _wtoi(spec[42].c_str());
                         tuning.architectureMode =
-                            std::clamp(requestedArchitecture, 0, 24);
+                            std::clamp(requestedArchitecture, 0, 52);
                         if (tuning.architectureMode != requestedArchitecture)
                         {
                             DestroyWindow(replayWindow);
@@ -9713,6 +10144,36 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             }
         }
 
+        if (HasCommandLineFlag(L"--startup-preview"))
+        {
+            startupWindow = CreateStartupStatusWindow(instance, MonitorFromWindow(nullptr, MONITOR_DEFAULTTOPRIMARY),
+                startupStatus, startupProgress, true);
+            SetWindowTextW(startupStatus, L"Compiling protection shaders...\nFirst startup can take a little longer.");
+            SendMessageW(startupProgress, PBM_SETPOS, 24, 0);
+            Sleep(20000);
+            CloseStartupWindow(startupWindow);
+            startupWindow = startupStatus = startupProgress = nullptr;
+            return 0;
+        }
+        if (HasCommandLineFlag(L"--settings-preview"))
+        {
+            g_settingsPreview = true;
+            RuntimeOptions previewOptions{}; LoadPreferences(previewOptions, g_hotkeys);
+            ShowSettingsWindow(nullptr);
+            MSG previewMessage{};
+            while (GetMessageW(&previewMessage, nullptr, 0, 0) > 0)
+            {
+                if ((previewMessage.message == WM_KEYDOWN || previewMessage.message == WM_SYSKEYDOWN) &&
+                    (previewMessage.wParam == VK_ESCAPE || (previewMessage.wParam == g_hotkeys[4].virtualKey &&
+                    GetDlgCtrlID(GetFocus()) != kControlOptionsHotkey))) { DestroyWindow(g_settingsWindow); continue; }
+                if (IsWindow(g_settingsWindow) &&
+                    IsDialogMessageW(g_settingsWindow, &previewMessage))
+                    continue;
+                TranslateMessage(&previewMessage);
+                DispatchMessageW(&previewMessage);
+            }
+            return 0;
+        }
         HANDLE mutexHandle = CreateMutexW(nullptr, FALSE,
             L"Local\\OutlastFlashGuard.SingleInstance");
         if (!mutexHandle) winrt::throw_last_error();
@@ -9722,21 +10183,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         {
             MessageBoxW(nullptr, L"FlashGuard is already running.", L"FlashGuard",
                 MB_ICONINFORMATION | MB_OK);
-            return 0;
-        }
-        if (HasCommandLineFlag(L"--settings-preview"))
-        {
-            g_settingsPreview = true;
-            ShowSettingsWindow(nullptr);
-            MSG previewMessage{};
-            while (GetMessageW(&previewMessage, nullptr, 0, 0) > 0)
-            {
-                if (IsWindow(g_settingsWindow) &&
-                    IsDialogMessageW(g_settingsWindow, &previewMessage))
-                    continue;
-                TranslateMessage(&previewMessage);
-                DispatchMessageW(&previewMessage);
-            }
             return 0;
         }
         RuntimeOptions savedOptions{};
@@ -9776,7 +10222,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         HWND output = CreateOutputWindow(instance, monitor);
         if (!output)
         {
-            if (startupWindow) DestroyWindow(startupWindow);
+            if (startupWindow) CloseStartupWindow(startupWindow);
             startupWindow = startupStatus = startupProgress = nullptr;
             MessageBoxW(nullptr,
                 L"FlashGuard could not create a capture-excluded overlay.\n\n"
@@ -9802,7 +10248,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 
         if (!app.ReadyToShow())
         {
-            if (startupWindow) DestroyWindow(startupWindow);
+            if (startupWindow) CloseStartupWindow(startupWindow);
             startupWindow = startupStatus = startupProgress = nullptr;
             app.Stop();
             g_app = nullptr;
@@ -9827,7 +10273,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     L"FlashGuard is ready.");
             UpdateWindow(startupStatus);
         }
-        if (startupWindow) DestroyWindow(startupWindow);
+        if (startupWindow) CloseStartupWindow(startupWindow);
         startupWindow = startupStatus = startupProgress = nullptr;
         ShowWindow(output, SW_SHOWNOACTIVATE);
         SetWindowPos(output, HWND_TOPMOST, 0, 0, 0, 0,
@@ -9867,7 +10313,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     }
     catch (HRESULT hr)
     {
-        if (startupWindow) DestroyWindow(startupWindow);
+        if (startupWindow) CloseStartupWindow(startupWindow);
         startupWindow = startupStatus = startupProgress = nullptr;
         wchar_t buf[256]{};
         swprintf_s(buf, L"FlashGuard failed with HRESULT 0x%08X.\n\nThe filter was not started. Do not assume the screen is protected.", static_cast<unsigned>(hr));
@@ -9876,7 +10322,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     }
     catch (...)
     {
-        if (startupWindow) DestroyWindow(startupWindow);
+        if (startupWindow) CloseStartupWindow(startupWindow);
         startupWindow = startupStatus = startupProgress = nullptr;
         MessageBoxW(nullptr,
             L"FlashGuard failed unexpectedly. The display filter was not started. Do not assume the screen is protected.",

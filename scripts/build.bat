@@ -6,6 +6,7 @@ rem   build.bat           -> fast development build (/Od /Ob0)
 rem   build.bat fast      -> fast development build
 rem   build.bat dev       -> fast development build
 rem   build.bat release   -> optimized release build (/O2)
+rem   build.bat surface   -> optimized experimental surface-frequency default
 
 set "MODE=%~1"
 if not defined MODE set "MODE=fast"
@@ -16,9 +17,11 @@ if /I "%MODE%"=="fast" (
   set "OPT=/Od /Ob0"
 ) else if /I "%MODE%"=="release" (
   set "OPT=/O2"
+) else if /I "%MODE%"=="surface" (
+  set "OPT=/O2 /DFLASHGUARD_SURFACE_DEFAULT=1"
 ) else (
   echo ERROR: Unknown build mode "%MODE%".
-  echo Usage: build.bat [fast^|dev^|release]
+  echo Usage: build.bat [fast^|dev^|release^|surface]
   exit /b 2
 )
 
@@ -57,7 +60,9 @@ if errorlevel 1 (
 pushd build
 
 echo Building FlashGuard [%MODE%]...
-cl /nologo /std:c++20 /EHsc %OPT% /W4 /permissive- /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX ..\src\FlashGuard.cpp /Fo:FlashGuard.obj /Fe:FlashGuard.exe /link /INCREMENTAL user32.lib gdi32.lib comctl32.lib shell32.lib dwmapi.lib uxtheme.lib d3d11.lib dxgi.lib d3dcompiler.lib runtimeobject.lib windowsapp.lib
+rc /nologo /fo FlashGuard.res ..\src\FlashGuard.rc
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++20 /EHsc %OPT% /W4 /permissive- /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX ..\src\FlashGuard.cpp /Fo:FlashGuard.obj /Fe:FlashGuard.exe FlashGuard.res /link /INCREMENTAL user32.lib gdi32.lib comctl32.lib shell32.lib dwmapi.lib uxtheme.lib d3d11.lib dxgi.lib d3dcompiler.lib runtimeobject.lib windowsapp.lib
 if errorlevel 1 (
   echo ERROR: Compilation failed.
   popd
