@@ -1,0 +1,16 @@
+{
+  "schema": "FLASHGUARD_FLASH_SWEEP/6",
+  "wcag_profile": "WCAG_FLASH/5",
+  "status": "FAILED",
+  "fps": 30,
+  "duration_seconds_per_case": 1.00,
+  "display_diagonal_inches": 27.00,
+  "viewing_distance_cm": 70.00,
+  "sc_2_3_2_measurement_surface": "B8G8R8A8_UNORM-equivalent replay output",
+  "g19_display_transition_diagnostic_normative": false,
+  "internal_r16_epsilon_diagnostic_normative": false,
+  "note": "WCAG 2.2 deterministic regression: SC 2.3.1 and SC 2.3.2 use the general/red flash definitions on 8-bit-equivalent output; SC 2.3.2 differs by having no area exemption. G19-style one-code display transitions and internal R16 epsilon reversals are diagnostic only. Not an external certification or arbitrary-video analyzer.",
+  "cases": [
+    {"case":"luminance_full","frequency_hz":10.00,"raw_variation":16.86274514,"output_variation":4.60760531,"reduction":0.72675829,"peak_output_delta":0.36092423,"raw_general_flashes_per_second":10.000,"output_general_flashes_per_second":10.000,"raw_red_flashes_per_second":0.000,"output_red_flashes_per_second":0.000,"raw_g19_display_transitions_per_second":20.000,"output_g19_display_transitions_per_second":21.000,"raw_g19_display_flashes_per_second":10.000,"output_g19_display_flashes_per_second":10.500,"raw_internal_r16_epsilon_transitions_per_second":20.000,"output_internal_r16_epsilon_transitions_per_second":20.000,"raw_internal_r16_epsilon_flashes_per_second":10.000,"output_internal_r16_epsilon_flashes_per_second":10.000,"region_solid_angle_sr":0.36728626,"area_below_0_006_sr":false,"sc_2_3_1_stimulus_valid":true,"sc_2_3_2_stimulus_valid":true,"wcag_sc_2_3_1_pass":false,"wcag_sc_2_3_2_pass":false}
+  ]
+}

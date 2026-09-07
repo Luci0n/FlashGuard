@@ -1,0 +1,30 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_cf0480b2_trail-geometry-correlation",
+  "source_commit": "cf0480b2bbcb6bbb3bde493e597c52c8ea99cdf9",
+  "workflow_run_id": 33048838989,
+  "artifact_id": 9636839679,
+  "artifact_digest": "sha256:4e19eaeae31ce314fbb8f34dbd44b9ed4b564ab7751408f0966b008cb4e81608",
+  "result": "SUCCESS",
+  "purpose": "Correlate >5% surface-risk trail errors with full-resolution motion geometry after authority attribution isolated transported surface memory.",
+  "matrix_schema": "FLASHGUARD_MATRIX/10",
+  "diagnostic_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/2",
+  "interpretation": {
+    "surface_risk_v2_recovery_surface_memory_error_weighted_mean": 0.82771967,
+    "surface_risk_v2_recovery_current_surface_active_fraction": 0.05790635,
+    "surface_risk_v2_recovery_vacated_active_fraction": 0.00534445,
+    "surface_risk_v2_recovery_effective_motion_active_fraction": 0.04491297,
+    "surface_risk_v2_recovery_repeated_risk_active_fraction": 0.6240255,
+    "seed_veto_recovery_surface_memory_error_weighted_mean": 0.83534575,
+    "seed_veto_recovery_current_surface_active_fraction": 0.06068527,
+    "seed_veto_recovery_vacated_active_fraction": 0.0,
+    "seed_veto_recovery_effective_motion_active_fraction": 0.03352463,
+    "seed_veto_recovery_repeated_risk_active_fraction": 0.66589011,
+    "conclusion": "Persistent surface memory dominates recovery errors even though the same error pixels almost never have current-surface, vacated, or effective-motion geometry. PreviousProtectionState is always marked valid and falls back to same-coordinate sampling when no transport wins; after a reveal becomes stable, stableSourceGate can therefore re-authorize stale same-coordinate risk. Test persistent-risk seeding only after repeated/opposing-transition evidence while retaining current-frame mitigation for the first ambiguous transition."
+  },
+  "raw_file_sha256": {
+    "matrix.json": "59fc9e589e7635347d311a95352c0ce5f5bedff4007c3badd52805207d7d2ea2",
+    "surface_risk_v2_neutral12-authority.json": "72933e230aeccda1282b8e4e44c250404ece21a44e09d1e287d8371f26afaf97",
+    "seed_veto_neutral12-authority.json": "0452e91833b69fcf7e919390e8ce190b9c438014bdf9e61796cdab1a3428091c"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "pipeline":"surface-frequency-v1",
+  "frequency_hz":[5,30],
+  "nvof":false,
+  "displayed_history":false,
+  "observations":7013,
+  "grid":[320,180],
+  "gpu_timing_scope":"last up to 4096 completed draws; excludes copy and presentation",
+  "gpu_ms":{
+    "features":{"samples":4096,"p50":0.028672,"p95":0.032768,"p99":2.680832},
+    "tracking":{"samples":4096,"p50":0.052224,"p95":0.069632,"p99":0.645120},
+    "composite":{"samples":4096,"p50":0.018432,"p95":0.019456,"p99":0.020480},
+    "total":{"samples":4096,"p50":0.099328,"p95":0.119808,"p99":5.513216}
+  }
+}

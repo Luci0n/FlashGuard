@@ -1,0 +1,52 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_7b51f4d9_structural-camera-guard",
+  "source_commit": "7b51f4d9d8134d4a36ff64b0b104ff18cc0cdb00",
+  "workflow_run_id": 33098877465,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9657771685,
+  "artifact_name": "flashbench-gpu-7b51f4d9d8134d4a36ff64b0b104ff18cc0cdb00",
+  "artifact_digest": "sha256:5595551a89302b428ddf758ee2c200556abd8f387313279ff8e4aa1dc80932a9",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/31",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Canonical full-replay test of a gradient-magnitude-validated CPU camera-motion score for the camera-guarded stationary sequence architecture.",
+  "invariant": "Production architecture 0 remained unchanged. Mode 22 was behaviorally identical to mode 21 except benchmark P6.y used the structural camera score; modes 0-21 retained the original raw-luminance score.",
+  "result_summary": {
+    "mode22_replay_status": "FAILED",
+    "mode22_moving_clear_05_ms": 66.667,
+    "mode22_moving_flash_reduction": 0.80142971,
+    "mode22_perceptual_min_reduction": 0.28264267,
+    "mode22_perceptual_delta4_min_reduction": 0.28264267,
+    "mode22_pan_mae": 0.00271861,
+    "mode22_fast_pan_mae": 0.03456615,
+    "mode22_extreme_pan_mae": 0.01341721,
+    "mode22_smooth_subpixel_scroll_mae": 0.02620192,
+    "mode22_wcag_sc_2_3_1_pass": false,
+    "mode22_wcag_sc_2_3_2_pass": false,
+    "remaining_wcag_failures": [
+      "luminance_quarter@5Hz",
+      "luminance_quarter@7.5Hz"
+    ]
+  },
+  "interpretation": "Mode 22 is rejected. The structural camera score left all weak/stationary metrics exactly equal to mode 21, proving that substituting P6.y was not the cause of low-frequency state loss. It also regressed fast-pan MAE to 0.03457 and smooth subpixel scrolling to 0.02620. Matrix 30 bundled several conservative state changes with its camera fix, so the next probe isolates the minimum unmasked-camera veto on mode 20 textureless fallback/raw-disocclusion behavior instead of replacing the camera evidence globally.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "01ee80006df23fa7858c9fa9cdc0a11b12202558e9edf0273371fce829e877f5"
+    },
+    {
+      "path": "mode22-replay.json",
+      "sha256": "98a6f4c92e05833ea3f5c5f6b00a68a60074f2dd2874d78525949372364ffa84"
+    },
+    {
+      "path": "mode22-perceptual-sweep.json",
+      "sha256": "624984e67185a8da71a6e88f9ec2f0798122baa6d5a3bd7e1214ab4e2f96eebb"
+    },
+    {
+      "path": "mode22-flash-sweep.json",
+      "sha256": "08d53a3b2b6a2853de7e366c0870646256259ae0c61c09b51acd439788b4f7b7"
+    }
+  ]
+}

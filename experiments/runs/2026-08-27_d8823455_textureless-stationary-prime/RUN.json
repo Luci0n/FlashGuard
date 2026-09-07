@@ -1,0 +1,50 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_d8823455_textureless-stationary-prime",
+  "source_commit": "d8823455442a14c79ecba3a740285fc628fb9853",
+  "workflow_run_id": 33093529216,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9655599966,
+  "artifact_name": "flashbench-gpu-d8823455442a14c79ecba3a740285fc628fb9853",
+  "artifact_digest": "sha256:2228956994c74ac524a5e4a455b372badf67f1a984699f3c607cad0f537aed51",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/29",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Canonical full-replay test of textureless stationary signed-prime/risk continuity using coherent displacement instead of raw NVOFA motion magnitude.",
+  "invariant": "Production architecture 0 remained unchanged. Mode 20 inherited mode 18 current-surface continuity and added a textureless stationary fallback for prime/risk only; displayed history and moving/camera paths still used conservative raw-disocclusion semantics.",
+  "result_summary": {
+    "mode20_replay_status": "FAILED",
+    "mode20_moving_clear_05_ms": 66.667,
+    "mode20_moving_flash_reduction": 0.95880978,
+    "mode20_perceptual_min_reduction": 0.41401669,
+    "mode20_perceptual_delta4_min_reduction": 0.53775022,
+    "mode20_pan_mae": 0.00275837,
+    "mode20_fast_pan_mae": 0.004533,
+    "mode20_extreme_pan_mae": 0.06669124,
+    "mode20_wcag_sc_2_3_1_pass": false,
+    "mode20_wcag_sc_2_3_2_pass": false,
+    "remaining_wcag_failures": [
+      "luminance_quarter@7.5Hz"
+    ]
+  },
+  "interpretation": "Mode 20 proved the textureless stationary fallback is useful: moving-flash reduction rose to 0.959 and the perceptual floor to 0.414, leaving only luminance_quarter@7.5Hz in the WCAG sweep. It is rejected because extreme-pan MAE rose to 0.06669. The leak is architectural: stationary sequence logic reused a camera-motion corroboration that is intentionally zeroed during active protection, and its textureless state-disocclusion fallback did not return fully to raw semantics when camera motion was present.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "fe8ce6e0f11e5e08722e2c954e81d66f94149c7fd3c4a4141f3441547b85f9f4"
+    },
+    {
+      "path": "mode20-replay.json",
+      "sha256": "bc654674fe2cf5e68c561f0630fefe8ca3b204e6d194f90ed133252665af4346"
+    },
+    {
+      "path": "mode20-perceptual-sweep.json",
+      "sha256": "64038411f1710886d9781637ce25725b6e56e8f0a404c2d73d208e178e7b7547"
+    },
+    {
+      "path": "mode20-flash-sweep.json",
+      "sha256": "357a0e7129ca716b3be0b9dec7bb86fbf2b6babc5568a58379410221586ea262"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_5b11ee58_moving-flash-authority",
+  "source_commit": "5b11ee58fb0c8a263d19518aa3dd91fc4a4a7445",
+  "workflow_run_id": 33058538875,
+  "artifact_id": 9640798698,
+  "artifact_digest": "sha256:752ceb792603bf8beba9a47f0b39f5cb5493aa1fe9ab1b0c24b2c0fec89dc9e7",
+  "result": "SUCCESS",
+  "purpose": "Measure display-authority and motion-correspondence coverage on the active moving-flash square after same-surface opposition isolated moving-flash suppression as the remaining hard gate.",
+  "matrix_schema": "FLASHGUARD_MATRIX/16",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/3",
+  "interpretation": {
+    "event_only_visible_change_fraction": 0.25662616,
+    "event_only_moving_flash_reduction": 0.36197872,
+    "opposition_tau100_visible_change_fraction": 0.27086227,
+    "opposition_tau100_moving_flash_reduction": 0.37155597,
+    "opposition_tau100_current_event_active_on_changed_pixels": 0.94744151,
+    "opposition_tau100_surface_memory_active_on_changed_pixels": 0.06783463,
+    "opposition_tau200_visible_change_fraction": 0.27092014,
+    "opposition_tau200_moving_flash_reduction": 0.37154539,
+    "surface_risk_v2_visible_change_fraction": 0.34447338,
+    "conclusion": "The moving-flash ceiling is primarily a coverage problem, not a gain/lifetime problem. Mode 8 visibly changes only about 27.1% of active-square samples above the 0.05 diagnostic threshold, barely above event-only, while current-event authority is already present on about 94.7% of pixels that are changed. Doubling risk lifetime from 100 to 200 ms is effectively inert. Next diagnostic must measure authority on all square pixels and split true transition frames from stable half-cycle frames."
+  },
+  "raw_file_sha256": {
+    "matrix.json": "4ccec46b5700ffc9c68f96c8f048f3cd61048abffb4cabe3a6af8c05c6c38e01",
+    "summary.json": "e19bbe469ebc279415ecf068b7a7dd2152c649d06415aee69ac54977c5f8c7a5"
+  }
+}

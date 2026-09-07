@@ -1,0 +1,46 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_2ce9c0f7_stationary-reversal-hold",
+  "source_commit": "2ce9c0f711c6fc0184e60425c189e97d01fb4d70",
+  "workflow_run_id": 33085684675,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9652294312,
+  "artifact_name": "flashbench-gpu-2ce9c0f711c6fc0184e60425c189e97d01fb4d70",
+  "artifact_digest": "sha256:79f897abc12131ae3a352b74f5188350b83adcd612ec968617885db0573ae878",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/26",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Canonical full-replay test of stationary-only weak opposing-reversal authority and extended opposition-qualified risk.",
+  "invariant": "Production architecture 0 remained unchanged. Mode 17 inherited mode 16 camera-aware disocclusion and changed weak repetition/risk lifetime only while scene-level motion was absent.",
+  "result_summary": {
+    "mode17_replay_status": "SUCCESS",
+    "mode17_moving_clear_05_ms": 66.667,
+    "mode17_moving_flash_reduction": 0.46766937,
+    "mode17_perceptual_min_reduction": 0.10195917,
+    "mode17_pan_mae": 0.00271602,
+    "mode17_fast_pan_mae": 0.00450321,
+    "mode17_extreme_pan_mae": 0.0049894,
+    "mode17_wcag_sc_2_3_1_pass": false,
+    "mode17_wcag_sc_2_3_2_pass": false,
+    "remaining_wcag_failures": [
+      "luminance_quarter@5Hz",
+      "luminance_quarter@7.5Hz"
+    ]
+  },
+  "interpretation": "Mode 17 is directionally successful but rejected: stationary weak-reversal handling raises the perceptual floor from -0.0117 to 0.102 without materially worsening motion or clearing, and fixes the prior red-full failure, but 5 Hz/7.5 Hz quarter-field luminance still fails WCAG. Inspection shows the raw disocclusion reset can erase already-qualified risk/prime before the stationary extension runs, motivating a state-only corrected-disocclusion test.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "d1d5c7bfe8b97f8b126aa532df7e4679f6f0b9d8f3a5722c60cd69a68e6b5ee1"
+    },
+    {
+      "path": "mode17-perceptual-sweep.json",
+      "sha256": "a2b0e848d4387535f45e7d21b2f6650510ba4c2bb014402a74b8d0f14784455e"
+    },
+    {
+      "path": "mode17-flash-sweep.json",
+      "sha256": "f5df1c9e1d0713254a8a12adcda764fbe7ca4c9f7eb1cda703786b913c77752d"
+    }
+  ]
+}

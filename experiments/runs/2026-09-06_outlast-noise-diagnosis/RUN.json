@@ -1,0 +1,46 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-09-06_outlast-noise-diagnosis",
+  "base_commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+  "branch": "test",
+  "source_is_uncommitted_snapshot": true,
+  "software_version": "0.3.0-alpha.3",
+  "result": "UNRESOLVED",
+  "record_type": "live diagnosis; no candidate build produced or released",
+  "protocols": [
+    "SURFACE_FREQUENCY_VALIDATION/1",
+    "FLASHGUARD_LIVE_PROBE/1"
+  ],
+  "preceded_by": "2026-09-06_local-noise-fix",
+  "status": "unresolved; trials reverted; no fixed build released",
+  "finding": "A five-second offscreen Desktop Duplication probe reproduced dark speckles on metal shelving in the live game. Rendering the identical source frame with detector history cleared and identical static tone mapping removed them, isolating an artifact introduced by temporal detection. The responsible game rendering effect was not established.",
+  "measurements": {
+    "first_sample_pixels_over_two_codes": 20011,
+    "first_sample_max_channel_codes": 68,
+    "second_sample_active_state_cells": 15939,
+    "second_sample_unconfirmed_cells": 13014,
+    "second_sample_max_channel_codes": 156,
+    "comparability": "Separate live recordings, not deterministic before/after comparisons."
+  },
+  "rejected_original_cases": 4,
+  "rejected_expanded_cases": 18,
+  "rejected_rule": "Requiring a complete period plus five neighbouring cells with agreeing periods failed 4 original and 18 expanded cases, weakening moving and changing-colour flashes. Removed from the production shader.",
+  "live_comparison": "Actual game source vs identical frame with detector history cleared proves added detector artifacts. Later recordings are different scenes; no before/after efficacy claim.",
+  "captures_excluded": true,
+  "default_shader_restored_to": "local-noise candidate",
+  "diagnostic_command": "FlashGuard.exe --surface-frequency-live-probe <ignored-output-directory>; summarise with python flashbench/analyze-live-probe.py <directory>",
+  "raw_evidence": [
+    {
+      "path": "menu-observation.json",
+      "sha256": "0FBB13B7A1A7E80FFDA188758FF30E1675828D9772C6DD52A5E19DA1CCF50BA9"
+    },
+    {
+      "path": "rejected-consensus-self-test.json",
+      "sha256": "4E8571C225896A41A75401487C5ACD3EE31D09705A6C8996B12097FD0A8B4CC5"
+    },
+    {
+      "path": "state-observation.json",
+      "sha256": "B180B69B003447964CDBFD5E7368A7617444905061D26002F271699F6ABA5EAA"
+    }
+  ]
+}

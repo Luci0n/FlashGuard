@@ -1,0 +1,33 @@
+{
+  "schema": "SURFACE_FREQUENCY_VALIDATION/1",
+  "passed": false,
+  "exe_sha256": "0467417D9DF967E35E9668CD5B82673A492E328D79683AA49B2FA03EA1CE141C",
+  "focused_case_count": 119,
+  "regression_case_count": 81,
+  "failed_original_cases": [],
+  "failed_regression_cases": [
+    {
+      "scene": 6,
+      "fps": 144,
+      "hz": 5.0,
+      "rgb_reduction": 0.66566313,
+      "max_error_code": 127.89785,
+      "settled_error_code": 127.89785,
+      "texture_peak_linear": 0.0,
+      "background_error_code": 0.0,
+      "pass": false
+    }
+  ],
+  "replay_exit_code": 0,
+  "benchmark_exit_code": 0,
+  "flash_sweep_failed_cases": 0,
+  "perceptual_minimum_reduction": 0.78521727,
+  "moving_flash_reduction": 0.68181643,
+  "live_outlast_verified": false,
+  "gpu_ms": {
+    "samples": 330,
+    "p50": 0.683008,
+    "p95": 1.441792,
+    "p99": 1.980416
+  }
+}

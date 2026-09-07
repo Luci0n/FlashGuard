@@ -1,0 +1,38 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_40e53b24_corrected-disocclusion",
+  "source_commit": "40e53b246918665850021c92e5664cc0421f6a2e",
+  "workflow_run_id": 33074599213,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9647512571,
+  "artifact_name": "flashbench-gpu-40e53b246918665850021c92e5664cc0421f6a2e",
+  "artifact_digest": "sha256:ffc4569872d36e77fa961e518fbd96b15cd1a38d05c1f8afe8a15a83d1a4ea00",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/23",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Test the research-driven correction that current-pixel disocclusion must be suppressed when a valid current-to-previous surface predecessor exists.",
+  "invariant": "Production architecture 0 was unchanged. Mode 13 inherited mode 12 interior intrinsic authority and mode 8 opposition memory, but corrected vacated/disocclusion confidence before residual erasure, history reset, and event veto.",
+  "result_summary": {
+    "mode12_moving_flash_reduction": 0.37252641,
+    "mode13_moving_flash_reduction": 0.76933122,
+    "mode13_clear_ms": 66.667,
+    "mode13_perceptual_min_reduction": 0.75097655,
+    "mode13_pan_mae": 0.01133593,
+    "mode13_replay_status": "FAILED",
+    "mode13_transition_current_event_active": 0.80286458,
+    "mode13_transition_vacated_active": 0.09335937,
+    "mode13_stable_vacated_active": 0.09444444
+  },
+  "interpretation": "The geometry diagnosis was correct: corrected current-pixel disocclusion more than doubled moving-flash reduction and collapsed false vacated coverage while retaining 66.7 ms clearing, perceptual suppression, and WCAG passes. The candidate is not accepted because pan MAE rose to 0.01133593 and its synthetic replay status is FAILED. Matrix 23 incorrectly omitted replay behavior/pan from primary_pass; Matrix 24 fixes that harness error and performs one bounded separation pass between event authority and persistent-history rejection.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "9a21fe62111bd2cfba9631a9dcc27749ac357a529b418fa367bfc59cb85f9f59"
+    },
+    {
+      "path": "mode13-replay.json",
+      "sha256": "6dd42da973a1d44e27732fa0c99b97de622605e0d8b1c945868585304c91c486"
+    }
+  ]
+}

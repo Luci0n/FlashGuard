@@ -1,0 +1,8 @@
+{
+  "schema": "MOTION_REALIZATION/1",
+  "fps": 30,
+  "motion_scale": 1.000,
+  "requested_scroll_velocity_px_per_second": 45.000000,
+  "smooth_offsets_px": [1.500000],
+  "snapped_offsets_px": [2]
+}

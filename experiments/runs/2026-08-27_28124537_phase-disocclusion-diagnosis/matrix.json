@@ -1,0 +1,95 @@
+{
+  "schema": "FLASHGUARD_MATRIX/22",
+  "purpose": "diagnose whether missing moving-flash protection is concentrated on true transition frames or stable half-cycle frames, using all active-square pixels rather than only visibly changed pixels",
+  "screening_resolution": "320x180",
+  "screening_fps": 30,
+  "screen_elapsed_ms": 37467,
+  "candidate_count": 2,
+  "invariant": "diagnostic-only change: protection behavior is unchanged; authority diagnostics v4 samples every active-square pixel and separates transition from stable phase frames",
+  "decision_rule": {
+    "temporal_hole": "transition current-event coverage is high while stable current-event/architecture coverage collapses",
+    "spatial_hole": "transition current-event coverage itself is materially incomplete across the active square"
+  },
+  "screen_candidates": [
+    {
+      "name": "opposition_tau100_gain200",
+      "architecture_mode": 8,
+      "moving_clear_05_ms": 66.667,
+      "moving_flash_reduction": 0.3596073,
+      "perceptual_min_reduction": 0.75097655,
+      "pan_mae": 0.00352272,
+      "wcag_sc_2_3_1_pass": true,
+      "wcag_sc_2_3_2_pass": true,
+      "transition": {
+        "sample_pixel_count": 23040,
+        "changed_fraction": 0.38116319,
+        "mean_changed_error": 0.40594891,
+        "current_event_active": 0.38164063,
+        "current_event_mean": 0.37288561,
+        "surface_memory_active": 0.00685764,
+        "surface_memory_mean": 0.00517942,
+        "architecture_delta_active": 0.38211806,
+        "architecture_delta_mean": 0.17801876,
+        "current_surface_active": 0.5655816,
+        "hardware_active": 0.72230903,
+        "effective_motion_active": 0.60542535,
+        "repeated_risk_active": 0.95833333
+      },
+      "stable": {
+        "sample_pixel_count": 11520,
+        "changed_fraction": 0.06215278,
+        "mean_changed_error": 0.19840717,
+        "current_event_active": 0.00651042,
+        "current_event_mean": 0.00335744,
+        "surface_memory_active": 0.05590278,
+        "surface_memory_mean": 0.05254971,
+        "architecture_delta_active": 0.06241319,
+        "architecture_delta_mean": 0.00563637,
+        "current_surface_active": 0.74270833,
+        "hardware_active": 0.83550347,
+        "effective_motion_active": 0.7546875,
+        "repeated_risk_active": 0.83880208
+      }
+    },
+    {
+      "name": "uniform_interior_intrinsic_tau100_gain200",
+      "architecture_mode": 12,
+      "moving_clear_05_ms": 66.667,
+      "moving_flash_reduction": 0.37554216,
+      "perceptual_min_reduction": 0.75097655,
+      "pan_mae": 0.00352272,
+      "wcag_sc_2_3_1_pass": true,
+      "wcag_sc_2_3_2_pass": true,
+      "transition": {
+        "sample_pixel_count": 23040,
+        "changed_fraction": 0.38689236,
+        "mean_changed_error": 0.41182072,
+        "current_event_active": 0.38719618,
+        "current_event_mean": 0.38183124,
+        "surface_memory_active": 0.00633681,
+        "surface_memory_mean": 0.00445281,
+        "architecture_delta_active": 0.38728299,
+        "architecture_delta_mean": 0.18396142,
+        "current_surface_active": 0.57200521,
+        "hardware_active": 0.73133681,
+        "effective_motion_active": 0.60368924,
+        "repeated_risk_active": 0.95833333
+      },
+      "stable": {
+        "sample_pixel_count": 11520,
+        "changed_fraction": 0.05,
+        "mean_changed_error": 0.19864639,
+        "current_event_active": 0.00520833,
+        "current_event_mean": 0.00263408,
+        "surface_memory_active": 0.04496528,
+        "surface_memory_mean": 0.04261394,
+        "architecture_delta_active": 0.05017361,
+        "architecture_delta_mean": 0.00453725,
+        "current_surface_active": 0.74270833,
+        "hardware_active": 0.83923611,
+        "effective_motion_active": 0.75694444,
+        "repeated_risk_active": 0.83914931
+      }
+    }
+  ]
+}

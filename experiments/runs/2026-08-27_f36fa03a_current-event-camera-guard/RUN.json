@@ -1,0 +1,47 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_f36fa03a_current-event-camera-guard",
+  "source_commit": "f36fa03a16ae6a6ffcb0d240fe34b4427328f8d4",
+  "workflow_run_id": 33105019880,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9660276625,
+  "artifact_name": "flashbench-gpu-f36fa03a16ae6a6ffcb0d240fe34b4427328f8d4",
+  "artifact_digest": "sha256:3d8b9812b08b7e15f57acdddcc576a4067b3972ce801849c46d77f1bea75f7e2",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/33",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Canonical full-replay causal isolation of mode 21 unmasked camera motion applied only to current-event disocclusion while retaining mode 20 sequence-state behavior.",
+  "invariant": "Production architecture 0 remained unchanged. Mode 24 was mode 20 except the current-event whole-frame camera veto used max(corroboratedMotionGate, unmaskedCpuCameraMotionGate); sequence state, stable authority, hold authorization, and risk/prime lifetimes remained mode-20 behavior.",
+  "result_summary": {
+    "mode24_replay_status": "FAILED",
+    "mode24_moving_clear_05_ms": 66.667,
+    "mode24_moving_flash_reduction": 0.95880978,
+    "mode24_perceptual_min_reduction": 0.41401669,
+    "mode24_perceptual_delta4_min_reduction": 0.53775022,
+    "mode24_pan_mae": 0.00275837,
+    "mode24_fast_pan_mae": 0.004533,
+    "mode24_extreme_pan_mae": 0.06669124,
+    "mode24_wcag_sc_2_3_1_pass": false,
+    "mode24_wcag_sc_2_3_2_pass": false
+  },
+  "interpretation": "Mode 24 was effectively identical to mode 20 on every decisive metric. The current-event-only unmasked camera veto did not reduce extreme-pan error and did not change weak-flash protection. Together with Matrix 32, this rules out both textureless-state persistence and current-event disocclusion as the source of mode 21's pan improvement; the remaining causal candidates are the stable repeated-authority motion conflict and stationary current-hold authorization gates.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "d8838b1060f49d72a9593b44923572abd4c4f02d6e9f126d3071f17d9a8d5e6b"
+    },
+    {
+      "path": "mode24-replay.json",
+      "sha256": "bc654674fe2cf5e68c561f0630fefe8ca3b204e6d194f90ed133252665af4346"
+    },
+    {
+      "path": "mode24-perceptual-sweep.json",
+      "sha256": "64038411f1710886d9781637ce25725b6e56e8f0a404c2d73d208e178e7b7547"
+    },
+    {
+      "path": "mode24-flash-sweep.json",
+      "sha256": "357a0e7129ca716b3be0b9dec7bb86fbf2b6babc5568a58379410221586ea262"
+    }
+  ]
+}

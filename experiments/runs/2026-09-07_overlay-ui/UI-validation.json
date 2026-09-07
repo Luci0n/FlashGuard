@@ -1,0 +1,31 @@
+{
+  "build": "surface",
+  "exe_sha256": "18D2C32189B9738BC442BD5BC40358535E2EDB2EE49878859C5E58101880E283",
+  "ui_preview_exit": 0,
+  "startup_preview_exit": 0,
+  "visual_tabs": [
+    "Home",
+    "Shortcuts",
+    "Advanced"
+  ],
+  "escape_close_verified": true,
+  "protection_sources_unchanged": true,
+  "source_files": [
+    {
+      "path": "src/FlashGuard.cpp",
+      "sha256": "139890A4D978430FBB356E9D57C1C962FA1367DF750CB860A875BB86A2AF1BEE"
+    },
+    {
+      "path": "src/ui/StartupBanner.h",
+      "sha256": "10A80969723454F8A9496FE94F991F42884537198E6805DFCA6065C114489945"
+    },
+    {
+      "path": "src/analysis/SurfaceFrequency.h",
+      "sha256": "B29A2F50C4CDDB162BEFFDF7AE5179029EA8581E266D0B0DCE0715047BF1030D"
+    },
+    {
+      "path": "src/shaders/SurfaceFrequency.inl",
+      "sha256": "A5EC3A5A147AA2D602B2530D10084D19D87B552946B72860E1E62919F8FCC2D8"
+    }
+  ]
+}

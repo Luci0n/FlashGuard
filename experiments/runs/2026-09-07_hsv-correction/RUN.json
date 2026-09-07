@@ -1,0 +1,82 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-09-07_hsv-correction",
+  "base_commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+  "branch": "test",
+  "source_is_uncommitted_snapshot": true,
+  "software_version": "0.4.0-alpha.1",
+  "result": "SUCCESS",
+  "protocols": [
+    "HSV_CORRECTION_VALIDATION/1",
+    "SURFACE_FREQUENCY_VALIDATION/1"
+  ],
+  "executable_sha256": "2778C89A0434DBE1A893B4AABD570B34D876AA424454CD752C39630766071342",
+  "build_mode": "surface (/O2, FLASHGUARD_SURFACE_DEFAULT=1)",
+  "intervention": "Store a per-channel low phase and clip current RGB against it, replacing the historical luminance peak and grayscale projection that amplified saturation-only flashing.",
+  "preceded_by": "2026-09-07_amplitude-bound",
+  "validation": "PASSED: all 260 checks, including all 60 HSV cases. Minimum HSV RGB variation reduction 99.24% settled and 99.38% early. The moving white/red 5 Hz / 144 FPS case that failed every 0.3.0 candidate reaches 74.17% against the unchanged 70% requirement.",
+  "environment": {
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "captured_fps_covered": [
+      60,
+      120,
+      144
+    ],
+    "hsv_frequencies_hz": [
+      5,
+      10,
+      20,
+      30
+    ]
+  },
+  "gpu_ms": {
+    "samples": 330,
+    "p50": 0.831488,
+    "p95": 6.361088,
+    "p99": 8.574976
+  },
+  "gpu_timing_note": "GPU draw time only, under uncontrolled system load. Capture, copy, presentation, and physical display delay are excluded; this is not an end-to-end latency measurement.",
+  "live_game_verified": false,
+  "live_game_note": "The Outlast Trials speckles recorded in 2026-09-06_outlast-noise-diagnosis were not revalidated with this build. Private game captures are excluded from the archive.",
+  "before_report_note": "before.json is the pre-correction measurement in which all 12 saturation cases failed, with up to 53% more RGB variation after settling. after.json is the corrected build.",
+  "source_files": [
+    {
+      "path": "src/FlashGuard.cpp",
+      "sha256": "E2AC732813479C7F9DB10C8F46A117DCCB9ACF06178E65AA2EBB841074FBA307"
+    },
+    {
+      "path": "src/analysis/SurfaceFrequency.h",
+      "sha256": "B29A2F50C4CDDB162BEFFDF7AE5179029EA8581E266D0B0DCE0715047BF1030D"
+    },
+    {
+      "path": "src/shaders/SurfaceFrequency.inl",
+      "sha256": "A5EC3A5A147AA2D602B2530D10084D19D87B552946B72860E1E62919F8FCC2D8"
+    },
+    {
+      "path": "scripts/build.bat",
+      "sha256": "7DE7BC27C033C0E3C510C478BE591F72089D8C2CE00DAABF6583BB068401DC8A"
+    },
+    {
+      "path": "scripts/build.ps1",
+      "sha256": "A940B1C8591F7F725EAC841CE9EFC8A2C5CF90B995CDA81A8F581B4B41E45793"
+    }
+  ],
+  "raw_evidence": [
+    {
+      "path": "after.json",
+      "sha256": "ADE7AEBE9D6FF901435CB6FAF734147900403ABD091AA2F8F2770F39651E2466"
+    },
+    {
+      "path": "before.json",
+      "sha256": "2BE6505D0C6CC80B9C52E07570D5F0BD04F9380318F6636D505146C21F7B527F"
+    },
+    {
+      "path": "timing.json",
+      "sha256": "3A404C8BE47F8005BEC76EB7D839B0C717BD38D66E1B68EAE9DCB6CB31825DE7"
+    },
+    {
+      "path": "validation.json",
+      "sha256": "5C35A303F04A8126FB90CE5695EC5574DE1443B2F59B09D1EA65BD20C8B3BADC"
+    }
+  ]
+}

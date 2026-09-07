@@ -1,0 +1,44 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-26_539eee97_compact-protection-state",
+  "tested_commit": "539eee97434f763b292878fd36e89b01060d1052",
+  "software_version": "0.2.0-alpha.10",
+  "timestamp_utc": "2026-08-26T10:30:14Z",
+  "ci_run_id": 32958003971,
+  "ci_artifact_id": 9602937591,
+  "ci_artifact_sha256": "1967be10c1a5d249077a156ef2f0fc4a56f50e51804cd1ef8a567c64fde7bc2c",
+  "source_artifact": "flashbench-gpu-539eee97434f763b292878fd36e89b01060d1052",
+  "result": "SUCCESS",
+  "protocols": [
+    "FLASHBENCH/5",
+    "FLASHGUARD_FLASH_SWEEP/6",
+    "WCAG_FLASH/5",
+    "FLASHGUARD_REPLAY/6",
+    "NVOF_SMOKE/1",
+    "MOTION_DIAGNOSTICS/2",
+    "MOTION_REALIZATION/1",
+    "RED_FLASH_TRACE/2"
+  ],
+  "environment": {
+    "machine": "CROW",
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "nvidia_driver": "561.09",
+    "replay_width": 640,
+    "replay_height": 360,
+    "replay_fps": 60
+  },
+  "intervention": "Replace recursive filtered RGB feedback with a transported compact protected-luminance state while always sourcing chroma from the current surface.",
+  "automated_observation": "Automated GPU validation passed. SC 2.3.1 and SC 2.3.2 both passed; small-moving ghost MAE improved to 0.00013735, pan MAE to 0.00653859, and smooth/snapped scroll MAE to 0.00084735/0.00099063. Moving-flash reduction regressed from 0.60489436 to 0.29455287 and 5 Hz quarter-screen luminance reduction fell from 0.99761613 to 0.85675863, motivating a fuller transported safety-state experiment.",
+  "qualitative_observation": null,
+  "preceded_by": "2026-08-26_82208634_chromaticity-red-clamp",
+  "raw_file_sha256": {
+    "summary.json": "4906d86ee9c0fd4f78a146dcfb48ff303909c6203ffbd1e2e70ef27ec4611c33",
+    "flash-sweep.json": "c5e00ef43044c4a61dd3a5a1b9fed9b78218effef5c4fc93f8c0ee7b50ba28ca",
+    "synthetic-replay.json": "b04496bba4d4d2ea23d5354aa8c19170b4bb59fa5e744e1c293c61a5ef892d79",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "motion-diagnostics.json": "71ddb87dbe4d3ff8ba39ff949fd8325dba60d2ce49fd43ddb8faf54fc0c31108",
+    "motion-realization.json": "ddb0838b040af1e13e22b65699bd4952c782592f919e181c90de0a57bc8040ae",
+    "red-flash-trace-15hz.json": "2862f57bbd9dd4494b2d53368331cb575de04e72a07eecbedb6e18068065ecbe"
+  }
+}

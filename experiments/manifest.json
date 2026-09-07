@@ -1,0 +1,390 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_ARCHIVE/1",
+  "current_software_version": "0.4.0-alpha.4",
+  "protocols": [
+    "FLASHBENCH/1",
+    "FLASHGUARD_REPLAY/1",
+    "FLASHGUARD_FLASH_SWEEP/1",
+    "FLASHBENCH/2",
+    "FLASHGUARD_REPLAY/2",
+    "FLASHGUARD_FLASH_SWEEP/2",
+    "FLASHGUARD_REPLAY/3",
+    "FLASHGUARD_FLASH_SWEEP/3",
+    "WCAG_FLASH/1",
+    "WCAG_FLASH/2",
+    "NVOF_SMOKE/1",
+    "MOTION_DIAGNOSTICS/1",
+    "FLASHBENCH/3",
+    "FLASHGUARD_REPLAY/4",
+    "FLASHGUARD_FLASH_SWEEP/4",
+    "WCAG_FLASH/3",
+    "MOTION_DIAGNOSTICS/2",
+    "MOTION_REALIZATION/1",
+    "FLASHBENCH/4",
+    "FLASHGUARD_REPLAY/5",
+    "FLASHGUARD_FLASH_SWEEP/5",
+    "WCAG_FLASH/4",
+    "FLASHBENCH/5",
+    "FLASHGUARD_REPLAY/6",
+    "FLASHGUARD_FLASH_SWEEP/6",
+    "WCAG_FLASH/5",
+    "RED_FLASH_TRACE/1",
+    "RED_FLASH_TRACE/2",
+    "FLASHBENCH/6",
+    "FLASHGUARD_TRAIL_METRICS/1",
+    "FLASHGUARD_PERCEPTUAL_SWEEP/1",
+    "FLASHGUARD_REPLAY_BATCH/1",
+    "FLASHGUARD_MATRIX/3",
+    "FLASHGUARD_SCREENING_PROBES/1",
+    "FLASHGUARD_SCREENING_PROBES/2",
+    "FLASHGUARD_SCREENING_PROBES/3",
+    "FLASHGUARD_MATRIX/4",
+    "FLASHGUARD_MATRIX/5",
+    "FLASHGUARD_TRAIL_METRICS/2",
+    "FLASHGUARD_MATRIX/6",
+    "FLASHGUARD_MATRIX/7",
+    "FLASHGUARD_MATRIX/8",
+    "FLASHGUARD_MATRIX/9",
+    "FLASHGUARD_MATRIX/10",
+    "FLASHGUARD_AUTHORITY_DIAGNOSTICS/1",
+    "FLASHGUARD_AUTHORITY_DIAGNOSTICS/2",
+    "FLASHGUARD_MATRIX/11",
+    "FLASHGUARD_MATRIX/12",
+    "FLASHGUARD_MATRIX/13",
+    "FLASHGUARD_MATRIX/14",
+    "FLASHGUARD_MATRIX/15",
+    "FLASHGUARD_AUTHORITY_DIAGNOSTICS/3",
+    "FLASHGUARD_MATRIX/16",
+    "FLASHGUARD_MATRIX/17",
+    "FLASHGUARD_MATRIX/18",
+    "FLASHGUARD_MATRIX/19",
+    "FLASHGUARD_MATRIX/20",
+    "FLASHGUARD_MATRIX/21",
+    "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+    "FLASHGUARD_MATRIX/22",
+    "FLASHGUARD_MATRIX/23",
+    "FLASHGUARD_MATRIX/24",
+    "FLASHGUARD_MATRIX/25",
+    "FLASHGUARD_MATRIX/26",
+    "FLASHGUARD_MATRIX/27",
+    "FLASHGUARD_MATRIX/28",
+    "FLASHGUARD_MATRIX/29",
+    "FLASHGUARD_MATRIX/30",
+    "FLASHGUARD_MATRIX/31",
+    "FLASHGUARD_MATRIX/32",
+    "FLASHGUARD_MATRIX/33",
+    "FLASHGUARD_MATRIX/34",
+    "FLASHGUARD_MATRIX/35",
+    "SURFACE_FREQUENCY_VALIDATION/1",
+    "HSV_CORRECTION_VALIDATION/1",
+    "FLASHGUARD_UI_VALIDATION/1",
+    "FLASHGUARD_LIVE_PROBE/1"
+  ],
+  "runs": [
+    {
+      "run_id": "2026-08-25_a50412ae_flash-sweep-failed",
+      "commit": "a50412ae415469a9f5e6beecca3c286a7fcc416e",
+      "result": "FAILED"
+    },
+    {
+      "run_id": "2026-08-25_1802a4e6_flash-sweep-pass",
+      "commit": "1802a4e68656d432a10ce2bf6ba11060ed8d9788",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-25_5445a9e9_stationary-flash-motion-rejection",
+      "commit": "5445a9e92d5032a86ab9c4926459cc8b371bfc31",
+      "result": "FAILED"
+    },
+    {
+      "run_id": "2026-08-26_bbc703d2_exact-stationary-hold",
+      "commit": "bbc703d2f1c9e653ffdf1778c89664e73af4f1da",
+      "result": "FAILED"
+    },
+    {
+      "run_id": "2026-08-26_0c0aa304_verified-local-transport-veto",
+      "commit": "0c0aa30498b77bf06c83d927dfa056e0cebc56ff",
+      "result": "FAILED"
+    },
+    {
+      "run_id": "2026-08-26_82208634_chromaticity-red-clamp",
+      "commit": "82208634053559bc3b52f040c65e36d602d406c9",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_539eee97_compact-protection-state",
+      "commit": "539eee97434f763b292878fd36e89b01060d1052",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_d89ce9ab_full-surface-safety-state",
+      "commit": "d89ce9ab64e20a510e2bf27ab682c5e24cc0ecd9",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_d8320909_flashbench-v6-calibration",
+      "commit": "d83209096b846bd05b55193f0cd473eb350f8249",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_97ad5956_flashbench-v6-fast-screen",
+      "commit": "97ad59568f10753bb37c78a6f6cf41f3a04918b5",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_3ea4ed2e_discriminating-fast-screen",
+      "commit": "3ea4ed2e813f4f37260fd504e96588696864f2f6",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_153e1b91_threshold-probe-cross-coupling",
+      "commit": "153e1b91515d4146f9ae140692446e6d20e70de7",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_2e5cc660_isolated-threshold-probes",
+      "commit": "2e5cc66077a241db0755b69b75d6d83bcab8aa6f",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_0c94a7e6_self-validating-probes",
+      "commit": "0c94a7e6fe7b729f82ff5480113a8703107e2a97",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_a102aa9c_direct-tuning-search",
+      "commit": "a102aa9c5c3aacd042a941c6c1b89a7702564f22",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-26_09c1343a_shader-tuning-search",
+      "commit": "09c1343a7f919ea0a72fa074cf48b765395fca15",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_6b582a4e_uncensored-trail-metrics",
+      "commit": "6b582a4ed88c509f8fdb026b93f2f5e8a2070dd2",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_68cc4a94_risk-only-architecture-v1",
+      "commit": "68cc4a94a226faa51f58ed9ac6ab3c9928459a73",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_ee5af05f_surface-risk-v2",
+      "commit": "ee5af05f14959ce1b5d200839587e7698bc58387",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_c9b842e9_disocclusion-seed-veto",
+      "commit": "c9b842e9c0dda95d7d2563a5dad7f4d869c956c5",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_fb32a4d9_trail-authority-attribution",
+      "commit": "fb32a4d9564d4f4f487101a8a205e3a662e59df6",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_cf0480b2_trail-geometry-correlation",
+      "commit": "cf0480b2bbcb6bbb3bde493e597c52c8ea99cdf9",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_f673e0fb_risk-independent-disocclusion-geometry",
+      "commit": "f673e0fb3611f764b948116cb97f720c4ef32dda",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_64f9326f_persistent-risk-ablation",
+      "commit": "64f9326f553e870bfb7f72230def4807ea77d957",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_2acf4cf0_bounded-risk-memory",
+      "commit": "2acf4cf06de1ac280136d496f9f155059f6d5ba8",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_30dea046_repetition-gated-risk",
+      "commit": "30dea046f0a65bef9507d766e70a013304558917",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_4c31e52b_same-surface-opposition",
+      "commit": "4c31e52b4150311cdda9fd461fd653e7c8e038ed",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_5b11ee58_moving-flash-authority",
+      "commit": "5b11ee58fb0c8a263d19518aa3dd91fc4a4a7445",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_16c1b5e4_surface-propagation",
+      "commit": "16c1b5e4fb7551f8e82799621387d1666ee74ef7",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_ac66d624_single-frame-phase-hold",
+      "commit": "ac66d6247b4acc143854178e92610fb7421808cb",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_c5ff67c9_textureless-flow-consensus",
+      "commit": "c5ff67c958a2bd6e8846a16173af4278882c83b8",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_0aa233b5_architecture-clamp-invalid",
+      "commit": "0aa233b585a6817cb3165b50a0dfcc8162eeea5a",
+      "result": "INVALID"
+    },
+    {
+      "run_id": "2026-08-27_96f01c47_corrected-architectures",
+      "commit": "96f01c47d2565f257b26d1a13a1680e9f12a9baa",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_28124537_phase-disocclusion-diagnosis",
+      "commit": "2812453717eec90679fc53684fdf77947c37a471",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_40e53b24_corrected-disocclusion",
+      "commit": "40e53b246918665850021c92e5664cc0421f6a2e",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_2a2fc8fb_event-history-separation",
+      "commit": "2a2fc8fbcf5ba41d0e9aa5cd1cd9846a0a8f6b19",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_f7b1ec19_full-finalist-validation",
+      "commit": "f7b1ec19a0a6e7673ad43a7e2599fc7d04f9aa78",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_2ce9c0f7_stationary-reversal-hold",
+      "commit": "2ce9c0f711c6fc0184e60425c189e97d01fb4d70",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_dff352f2_stationary-qualified-state",
+      "commit": "dff352f2bd261960ecd48a6917fef544870fd53e",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_7e82e9aa_stationary-motion-only-state",
+      "commit": "7e82e9aa0a021ec78057736e51a780a7ca70ec49",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_d8823455_textureless-stationary-prime",
+      "commit": "d8823455442a14c79ecba3a740285fc628fb9853",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_e618f868_camera-guarded-state",
+      "commit": "e618f8685fa07a92cac1c4cc0e9991f37fa2c198",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_7b51f4d9_structural-camera-guard",
+      "commit": "7b51f4d9d8134d4a36ff64b0b104ff18cc0cdb00",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_44c12dd3_minimal-camera-veto",
+      "commit": "44c12dd300bb203c4d43f5afa110ddf2cccba8ba",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_f36fa03a_current-event-camera-guard",
+      "commit": "f36fa03a16ae6a6ffcb0d240fe34b4427328f8d4",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_b7f7325a_display-authority-isolation",
+      "commit": "b7f7325aa1b7610fea5d2ba7257e0e5c24d98eb0",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-08-27_48e4f32c_residual-mode21-factorial",
+      "commit": "48e4f32c4c72d3b44ae7b9ca04e91c44e9fcf5ec",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-09-06_surface-frequency-v1",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.3.0-alpha.1",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-09-06_surface-frequency-v1-final",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.3.0-alpha.1",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-09-06_noise-color-candidate",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.3.0-alpha.2",
+      "result": "FAILED"
+    },
+    {
+      "run_id": "2026-09-06_local-noise-fix",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.3.0-alpha.3",
+      "result": "FAILED"
+    },
+    {
+      "run_id": "2026-09-06_outlast-noise-diagnosis",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.3.0-alpha.3",
+      "result": "UNRESOLVED"
+    },
+    {
+      "run_id": "2026-09-07_amplitude-bound",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.3.0-alpha.4",
+      "result": "FAILED"
+    },
+    {
+      "run_id": "2026-09-07_hsv-correction",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.4.0-alpha.1",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-09-07_overlay-ui",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.4.0-alpha.2",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-09-07_monospace-opacity",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.4.0-alpha.3",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-09-07_compact-startup",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.4.0-alpha.4",
+      "result": "SUCCESS"
+    }
+  ]
+}

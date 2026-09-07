@@ -1,0 +1,32 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-25_a50412ae_flash-sweep-failed",
+  "tested_commit": "a50412ae415469a9f5e6beecca3c286a7fcc416e",
+  "software_version": "unversioned-development",
+  "timestamp_utc": "2026-08-25T04:25:42Z",
+  "ci_run_id": 32808921399,
+  "result": "FAILED",
+  "protocols": [
+    "FLASHBENCH/1",
+    "FLASHGUARD_REPLAY/1",
+    "FLASHGUARD_FLASH_SWEEP/1",
+    "NVOF_SMOKE/1"
+  ],
+  "environment": {
+    "machine": "CROW",
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "nvidia_driver": "561.09",
+    "replay_width": 640,
+    "replay_height": 360,
+    "replay_fps": 60
+  },
+  "finding": "General luminance counters passed, but red_full retained 5.0, 7.5, and 10.0 output red flashes/s at the corresponding lower input frequencies.",
+  "followed_by": "2026-08-25_1802a4e6_flash-sweep-pass",
+  "raw_file_sha256": {
+    "summary.json": "dbaff3c6666a408ec474a699ed46efeb8a9bf22116cc6bc9f1436196458a0836",
+    "flash-sweep.json": "e33b8c80b4c43caf341d6efe98357a2e60d3f104978b1e9e300d67ec91e8eb63",
+    "synthetic-replay.json": "3916b851b58fa89ff8a640ab99202c016361ad937f4d235085a92fb2726dcd39",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1"
+  }
+}

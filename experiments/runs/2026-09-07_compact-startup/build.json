@@ -1,0 +1,90 @@
+{
+  "build": "surface",
+  "exe_sha256": "8966579B7682CEECF366E61811C2A51A967070CB51A4D0F79DA6FC659BC625A1",
+  "embedded_fonts_verified": true,
+  "menu_size": [
+    440,
+    360
+  ],
+  "profiles_removed": true,
+  "shader_files": [
+    {
+      "name": "041f3cdf6903e05d.fgshader",
+      "sha256": "9938A4D77C7C22158B6A3CE49555FBDB2D083D88FF37A9CD045F800A91894CF0"
+    },
+    {
+      "name": "0c8ec93696b44044.fgshader",
+      "sha256": "B7A72BC0DEAD62983D93517D33DFA7372EDE1ED3176CCEC0ED07311ED5B7A4CC"
+    },
+    {
+      "name": "25fcce886addd6db.fgshader",
+      "sha256": "12E3D982F0B3D8CDF77112770AB55014A48D56AC895A2786505DBA69CD7FB56F"
+    },
+    {
+      "name": "5d5599050fa31f19.fgshader",
+      "sha256": "1E7C74ACB14D4B069248D2A2E22916610226EF14F1FE740F84F80659E42CA2E5"
+    },
+    {
+      "name": "85d26aca56291d19.fgshader",
+      "sha256": "FD5D18CB0A76B40457DCA9563AAAECE348D410EEB290604D4CD3BB50003181F4"
+    },
+    {
+      "name": "9715255b298ac1a9.fgshader",
+      "sha256": "0FA9B5317301CB92336F3D894CD6399566099CC274D24A7F08B547E572A4C0F9"
+    },
+    {
+      "name": "b917bc2e8164d076.fgshader",
+      "sha256": "7949437670F1D632804BC1CE78985153BE086A29F7798557856EF9E66C83750F"
+    },
+    {
+      "name": "bd68961f1e2730ca.fgshader",
+      "sha256": "298BA46E8129BC9899E4AD7E1AF3153F0E69B5C5B311E55E77955CF667BC824A"
+    },
+    {
+      "name": "c097be52bde6749b.fgshader",
+      "sha256": "45109971F53AE0F5C7E25B3E30F3985FA825427B10C77798C760AEE239AFFA60"
+    },
+    {
+      "name": "d84a1879dd893048.fgshader",
+      "sha256": "923F84D1B5074A245747A53BBA44FDD28881D5EEF4B8864FCEE14A122B645849"
+    },
+    {
+      "name": "ea27c03798c3e987.fgshader",
+      "sha256": "D2BC3AA5D1BAE0EE2267BE64348E200561196E741D0F47B78CB94081168CAC30"
+    }
+  ],
+  "source_files": [
+    {
+      "path": "src/FlashGuard.cpp",
+      "sha256": "D884EDD83AD576141B0E5036614B2CB57318852946ABF0864CD639DF18C587DF"
+    },
+    {
+      "path": "src/FlashGuard.rc",
+      "sha256": "E9D2214F411049E73BBEE1DB0279FC10D2B4393AB17FCAF4AE2B84A95EC1F743"
+    },
+    {
+      "path": "src/render/ShaderCache.h",
+      "sha256": "8CB234BBDDA80875E929451C57479CD03A83AFD3C7AA6301642BD546915CAC94"
+    },
+    {
+      "path": "src/ui/BundledFonts.h",
+      "sha256": "6987A6BC442F9FB79216347BF6203D2964645522C08F77412CA4B9BF8A20FB83"
+    },
+    {
+      "path": "src/ui/StartupBanner.h",
+      "sha256": "7A61B079EC62F1704E6332F09C34CBBAD42FC9F51D373FBC23CCEDA6C633E2BE"
+    },
+    {
+      "path": "src/analysis/SurfaceFrequency.h",
+      "sha256": "36DE02369BD20DFF5A07FF70ACBF4B3DED6F7DEF030DC1BE1B4D232B096CEAE4"
+    },
+    {
+      "path": "src/shaders/SurfaceFrequency.inl",
+      "sha256": "A5EC3A5A147AA2D602B2530D10084D19D87B552946B72860E1E62919F8FCC2D8"
+    },
+    {
+      "path": "scripts/build.bat",
+      "sha256": "CB01DAA3D400C27727A12F59763A116B2834385148DAAD256F9C8917D16E036D"
+    }
+  ]
+}

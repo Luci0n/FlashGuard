@@ -1,0 +1,62 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_48e4f32c_residual-mode21-factorial",
+  "source_commit": "48e4f32c4c72d3b44ae7b9ca04e91c44e9fcf5ec",
+  "workflow_run_id": 33113894818,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9664237763,
+  "artifact_name": "flashbench-gpu-48e4f32c4c72d3b44ae7b9ca04e91c44e9fcf5ec",
+  "artifact_digest": "sha256:e7290f8742aaa4fc381b6b259655695fc09fb397a439ea1e3a1f27b6d6ccd33a",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/35",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Canonical full-replay 2^3 causal factorial of the remaining mode-20 to mode-21 delta after Matrices 32-34 eliminated the other camera-guard branches.",
+  "invariant": "Production architecture 0 remained unchanged. Modes 28-34 inherited mode 20 and toggled only A=unmasked camera motion in repetition qualification, B=mode-21 risk/state restoration semantics plus 0.40 s qualified risk lifetime, and C=mode-21 0.40 s signed-prime lifetime; mode 21 was the positive control.",
+  "result_summary": {
+    "mode20_extreme_pan_mae": 0.06663802,
+    "mode20_perceptual_min_reduction": 0.1605186,
+    "mode20_moving_flash_reduction": 0.95716632,
+    "factor_A_extreme_pan_mae": 0.06564281,
+    "factor_B_extreme_pan_mae": 0.01353157,
+    "factor_C_extreme_pan_mae": 0.06729468,
+    "factor_AB_extreme_pan_mae": 0.013521,
+    "factor_AC_extreme_pan_mae": 0.06707052,
+    "factor_BC_extreme_pan_mae": 0.01342857,
+    "factor_ABC_extreme_pan_mae": 0.01338053,
+    "factor_B_perceptual_min_reduction": 0.28600307,
+    "factor_B_moving_flash_reduction": 0.81151674,
+    "mode20_matrix34_perceptual_min_reduction": 0.41401669,
+    "mode20_matrix35_perceptual_min_reduction": 0.1605186,
+    "all_factorial_candidates_with_B_pass_extreme_pan": true,
+    "all_factorial_candidates_without_B_fail_extreme_pan": true,
+    "selected": null
+  },
+  "interpretation": "Factor B is the first clean causal discriminator for the mode-21 pan repair: every factorial candidate containing B passed the <0.030 extreme-pan gate (~0.0134-0.0135), while every candidate without B failed (~0.0656-0.0673). A and C are neither necessary nor sufficient. B still misses the weak/perceptual target, and the mathematically unchanged mode-20 control shifted from a 0.4140 perceptual floor in Matrix 34 to 0.1605 in Matrix 35. Matrix 36 therefore repeats identical mode-20/B controls in one binary and decomposes B into sequence-conditioned state semantics versus the 0.40 s risk lifetime before any new safety architecture is attempted.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "f6cac9b1c4f940bc64cc82ef11307d14b12c52a2e5da1762c844db92d54a1a24"
+    },
+    {
+      "path": "mode20-replay.json",
+      "sha256": "b187ea8e80f3c833c8846b880d22dbed20fea9d169e2367e5d6a59b819edffdd"
+    },
+    {
+      "path": "mode20-perceptual-sweep.json",
+      "sha256": "c0d349dd17f40860e8801ba4a7aed850c452f70f93db010bb95986a98d761277"
+    },
+    {
+      "path": "mode29-replay.json",
+      "sha256": "9bc3750c41c12960a0e8519ae7ab4060c7eabdd8bca946321e8abc8ec9f0a1da"
+    },
+    {
+      "path": "mode29-perceptual-sweep.json",
+      "sha256": "e1d299d72187ed5c48f864a8cf196a3d4f0aa6a60fc027ed791980fd63983fa2"
+    },
+    {
+      "path": "mode29-flash-sweep.json",
+      "sha256": "b2212c0a6fd93b617bc4d7520fab2b66d28b57513de99b36bd7b5cf59ff4d021"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema": "SURFACE_FREQUENCY_VALIDATION/1",
+  "exe_sha256": "BA330933EA494DB6B1297960F3E11A1D37353F33F91429C29DBB879F021BF8D2",
+  "passed": true,
+  "focused_case_count": 119,
+  "flash_sweep_failed_cases": 0,
+  "perceptual_minimum_reduction": 0.78521727,
+  "steps": [
+    {
+      "name": "shaders",
+      "exit_code": 0,
+      "elapsed_ms": 26351
+    },
+    {
+      "name": "risk-integrator",
+      "exit_code": 0,
+      "elapsed_ms": 32
+    },
+    {
+      "name": "focused",
+      "exit_code": 0,
+      "elapsed_ms": 4910
+    },
+    {
+      "name": "canonical",
+      "exit_code": 0,
+      "elapsed_ms": 53339
+    },
+    {
+      "name": "1080p",
+      "exit_code": 0,
+      "elapsed_ms": 1275
+    }
+  ]
+}

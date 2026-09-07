@@ -1,0 +1,33 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_30dea046_repetition-gated-risk",
+  "source_commit": "30dea046f0a65bef9507d766e70a013304558917",
+  "workflow_run_id": 33055321153,
+  "artifact_id": 9639478178,
+  "artifact_digest": "sha256:d556344b951e6a454c1f447a872721f2274235ca97b09566ab1c7b2906200a34",
+  "result": "SUCCESS",
+  "purpose": "Test whether analyzer repeated-flash memory can authorize persistent surface-local risk only after repetition, avoiding isolated motion seeding.",
+  "matrix_schema": "FLASHGUARD_MATRIX/14",
+  "interpretation": {
+    "primary_gate_pass_count": 0,
+    "event_only_clear_05_ms": 66.667,
+    "event_only_moving_flash_reduction": 0.36197872,
+    "event_only_perceptual_min_reduction": 0.65110777,
+    "event_only_wcag_pass": false,
+    "repeat_gate_strict_clear_05_ms": 766.667,
+    "repeat_gate_strict_moving_flash_reduction": 0.3809429,
+    "repeat_gate_strict_perceptual_min_reduction": 0.65110777,
+    "repeat_gate_strict_wcag_pass": true,
+    "repeat_gate_strict_recovery_surface_memory_error_weighted_mean": 0.82531669,
+    "repeat_gate_tau020_clear_05_ms": 100.0,
+    "repeat_gate_tau020_moving_flash_reduction": 0.37265778,
+    "repeat_gate_tau020_perceptual_min_reduction": 0.65110777,
+    "repeat_gate_tau020_wcag_pass": true,
+    "moving_square_repeated_risk_error_weighted_mean": 0.85622336,
+    "conclusion": "Analyzer temporal/repeated risk is not a usable local repetition discriminator. Thresholds from 0.10-0.30 through 0.40-0.65 all reseeded persistent local risk during ordinary moving-square motion, restoring roughly 0.8 s recovery, while low-contrast perceptual suppression remained only 0.651. A 20 ms lifetime again restored WCAG but cleared at 100 ms and moving-flash reduction stayed below 0.45. Next test should qualify repetition from two opposing motion-compensated intrinsic transitions on the same surface, using metadata that does not itself drive display mitigation."
+  },
+  "raw_file_sha256": {
+    "matrix.json": "89fd97ac1dae93422765f9b6142d342dd11e4737c9b8bb1774f8f76fad726194",
+    "summary.json": "7a959376968e69d5b70f71b87a17e51bc0536fb55f746aa5adba7a6a9879b322"
+  }
+}

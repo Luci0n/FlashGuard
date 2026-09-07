@@ -1,0 +1,65 @@
+{
+  "schema": "MOTION_DIAGNOSTICS/1",
+  "fps": 60,
+  "motion_scale": 1.000,
+  "activation_threshold": 0.5,
+  "sampling_stride": 4,
+  "cases": {
+    "quarter_flash_15hz": {
+      "global_flow":{"mean":0.00280521,"max":1.00000000,"active_fraction":0.00280521,"inside_mean":0.01165242,"inside_max":1.00000000,"inside_active_fraction":0.01165242,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "current_surface":{"mean":0.00007045,"max":1.00000000,"active_fraction":0.00007030,"inside_mean":0.00000000,"inside_max":0.00000000,"inside_active_fraction":0.00000000,"outside_mean":0.00009279,"outside_max":1.00000000,"outside_active_fraction":0.00009259},
+      "vacated_surface":{"mean":0.00000648,"max":1.00000000,"active_fraction":0.00000686,"inside_mean":0.00002693,"inside_max":1.00000000,"inside_active_fraction":0.00002849,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "disocclusion_infill":{"mean":0.00000429,"max":1.00000000,"active_fraction":0.00000343,"inside_mean":0.00001781,"inside_max":1.00000000,"inside_active_fraction":0.00001425,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "portable_matcher":{"mean":0.01085255,"max":1.00000000,"active_fraction":0.01085255,"inside_mean":0.04260631,"inside_max":1.00000000,"inside_active_fraction":0.04260631,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "hardware_combined":{"mean":0.00515891,"max":1.00000000,"active_fraction":0.00515898,"inside_mean":0.01992455,"inside_max":1.00000000,"inside_active_fraction":0.01992455,"outside_mean":0.00011243,"outside_max":1.00000000,"outside_active_fraction":0.00011252},
+      "effective_motion":{"mean":0.00126236,"max":1.00000000,"active_fraction":0.00013627,"inside_mean":0.00462699,"inside_max":1.00000000,"inside_active_fraction":0.00020576,"outside_mean":0.00011243,"outside_max":1.00000000,"outside_active_fraction":0.00011252},
+      "repeated_risk":{"mean":0.25028827,"max":1.00000000,"active_fraction":0.25443047,"inside_mean":0.97826208,"inside_max":1.00000000,"inside_active_fraction":0.99887517,"outside_mean":0.00148710,"outside_max":0.19921875,"outside_active_fraction":0.00000000},
+      "verified_flash_override":{"mean":0.12366972,"max":1.00000000,"active_fraction":0.12245283,"inside_mean":0.48551817,"inside_max":1.00000000,"inside_active_fraction":0.48074074,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "coarse_gpu_motion":{"mean":0.00000000,"max":0.00000000,"active_fraction":0.00000000,"inside_mean":0.00000000,"inside_max":0.00000000,"inside_active_fraction":0.00000000,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "cpu_motion_prior":{"mean":0.00000000,"max":0.00000000,"active_fraction":0.00000000,"inside_mean":0.00000000,"inside_max":0.00000000,"inside_active_fraction":0.00000000,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "temporal_mask":{"mean":0.25471676,"max":1.00000000,"active_fraction":0.25471698,"inside_mean":0.99999913,"inside_max":1.00000000,"inside_active_fraction":1.00000000,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000}
+    },
+    "moving_square": {
+      "global_flow":{"mean":0.00178326,"max":1.00000000,"active_fraction":0.00178326,"inside_mean":0.04453125,"inside_max":1.00000000,"inside_active_fraction":0.04453125,"outside_mean":0.00101927,"outside_max":1.00000000,"outside_active_fraction":0.00101927},
+      "current_surface":{"mean":0.00210976,"max":1.00000000,"active_fraction":0.00211020,"inside_mean":0.06292801,"inside_max":1.00000000,"inside_active_fraction":0.06302083,"outside_mean":0.00102281,"outside_max":1.00000000,"outside_active_fraction":0.00102160},
+      "vacated_surface":{"mean":0.00068720,"max":1.00000000,"active_fraction":0.00068816,"inside_mean":0.01667783,"inside_max":1.00000000,"inside_active_fraction":0.01653646,"outside_mean":0.00040142,"outside_max":1.00000000,"outside_active_fraction":0.00040491},
+      "disocclusion_infill":{"mean":0.00003632,"max":1.00000000,"active_fraction":0.00003658,"inside_mean":0.00064392,"inside_max":1.00000000,"inside_active_fraction":0.00065104,"outside_mean":0.00002546,"outside_max":1.00000000,"outside_active_fraction":0.00002560},
+      "portable_matcher":{"mean":0.00000000,"max":0.00000000,"active_fraction":0.00000000,"inside_mean":0.00000000,"inside_max":0.00000000,"inside_active_fraction":0.00000000,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "hardware_combined":{"mean":0.00296484,"max":1.00000000,"active_fraction":0.00296296,"inside_mean":0.08206168,"inside_max":1.00000000,"inside_active_fraction":0.08203125,"outside_mean":0.00152406,"outside_max":1.00000000,"outside_active_fraction":0.00152270},
+      "effective_motion":{"mean":0.25643536,"max":1.00000000,"active_fraction":0.00908456,"inside_mean":0.41709194,"inside_max":1.00000000,"inside_active_fraction":0.23880208,"outside_mean":0.25350893,"outside_max":1.00000000,"outside_active_fraction":0.00490015},
+      "repeated_risk":{"mean":0.00959585,"max":1.00000000,"active_fraction":0.00638248,"inside_mean":0.18468509,"inside_max":1.00000000,"inside_active_fraction":0.13828125,"outside_mean":0.00640652,"outside_max":1.00000000,"outside_active_fraction":0.00397989},
+      "verified_flash_override":{"mean":0.00000000,"max":0.00000000,"active_fraction":0.00000000,"inside_mean":0.00000000,"inside_max":0.00000000,"inside_active_fraction":0.00000000,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "coarse_gpu_motion":{"mean":0.00874938,"max":1.00000000,"active_fraction":0.00866993,"inside_mean":0.23037058,"inside_max":1.00000000,"inside_active_fraction":0.23216146,"outside_mean":0.00471245,"outside_max":1.00000000,"outside_active_fraction":0.00459893},
+      "cpu_motion_prior":{"mean":0.25000000,"max":0.25000000,"active_fraction":0.00000000,"inside_mean":0.25000000,"inside_max":0.25000000,"inside_active_fraction":0.00000000,"outside_mean":0.25000000,"outside_max":0.25000000,"outside_active_fraction":0.00000000},
+      "temporal_mask":{"mean":0.00498264,"max":1.00000000,"active_fraction":0.00592593,"inside_mean":0.12204610,"inside_max":1.00000000,"inside_active_fraction":0.14609375,"outside_mean":0.00285028,"outside_max":1.00000000,"outside_active_fraction":0.00337271}
+    },
+    "bright_oblique": {
+      "global_flow":{"mean":0.00082305,"max":1.00000000,"active_fraction":0.00082305,"inside_mean":0.07045455,"inside_max":1.00000000,"inside_active_fraction":0.07045455,"outside_mean":0.00050641,"outside_max":1.00000000,"outside_active_fraction":0.00050641},
+      "current_surface":{"mean":0.00138032,"max":1.00000000,"active_fraction":0.00137860,"inside_mean":0.16465881,"inside_max":1.00000000,"inside_active_fraction":0.16420455,"outside_mean":0.00063784,"outside_max":1.00000000,"outside_active_fraction":0.00063818},
+      "vacated_surface":{"mean":0.00058248,"max":1.00000000,"active_fraction":0.00058128,"inside_mean":0.03757354,"inside_max":1.00000000,"inside_active_fraction":0.03750000,"outside_mean":0.00041427,"outside_max":1.00000000,"outside_active_fraction":0.00041339},
+      "disocclusion_infill":{"mean":0.00001505,"max":1.00000000,"active_fraction":0.00001543,"inside_mean":0.00218873,"inside_max":1.00000000,"inside_active_fraction":0.00227273,"outside_mean":0.00000517,"outside_max":1.00000000,"outside_active_fraction":0.00000517},
+      "portable_matcher":{"mean":0.00002096,"max":1.00000000,"active_fraction":0.00002096,"inside_mean":0.00500000,"inside_max":1.00000000,"inside_active_fraction":0.00500000,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "hardware_combined":{"mean":0.00149720,"max":1.00000000,"active_fraction":0.00149633,"inside_mean":0.12710958,"inside_max":1.00000000,"inside_active_fraction":0.12687500,"outside_mean":0.00096831,"outside_max":1.00000000,"outside_active_fraction":0.00096842},
+      "effective_motion":{"mean":0.18738224,"max":1.00000000,"active_fraction":0.00339361,"inside_mean":0.36459047,"inside_max":1.00000000,"inside_active_fraction":0.28250000,"outside_mean":0.18663610,"outside_max":1.00000000,"outside_active_fraction":0.00221842},
+      "repeated_risk":{"mean":0.01081157,"max":1.00000000,"active_fraction":0.00883124,"inside_mean":0.65286373,"inside_max":1.00000000,"inside_active_fraction":0.76000000,"outside_mean":0.00810820,"outside_max":1.00000000,"outside_active_fraction":0.00566842},
+      "verified_flash_override":{"mean":0.00005596,"max":1.00000000,"active_fraction":0.00003669,"inside_mean":0.00491465,"inside_max":1.00000000,"inside_active_fraction":0.00340909,"outside_mean":0.00003344,"outside_max":1.00000000,"outside_active_fraction":0.00002106},
+      "coarse_gpu_motion":{"mean":0.00276991,"max":1.00000000,"active_fraction":0.00266247,"inside_mean":0.27173702,"inside_max":1.00000000,"inside_active_fraction":0.26250000,"outside_mean":0.00152364,"outside_max":1.00000000,"outside_active_fraction":0.00145851},
+      "cpu_motion_prior":{"mean":0.18483887,"max":0.25000000,"active_fraction":0.00000000,"inside_mean":0.18483887,"inside_max":0.25000000,"inside_active_fraction":0.00000000,"outside_mean":0.18483887,"outside_max":0.25000000,"outside_active_fraction":0.00000000},
+      "temporal_mask":{"mean":0.00621827,"max":1.00000000,"active_fraction":0.00691300,"inside_mean":0.39142169,"inside_max":1.00000000,"inside_active_fraction":0.46590909,"outside_mean":0.00443342,"outside_max":1.00000000,"outside_active_fraction":0.00478623}
+    },
+    "small_moving_square": {
+      "global_flow":{"mean":0.00032465,"max":1.00000000,"active_fraction":0.00032465,"inside_mean":0.05185185,"inside_max":1.00000000,"inside_active_fraction":0.05185185,"outside_mean":0.00019710,"outside_max":1.00000000,"outside_active_fraction":0.00019710},
+      "current_surface":{"mean":0.00093094,"max":1.00000000,"active_fraction":0.00093507,"inside_mean":0.18815774,"inside_max":1.00000000,"inside_active_fraction":0.18796296,"outside_mean":0.00046751,"outside_max":1.00000000,"outside_active_fraction":0.00047213},
+      "vacated_surface":{"mean":0.00023283,"max":1.00000000,"active_fraction":0.00023548,"inside_mean":0.04800008,"inside_max":1.00000000,"inside_active_fraction":0.04907407,"outside_mean":0.00011459,"outside_max":1.00000000,"outside_active_fraction":0.00011459},
+      "disocclusion_infill":{"mean":0.00000694,"max":1.00000000,"active_fraction":0.00000686,"inside_mean":0.00280943,"inside_max":1.00000000,"inside_active_fraction":0.00277778,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "portable_matcher":{"mean":0.00001631,"max":1.00000000,"active_fraction":0.00001631,"inside_mean":0.00648148,"inside_max":1.00000000,"inside_active_fraction":0.00648148,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "hardware_combined":{"mean":0.00097817,"max":1.00000000,"active_fraction":0.00097601,"inside_mean":0.19155029,"inside_max":1.00000000,"inside_active_fraction":0.19166667,"outside_mean":0.00049754,"outside_max":1.00000000,"outside_active_fraction":0.00049507},
+      "effective_motion":{"mean":0.00145397,"max":1.00000000,"active_fraction":0.00135570,"inside_mean":0.25029462,"inside_max":1.00000000,"inside_active_fraction":0.24259259,"outside_mean":0.00082638,"outside_max":1.00000000,"outside_active_fraction":0.00074728},
+      "repeated_risk":{"mean":0.00491878,"max":1.00000000,"active_fraction":0.00415094,"inside_mean":0.36260185,"inside_max":1.00000000,"inside_active_fraction":0.31018519,"outside_mean":0.00401668,"outside_max":1.00000000,"outside_active_fraction":0.00337910},
+      "verified_flash_override":{"mean":0.00032847,"max":1.00000000,"active_fraction":0.00032378,"inside_mean":0.02965455,"inside_max":1.00000000,"inside_active_fraction":0.02870370,"outside_mean":0.00025450,"outside_max":1.00000000,"outside_active_fraction":0.00025221},
+      "coarse_gpu_motion":{"mean":0.00093211,"max":1.00000000,"active_fraction":0.00082693,"inside_mean":0.12979914,"inside_max":1.00000000,"inside_active_fraction":0.12500000,"outside_mean":0.00060710,"outside_max":1.00000000,"outside_active_fraction":0.00051375},
+      "cpu_motion_prior":{"mean":0.00000000,"max":0.00000000,"active_fraction":0.00000000,"inside_mean":0.00000000,"inside_max":0.00000000,"inside_active_fraction":0.00000000,"outside_mean":0.00000000,"outside_max":0.00000000,"outside_active_fraction":0.00000000},
+      "temporal_mask":{"mean":0.00429853,"max":1.00000000,"active_fraction":0.00424412,"inside_mean":0.27104886,"inside_max":1.00000000,"inside_active_fraction":0.26944444,"outside_mean":0.00362576,"outside_max":1.00000000,"outside_active_fraction":0.00357527}
+    }
+  }
+}

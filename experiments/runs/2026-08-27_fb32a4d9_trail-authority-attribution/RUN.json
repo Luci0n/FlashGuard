@@ -1,0 +1,26 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_fb32a4d9_trail-authority-attribution",
+  "source_commit": "fb32a4d9564d4f4f487101a8a205e3a662e59df6",
+  "workflow_run_id": 33047385505,
+  "artifact_id": 9636289749,
+  "artifact_digest": "sha256:c86ca611fadda2b6fdbbfc3395bd0433bdf5c7a474ca4030872b40262eb45c20",
+  "result": "SUCCESS",
+  "purpose": "Attribute >5% moving-square trail error pixels to replay-only display authorities without changing production behavior.",
+  "diagnostic_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/1",
+  "interpretation": {
+    "mode4_moving_architecture_active_fraction": 0.99882727,
+    "mode4_moving_current_event_active_fraction": 0.27977886,
+    "mode4_moving_surface_memory_active_fraction": 0.72407438,
+    "mode4_recovery_architecture_active_fraction": 0.99539747,
+    "mode4_recovery_current_event_active_fraction": 0.08705040,
+    "mode4_recovery_surface_memory_active_fraction": 0.91312006,
+    "mode4_unexplained_error_fraction": 0.0,
+    "conclusion": "The remaining surface-risk trail is produced by the current-frame neutral-luminance remap and is dominated during recovery by stale transported surface-risk memory. Preprocessing and hidden/unattributed output paths are not responsible."
+  },
+  "raw_file_sha256": {
+    "matrix.json": "e1130415629d6ee6526340f7394f56c4a6c698f3164bb99184d11cec62367941",
+    "surface_risk_v2_neutral12-authority.json": "9e076952206e95663174ee645cafe7d96f53a51213949ebfe739e4ef49b0a012",
+    "seed_veto_neutral12-authority.json": "ec22ac1914cd8c6e5b9a10befaf07421a06afef5e86981402d635ff613a9b849"
+  }
+}

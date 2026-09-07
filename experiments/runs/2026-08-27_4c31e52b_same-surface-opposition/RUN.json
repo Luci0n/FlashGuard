@@ -1,0 +1,32 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_4c31e52b_same-surface-opposition",
+  "source_commit": "4c31e52b4150311cdda9fd461fd653e7c8e038ed",
+  "workflow_run_id": 33056929000,
+  "artifact_id": 9640151311,
+  "artifact_digest": "sha256:16eb6e29667efe8682e92e7266edbdd2948736e460fc60f6c1ba37801c19b112",
+  "result": "SUCCESS",
+  "purpose": "Require an opposing signed intrinsic transition on the same transported raw surface before persistent local display risk can be seeded.",
+  "matrix_schema": "FLASHGUARD_MATRIX/15",
+  "interpretation": {
+    "primary_gate_pass_count": 0,
+    "event_only_clear_05_ms": 66.667,
+    "event_only_moving_flash_reduction": 0.36197872,
+    "event_only_perceptual_min_reduction": 0.65110777,
+    "event_only_wcag_pass": false,
+    "opposition_default_tau100_gain200_clear_05_ms": 66.667,
+    "opposition_default_tau100_gain200_moving_flash_reduction": 0.37155597,
+    "opposition_default_tau100_gain200_perceptual_min_reduction": 0.75066236,
+    "opposition_default_tau100_gain200_wcag_pass": true,
+    "opposition_default_tau100_gain200_recovery_p99_auc": 0.00955811,
+    "opposition_default_tau200_gain200_clear_05_ms": 66.667,
+    "opposition_default_tau200_gain200_moving_flash_reduction": 0.37155597,
+    "opposition_default_tau200_gain200_perceptual_min_reduction": 0.79224363,
+    "opposition_default_tau200_gain200_wcag_pass": true,
+    "conclusion": "Same-surface signed opposition breaks the previous ghosting/WCAG/weak-flash tradeoff: multiple mode-8 candidates clear to 5% in 66.7 ms, pass both WCAG gates, retain low pan error, and reach weak-flash reduction up to about 0.792. The only remaining primary failure is moving-flash reduction, which is nearly invariant at about 0.372 across risk lifetime, gain, opposition threshold, and prime-tau probes. That flat response localizes the next investigation to current moving-event recognition/localization rather than persistent memory or mitigation strength."
+  },
+  "raw_file_sha256": {
+    "matrix.json": "498dd394894baf4e7341d71e627a0c26faa24b4e43b41505b3566baf8580bcd4",
+    "summary.json": "cddb9baa94d402137fb2f27081b597ccb1abc62a5b728b1996bc5aecca8ec0b8"
+  }
+}

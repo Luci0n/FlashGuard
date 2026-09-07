@@ -1,0 +1,17 @@
+{
+  "schema": "FLASHGUARD_SCREENING_PROBES/3",
+  "status": "SUCCESS",
+  "detector_family_isolation": true,
+  "global_delta_only_full_probe": true,
+  "background_code": 96,
+  "fps": 30,
+  "full_high_only_high_code": 139,
+  "full_medium_high_high_code": 148,
+  "small_probe_high_code": 168,
+  "small_high_only_target_area_fraction": 0.006,
+  "small_medium_high_target_area_fraction": 0.011,
+  "full_high_only_residual_ratio": 0.00144781,
+  "full_medium_high_residual_ratio": 0.00119723,
+  "small_high_only_residual_ratio": 0.00086466,
+  "small_medium_high_residual_ratio": 0.00086466
+}

@@ -1,0 +1,39 @@
+{
+  "schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-26_153e1b91_threshold-probe-cross-coupling",
+  "tested_commit": "153e1b91515d4146f9ae140692446e6d20e70de7",
+  "software_version": "0.3.0-alpha.1",
+  "timestamp_utc": "2026-08-26T14:33:57Z",
+  "ci_run_id": 32980411548,
+  "ci_artifact_id": 9611442818,
+  "ci_artifact_sha256": "fcd3dfa2b6a21fcd3cb76ef6743dc7c04ccca9b045d5f61486244b3b9a7900f4",
+  "result": "SUCCESS",
+  "intervention": "FlashBench v6 added four screening-only threshold probes and residual-energy ranking to discriminate full-screen and small-source sensitivity settings without restoring the broad slow matrix.",
+  "quantitative_observation": {
+    "screen_elapsed_ms": 135328,
+    "candidate_count": 27,
+    "screen_success_count": 27,
+    "speedup_vs_original_v6_x": 4.9122,
+    "slowdown_vs_3ea4ed2e_screen_x": 1.1762,
+    "selected": "profile_1_full_1_small_1",
+    "full_high_only_unique_values": 4,
+    "full_medium_high_unique_values": 4,
+    "small_high_only_unique_values": 2,
+    "small_medium_high_unique_values": 2
+  },
+  "qualitative_observation": "The probes introduced numerical variation, but the pattern did not map cleanly to full/small sensitivity because the detector families are cross-coupled: full-screen flashes can also satisfy the small-source path, and affected-area classification depends on localDeltaThreshold controlled by small sensitivity. Treat the probe design as rejected calibration evidence; isolate detector families before using probe values for ranking.",
+  "raw_file_sha256": {
+    "artifact.zip": "fcd3dfa2b6a21fcd3cb76ef6743dc7c04ccca9b045d5f61486244b3b9a7900f4",
+    "flash-sweep.json": "45613073aacfb73f9feb0e7cb65d4b472d11645202266e5d63984faeb760df77",
+    "motion-diagnostics.json": "ecfb620be016d27d9f228715afbe2b5142d092eb713e316b2b9d4fc2b304bba0",
+    "motion-realization.json": "ddb0838b040af1e13e22b65699bd4952c782592f919e181c90de0a57bc8040ae",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "perceptual-sweep.json": "f3c96f3bdb083daaf7002bba9d98fe5433b6b9243f082e0957b97ced8fe31061",
+    "red-flash-trace-15hz.json": "ccce86237f8badd4f9692119c2eab432367e6c51a0c39f2a5f39b9f358e2272c",
+    "summary.json": "fdeb328553436d14a2b5e6f8e9135968c9e5d3863d0b66d604129edffc8cf59d",
+    "synthetic-replay.json": "c6b2ebc912484184ead069db5caf2cf97ce79416463a5d4aa3ddc11960c99bdc",
+    "trail-metrics.json": "be4114662151e1c708ef7a1a66112c98ad6e09d3e391847451345101ce358145",
+    "matrix/matrix.json": "3918a6bbce99359cb78ab4997319c4378cac5f2328967f0578f533f4b8d4da6a",
+    "matrix/screen/batch.json": "dc07960f207cd88050385fcb7782622a83e3525bd8f7bcb496f41e5086204916"
+  }
+}

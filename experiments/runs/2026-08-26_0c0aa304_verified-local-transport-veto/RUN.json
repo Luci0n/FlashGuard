@@ -1,0 +1,39 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-26_0c0aa304_verified-local-transport-veto",
+  "tested_commit": "0c0aa30498b77bf06c83d927dfa056e0cebc56ff",
+  "software_version": "0.1.0-alpha.1",
+  "timestamp_utc": "2026-08-26T01:20:18Z",
+  "ci_run_id": 32917585413,
+  "ci_artifact_id": 9589023811,
+  "ci_artifact_sha256": "214288b9005a579c6c15331eba14035705443c5113692abd382cebbec4ed0b76",
+  "source_artifact": "flashbench-gpu-0c0aa30498b77bf06c83d927dfa056e0cebc56ff",
+  "result": "FAILED",
+  "protocols": [
+    "FLASHBENCH/2",
+    "FLASHGUARD_REPLAY/3",
+    "FLASHGUARD_FLASH_SWEEP/3",
+    "WCAG_FLASH/2",
+    "NVOF_SMOKE/1",
+    "MOTION_DIAGNOSTICS/1"
+  ],
+  "environment": {
+    "machine": "CROW",
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "nvidia_driver": "561.09",
+    "replay_width": 640,
+    "replay_height": 360,
+    "replay_fps": 60
+  },
+  "intervention": "Allow strong verified full-resolution local transport to cancel the exact stationary current-event hold.",
+  "automated_observation": "Small-moving ghost MAE returned to 0.00049343 and low-speed moving/oblique interior errors improved versus bbc703d2, but the six 10-30 Hz quarter-screen cases no longer stayed exactly stationary and leaked 1-2 strict transitions/s.",
+  "preceded_by": "2026-08-26_bbc703d2_exact-stationary-hold",
+  "raw_file_sha256": {
+    "summary.json": "863d3f7ef4583a6c9363725190637ed3030965950549b19be6769d3de2014c3e",
+    "flash-sweep.json": "833d8876cf4dcb4c95bbf60499c879ee9b009c7015b507ffd4b33300bae2cdf5",
+    "synthetic-replay.json": "895facb3fd00c3569083dab0f72f13fa0882ce6da5f08eb5ef686b90bd1c7d51",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "motion-diagnostics.json": "d507f5903c3a12e55302b0ada3275b9a60e5a2bae4fc8fcdbcb915907439f5b7"
+  }
+}

@@ -1,0 +1,332 @@
+{
+  "schema": "FLASHGUARD_PERCEPTUAL_SWEEP/1",
+  "status": "SUCCESS",
+  "calibration_only": true,
+  "background_code": 96,
+  "cases": [
+    {
+      "delta_code": 4,
+      "low_code": 94,
+      "high_code": 98,
+      "frequency_hz": 5.0,
+      "phase_frames": 0.0,
+      "reduction": 0.47549435,
+      "peak_output_delta": 0.01586914
+    },
+    {
+      "delta_code": 4,
+      "low_code": 94,
+      "high_code": 98,
+      "frequency_hz": 5.0,
+      "phase_frames": 0.5,
+      "reduction": 0.55996424,
+      "peak_output_delta": 0.01586914
+    },
+    {
+      "delta_code": 4,
+      "low_code": 94,
+      "high_code": 98,
+      "frequency_hz": 10.0,
+      "phase_frames": 0.0,
+      "reduction": 0.87626647,
+      "peak_output_delta": 0.01586914
+    },
+    {
+      "delta_code": 4,
+      "low_code": 94,
+      "high_code": 98,
+      "frequency_hz": 10.0,
+      "phase_frames": 0.5,
+      "reduction": 0.88215854,
+      "peak_output_delta": 0.01586914
+    },
+    {
+      "delta_code": 4,
+      "low_code": 94,
+      "high_code": 98,
+      "frequency_hz": 15.0,
+      "phase_frames": 0.0,
+      "reduction": 0.91751098,
+      "peak_output_delta": 0.01586914
+    },
+    {
+      "delta_code": 4,
+      "low_code": 94,
+      "high_code": 98,
+      "frequency_hz": 15.0,
+      "phase_frames": 0.5,
+      "reduction": 0.91466653,
+      "peak_output_delta": 0.01586914
+    },
+    {
+      "delta_code": 8,
+      "low_code": 92,
+      "high_code": 100,
+      "frequency_hz": 5.0,
+      "phase_frames": 0.0,
+      "reduction": 0.60545347,
+      "peak_output_delta": 0.02026367
+    },
+    {
+      "delta_code": 8,
+      "low_code": 92,
+      "high_code": 100,
+      "frequency_hz": 5.0,
+      "phase_frames": 0.5,
+      "reduction": 0.4191811,
+      "peak_output_delta": 0.02026367
+    },
+    {
+      "delta_code": 8,
+      "low_code": 92,
+      "high_code": 100,
+      "frequency_hz": 10.0,
+      "phase_frames": 0.0,
+      "reduction": 0.91167449,
+      "peak_output_delta": 0.02026367
+    },
+    {
+      "delta_code": 8,
+      "low_code": 92,
+      "high_code": 100,
+      "frequency_hz": 10.0,
+      "phase_frames": 0.5,
+      "reduction": 0.94997297,
+      "peak_output_delta": 0.02026367
+    },
+    {
+      "delta_code": 8,
+      "low_code": 92,
+      "high_code": 100,
+      "frequency_hz": 15.0,
+      "phase_frames": 0.0,
+      "reduction": 0.96342468,
+      "peak_output_delta": 0.02026367
+    },
+    {
+      "delta_code": 8,
+      "low_code": 92,
+      "high_code": 100,
+      "frequency_hz": 15.0,
+      "phase_frames": 0.5,
+      "reduction": 0.96216346,
+      "peak_output_delta": 0.02026367
+    },
+    {
+      "delta_code": 12,
+      "low_code": 90,
+      "high_code": 102,
+      "frequency_hz": 5.0,
+      "phase_frames": 0.0,
+      "reduction": 0.53982541,
+      "peak_output_delta": 0.02807617
+    },
+    {
+      "delta_code": 12,
+      "low_code": 90,
+      "high_code": 102,
+      "frequency_hz": 5.0,
+      "phase_frames": 0.5,
+      "reduction": 0.67221345,
+      "peak_output_delta": 0.02807617
+    },
+    {
+      "delta_code": 12,
+      "low_code": 90,
+      "high_code": 102,
+      "frequency_hz": 10.0,
+      "phase_frames": 0.0,
+      "reduction": 0.66174314,
+      "peak_output_delta": 0.02807617
+    },
+    {
+      "delta_code": 12,
+      "low_code": 90,
+      "high_code": 102,
+      "frequency_hz": 10.0,
+      "phase_frames": 0.5,
+      "reduction": 0.93749709,
+      "peak_output_delta": 0.02807617
+    },
+    {
+      "delta_code": 12,
+      "low_code": 90,
+      "high_code": 102,
+      "frequency_hz": 15.0,
+      "phase_frames": 0.0,
+      "reduction": 0.98011271,
+      "peak_output_delta": 0.02807617
+    },
+    {
+      "delta_code": 12,
+      "low_code": 90,
+      "high_code": 102,
+      "frequency_hz": 15.0,
+      "phase_frames": 0.5,
+      "reduction": 0.97942694,
+      "peak_output_delta": 0.02807617
+    },
+    {
+      "delta_code": 16,
+      "low_code": 88,
+      "high_code": 104,
+      "frequency_hz": 5.0,
+      "phase_frames": 0.0,
+      "reduction": 0.28600307,
+      "peak_output_delta": 0.03588867
+    },
+    {
+      "delta_code": 16,
+      "low_code": 88,
+      "high_code": 104,
+      "frequency_hz": 5.0,
+      "phase_frames": 0.5,
+      "reduction": 0.53909438,
+      "peak_output_delta": 0.03588867
+    },
+    {
+      "delta_code": 16,
+      "low_code": 88,
+      "high_code": 104,
+      "frequency_hz": 10.0,
+      "phase_frames": 0.0,
+      "reduction": 0.82840728,
+      "peak_output_delta": 0.03588867
+    },
+    {
+      "delta_code": 16,
+      "low_code": 88,
+      "high_code": 104,
+      "frequency_hz": 10.0,
+      "phase_frames": 0.5,
+      "reduction": 0.89123752,
+      "peak_output_delta": 0.03588867
+    },
+    {
+      "delta_code": 16,
+      "low_code": 88,
+      "high_code": 104,
+      "frequency_hz": 15.0,
+      "phase_frames": 0.0,
+      "reduction": 0.98093414,
+      "peak_output_delta": 0.03588867
+    },
+    {
+      "delta_code": 16,
+      "low_code": 88,
+      "high_code": 104,
+      "frequency_hz": 15.0,
+      "phase_frames": 0.5,
+      "reduction": 0.9802767,
+      "peak_output_delta": 0.03588867
+    },
+    {
+      "delta_code": 24,
+      "low_code": 84,
+      "high_code": 108,
+      "frequency_hz": 5.0,
+      "phase_frames": 0.0,
+      "reduction": 0.29132076,
+      "peak_output_delta": 0.05151367
+    },
+    {
+      "delta_code": 24,
+      "low_code": 84,
+      "high_code": 108,
+      "frequency_hz": 5.0,
+      "phase_frames": 0.5,
+      "reduction": 0.39135461,
+      "peak_output_delta": 0.05151367
+    },
+    {
+      "delta_code": 24,
+      "low_code": 84,
+      "high_code": 108,
+      "frequency_hz": 10.0,
+      "phase_frames": 0.0,
+      "reduction": 0.67160032,
+      "peak_output_delta": 0.05151367
+    },
+    {
+      "delta_code": 24,
+      "low_code": 84,
+      "high_code": 108,
+      "frequency_hz": 10.0,
+      "phase_frames": 0.5,
+      "reduction": 0.84497796,
+      "peak_output_delta": 0.05151367
+    },
+    {
+      "delta_code": 24,
+      "low_code": 84,
+      "high_code": 108,
+      "frequency_hz": 15.0,
+      "phase_frames": 0.0,
+      "reduction": 0.98175557,
+      "peak_output_delta": 0.05151367
+    },
+    {
+      "delta_code": 24,
+      "low_code": 84,
+      "high_code": 108,
+      "frequency_hz": 15.0,
+      "phase_frames": 0.5,
+      "reduction": 0.98112646,
+      "peak_output_delta": 0.05151367
+    },
+    {
+      "delta_code": 32,
+      "low_code": 80,
+      "high_code": 112,
+      "frequency_hz": 5.0,
+      "phase_frames": 0.0,
+      "reduction": 0.41401669,
+      "peak_output_delta": 0.06713867
+    },
+    {
+      "delta_code": 32,
+      "low_code": 80,
+      "high_code": 112,
+      "frequency_hz": 5.0,
+      "phase_frames": 0.5,
+      "reduction": 0.44553372,
+      "peak_output_delta": 0.06713867
+    },
+    {
+      "delta_code": 32,
+      "low_code": 80,
+      "high_code": 112,
+      "frequency_hz": 10.0,
+      "phase_frames": 0.0,
+      "reduction": 0.78599547,
+      "peak_output_delta": 0.06713867
+    },
+    {
+      "delta_code": 32,
+      "low_code": 80,
+      "high_code": 112,
+      "frequency_hz": 10.0,
+      "phase_frames": 0.5,
+      "reduction": 0.97452327,
+      "peak_output_delta": 0.06713867
+    },
+    {
+      "delta_code": 32,
+      "low_code": 80,
+      "high_code": 112,
+      "frequency_hz": 15.0,
+      "phase_frames": 0.0,
+      "reduction": 0.98216629,
+      "peak_output_delta": 0.06713867
+    },
+    {
+      "delta_code": 32,
+      "low_code": 80,
+      "high_code": 112,
+      "frequency_hz": 15.0,
+      "phase_frames": 0.5,
+      "reduction": 0.98155133,
+      "peak_output_delta": 0.06713867
+    }
+  ]
+}

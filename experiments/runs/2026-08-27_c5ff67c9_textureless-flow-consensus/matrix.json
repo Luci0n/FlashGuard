@@ -1,0 +1,45 @@
+{
+  "schema": "FLASHGUARD_MATRIX/19",
+  "purpose": "direct accept/reject test of textureless moving-surface flow consensus as intrinsic moving-flash coverage",
+  "screening_resolution": "320x180",
+  "screening_fps": 30,
+  "screen_elapsed_ms": 26156,
+  "candidate_count": 2,
+  "invariant": "benchmark architecture 11 only: production architecture 0 is unchanged; candidate transports only a validated motion vector to compare raw source and adds no display memory",
+  "primary_gate": {
+    "moving_clear_05_ms_max": 70,
+    "moving_flash_reduction_min": 0.45,
+    "perceptual_min_reduction_min": 0.7,
+    "wcag_sc_2_3_1_required": true,
+    "wcag_sc_2_3_2_required": true
+  },
+  "selected": null,
+  "screen_candidates": [
+    {
+      "name": "opposition_tau100_gain200",
+      "architecture_mode": 8,
+      "surface_risk_tau": 0.1,
+      "risk_gain": 2,
+      "moving_clear_05_ms": 66.667,
+      "moving_flash_reduction": 0.37155597,
+      "perceptual_min_reduction": 0.75097655,
+      "pan_mae": 0.00352272,
+      "wcag_sc_2_3_1_pass": true,
+      "wcag_sc_2_3_2_pass": true,
+      "primary_pass": false
+    },
+    {
+      "name": "textureless_flow_consensus_tau100_gain200",
+      "architecture_mode": 11,
+      "surface_risk_tau": 0.1,
+      "risk_gain": 2,
+      "moving_clear_05_ms": 66.667,
+      "moving_flash_reduction": 0.37155597,
+      "perceptual_min_reduction": 0.75097655,
+      "pan_mae": 0.00352272,
+      "wcag_sc_2_3_1_pass": true,
+      "wcag_sc_2_3_2_pass": true,
+      "primary_pass": false
+    }
+  ]
+}

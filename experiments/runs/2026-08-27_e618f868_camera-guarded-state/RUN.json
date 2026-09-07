@@ -1,0 +1,51 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_e618f868_camera-guarded-state",
+  "source_commit": "e618f8685fa07a92cac1c4cc0e9991f37fa2c198",
+  "workflow_run_id": 33096811517,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9656918669,
+  "artifact_name": "flashbench-gpu-e618f8685fa07a92cac1c4cc0e9991f37fa2c198",
+  "artifact_digest": "sha256:21902c66e52b723963e38e2251feeba9167bb7ae123265f2f89b9dfdc6b63f2a",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/30",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Canonical full-replay test of an unmasked whole-frame camera-motion veto for textureless stationary prime/risk state.",
+  "invariant": "Production architecture 0 remained unchanged. Mode 21 inherited mode 20 stationary sequence state, restored raw disocclusion when an unmasked camera-motion veto fired, and extended only qualified stationary prime/risk lifetime to 0.40 s.",
+  "result_summary": {
+    "mode21_replay_status": "SUCCESS",
+    "mode21_moving_clear_05_ms": 66.667,
+    "mode21_moving_flash_reduction": 0.80142971,
+    "mode21_perceptual_min_reduction": 0.28264267,
+    "mode21_perceptual_delta4_min_reduction": 0.28264267,
+    "mode21_pan_mae": 0.00271861,
+    "mode21_fast_pan_mae": 0.00453212,
+    "mode21_extreme_pan_mae": 0.01341721,
+    "mode21_wcag_sc_2_3_1_pass": false,
+    "mode21_wcag_sc_2_3_2_pass": false,
+    "remaining_wcag_failures": [
+      "luminance_quarter@5Hz",
+      "luminance_quarter@7.5Hz"
+    ]
+  },
+  "interpretation": "Mode 21 repaired mode 20's extreme-pan leak (0.06669 -> 0.01342) while retaining strong moving-flash reduction (0.801) and 66.7 ms clearing, but the raw-luminance CPU translation score over-vetoed stationary low-frequency sequence state. The perceptual floor fell to 0.2826 and quarter-field 5/7.5 Hz still failed WCAG. The next architectural probe should preserve the camera guard while validating camera translation with photometric-invariant structural evidence.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "5ad5887405d53f6cc50fbda7b0e75a730f36f2131245998774a610624337a2eb"
+    },
+    {
+      "path": "mode21-replay.json",
+      "sha256": "1776fe9e8fa81183d3ea8655bc9a6016baee59323e581e8c6a5c444cc20fcd15"
+    },
+    {
+      "path": "mode21-perceptual-sweep.json",
+      "sha256": "624984e67185a8da71a6e88f9ec2f0798122baa6d5a3bd7e1214ab4e2f96eebb"
+    },
+    {
+      "path": "mode21-flash-sweep.json",
+      "sha256": "08d53a3b2b6a2853de7e366c0870646256259ae0c61c09b51acd439788b4f7b7"
+    }
+  ]
+}

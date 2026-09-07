@@ -1,0 +1,38 @@
+{
+  "schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-26_2e5cc660_isolated-threshold-probes",
+  "tested_commit": "2e5cc66077a241db0755b69b75d6d83bcab8aa6f",
+  "software_version": "0.3.0-alpha.1",
+  "timestamp_utc": "2026-08-26T14:52:11Z",
+  "ci_run_id": 32982301299,
+  "ci_artifact_id": 9612182572,
+  "ci_artifact_sha256": "2ac6089c4da1dea81a7f01f84653dd11cb708b0fc6039566c7af6c00c55145d2",
+  "result": "SUCCESS",
+  "intervention": "FlashBench v6 isolated full-screen threshold probes from small/calibrated detector paths and small-source probes from broad/global detector paths; probe schema bumped to FLASHGUARD_SCREENING_PROBES/2.",
+  "quantitative_observation": {
+    "screen_elapsed_ms": 134400,
+    "candidate_count": 27,
+    "screen_success_count": 27,
+    "speedup_vs_original_v6_x": 4.9461,
+    "selected": "profile_1_full_0_small_2",
+    "full_high_only_unique_values": 3,
+    "full_medium_high_unique_values": 3,
+    "small_high_only_unique_values": 2,
+    "small_medium_high_unique_values": 2
+  },
+  "qualitative_observation": "Detector-family isolation removed the earlier cross-coupled spikes, but full-screen probe values became invariant across full-sensitivity levels within each profile, while small-source probes remained almost invariant across small-sensitivity levels. This demonstrates that the current profile/full/small matrix is not a sufficiently meaningful Instant-GPU parameter search. Retain the fast harness and evidence, but move experiment search to direct benchmark-only GPU tuning parameters.",
+  "raw_file_sha256": {
+    "artifact.zip": "2ac6089c4da1dea81a7f01f84653dd11cb708b0fc6039566c7af6c00c55145d2",
+    "flash-sweep.json": "240a221910bc88e7a218a4272f809f475d2fb96962938b0924a6452858cd04da",
+    "motion-diagnostics.json": "fc09206965a491412ad3f7b41113b9422b3dad9e90dc9013480a3747e9a0a100",
+    "motion-realization.json": "ddb0838b040af1e13e22b65699bd4952c782592f919e181c90de0a57bc8040ae",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "perceptual-sweep.json": "f3c96f3bdb083daaf7002bba9d98fe5433b6b9243f082e0957b97ced8fe31061",
+    "red-flash-trace-15hz.json": "4b543ca30f8387453d553d663f622802a961403a06855cd76c6c65fea3a4b1c8",
+    "summary.json": "6eb7ce3e0000acf45e81e7eb9cdc60bfa2b60697bc307a23f467bd1cb2be27a8",
+    "synthetic-replay.json": "c6b2ebc912484184ead069db5caf2cf97ce79416463a5d4aa3ddc11960c99bdc",
+    "trail-metrics.json": "be4114662151e1c708ef7a1a66112c98ad6e09d3e391847451345101ce358145",
+    "matrix/matrix.json": "6e1c52b0fa2d68b2563776201a9a668a6a15c98ba3db1638ff77531da9ef0980",
+    "matrix/screen/batch.json": "ecc70b7e99fb7d711a795bcf026d17d419222674ee632233dc7ed0a2d5a7a5a8"
+  }
+}

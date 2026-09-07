@@ -1,0 +1,11 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_ARCHIVE/1",
+  "run_id": "2026-08-27_c9b842e9_disocclusion-seed-veto",
+  "commit": "c9b842e9c0dda95d7d2563a5dad7f4d869c956c5",
+  "github_actions_run": 33044429069,
+  "artifact_id": 9635462425,
+  "artifact_digest": "sha256:12946fa1bdd6e6b505f98c1d872ba55c735338858741106f52ddd3909019237e",
+  "matrix_schema": "FLASHGUARD_MATRIX/9",
+  "result": "SUCCESS",
+  "interpretation": "Mode 4 disocclusion seed veto did not improve the hard trail gate over mode 3; mode 3 neutral12 remained matrix-selected. Mode 4 made moving motion diagnostics observable during screening."
+}

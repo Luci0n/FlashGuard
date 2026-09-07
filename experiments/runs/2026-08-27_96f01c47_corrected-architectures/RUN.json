@@ -1,0 +1,40 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_96f01c47_corrected-architectures",
+  "source_commit": "96f01c47d2565f257b26d1a13a1680e9f12a9baa",
+  "workflow_run_id": 33067773247,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9644613928,
+  "artifact_name": "flashbench-gpu-96f01c47d2565f257b26d1a13a1680e9f12a9baa",
+  "artifact_digest": "sha256:16bfe70fedd73b938f28f1569a8305c9e45edb8a4cf81dc6c76cb4b948bc2717",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/21",
+  "purpose": "Re-run requested benchmark architectures 8 through 12 after fixing both replay architecture clamps and making out-of-range requests fail instead of silently clamping.",
+  "invariant": "Production architecture 0 remained unchanged. Matrix 21 is the first valid execution of modes 9-12; Matrices 17-20 are retained only as invalidated harness evidence.",
+  "primary_gate": "moving clear-to-5% <=70 ms; moving-flash reduction >=0.45; perceptual minimum reduction >=0.70; WCAG SC 2.3.1 and 2.3.2 pass",
+  "result_summary": {
+    "mode8_moving_flash_reduction": 0.37155597,
+    "mode9_moving_flash_reduction": 0.37554216,
+    "mode10_moving_flash_reduction": 0.36686040,
+    "mode11_moving_flash_reduction": 0.37554216,
+    "mode12_moving_flash_reduction": 0.37554216,
+    "mode8_clear_ms": 66.667,
+    "mode9_clear_ms": 66.667,
+    "mode10_clear_ms": 100.0,
+    "mode11_clear_ms": 66.667,
+    "mode12_clear_ms": 66.667,
+    "selected": null
+  },
+  "interpretation": "No architecture passed. Real modes 9, 11, and 12 each improved moving-flash reduction by only about 0.004 over mode 8, far short of the 0.45 gate. Mode 10 increased perceptual attenuation but worsened moving-flash suppression and violated the 70 ms trail gate. The next diagnostic measures authority on every active-square sample and splits true transitions from stable half-cycles before another protection mechanism is added.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "b9e4265c568fafe056f29d82cce8e6349ac73294ec3e1164005b65470f3774fe"
+    },
+    {
+      "path": "summary.json",
+      "sha256": "6f77aff8069943c829c02befaffb34eaa2e285a0ddc84bd73963f26cfd918469"
+    }
+  ]
+}

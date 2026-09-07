@@ -1,0 +1,28 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_f673e0fb_risk-independent-disocclusion-geometry",
+  "source_commit": "f673e0fb3611f764b948116cb97f720c4ef32dda",
+  "workflow_run_id": 33050480127,
+  "artifact_id": 9637622030,
+  "artifact_digest": "sha256:7012a78cb61fe63073b5ea5a883837d41ef7fcf0264e6b6cf280c58d3fb02178",
+  "result": "SUCCESS",
+  "purpose": "Test whether verified disocclusion geometry must remain authoritative even under high repeated flash risk.",
+  "matrix_schema": "FLASHGUARD_MATRIX/11",
+  "diagnostic_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/2",
+  "interpretation": {
+    "seed_veto_moving_error_pixel_fraction": 0.07065578,
+    "geometry_authoritative_moving_error_pixel_fraction": 0.05254498,
+    "seed_veto_moving_recovery_p99_auc": 0.192516,
+    "geometry_authoritative_moving_recovery_p99_auc": 0.18782452,
+    "seed_veto_clear_05_ms": 766.667,
+    "geometry_authoritative_clear_05_ms": 766.667,
+    "seed_veto_recovery_surface_memory_error_weighted_mean": 0.83534575,
+    "geometry_authoritative_recovery_surface_memory_error_weighted_mean": 0.85012231,
+    "geometry_authoritative_recovery_effective_motion_active_fraction": 0.02386199,
+    "conclusion": "Making disocclusion geometry independent of repeated flash risk reduces errors while the object is moving but does not shorten recovery at all. Recovery remains dominated by transported surface memory on pixels with almost no effective motion/disocclusion evidence. The dominant failure is stale same-coordinate persistent-risk validity after the revealed surface becomes stable, not suppression of valid disocclusion geometry. Next test should separate immediate current-frame event mitigation from persistent risk-state seeding and require repeated/opposing-transition evidence before new persistent local risk is written."
+  },
+  "raw_file_sha256": {
+    "matrix.json": "cf20d96633f2cfdc808294e68b594ce778055abbb317fed14cb84764405b93df",
+    "geometry-authority.json": "61726dd3b08f7d399886fd1f2e466f6e23bded2ae81d09398026eb6bb998da74"
+  }
+}

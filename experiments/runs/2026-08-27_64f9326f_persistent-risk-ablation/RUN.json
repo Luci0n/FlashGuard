@@ -1,0 +1,28 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_64f9326f_persistent-risk-ablation",
+  "source_commit": "64f9326f553e870bfb7f72230def4807ea77d957",
+  "workflow_run_id": 33052400818,
+  "artifact_id": 9638492443,
+  "artifact_digest": "sha256:fceba79499508743b3c4cc1a85993aca1e39f6ad9d9c490b115e923eed2dc1a6",
+  "result": "SUCCESS",
+  "purpose": "Ablate persistent local surface-risk while retaining current-frame intrinsic-event mitigation, to test whether persistent risk memory is causal for the long residual trail.",
+  "matrix_schema": "FLASHGUARD_MATRIX/12",
+  "interpretation": {
+    "surface_risk_v2_clear_05_ms": 800.0,
+    "surface_risk_v2_recovery_p99_auc": 0.19685328,
+    "surface_risk_v2_recovery_surface_memory_error_weighted_mean": 0.82771967,
+    "event_only_gain120_clear_05_ms": 66.667,
+    "event_only_gain120_recovery_p99_auc": 0.00955811,
+    "event_only_gain120_recovery_surface_memory_error_weighted_mean": 0.0,
+    "event_only_gain120_recovery_current_event_error_weighted_mean": 0.99608219,
+    "event_only_gain120_moving_flash_reduction": 0.3609887,
+    "event_only_gain120_perceptual_min_reduction": 0.62041217,
+    "event_only_gain120_pan_mae": 0.00326271,
+    "conclusion": "Persistent local surface-risk is causal for long recovery duration: removing all local risk reads/writes cuts clear-to-5% from roughly 0.8 s to 66.7 ms and recovery p99 AUC by about 95%, while leaving the initial trail peak largely unchanged. Zero-memory event-only mode therefore breaks the ghost-duration tradeoff but undershoots the 0.70 weak-flash and 0.45 moving-flash gates. Next test should add only a tightly bounded 1-3-frame risk lifetime and stronger instantaneous gain, keeping production unchanged."
+  },
+  "raw_file_sha256": {
+    "matrix.json": "44791eb1a44adee17455853a1a2b94e20117839471dde38b15287fd46f00a7c5",
+    "summary.json": "6052603a48bf58a80f734fd101e9da1619311d037ce510f5f2d385ee3b3355b6"
+  }
+}

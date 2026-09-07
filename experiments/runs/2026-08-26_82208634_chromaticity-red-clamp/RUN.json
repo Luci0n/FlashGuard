@@ -1,0 +1,44 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-26_82208634_chromaticity-red-clamp",
+  "tested_commit": "82208634053559bc3b52f040c65e36d602d406c9",
+  "software_version": "0.2.0-alpha.9",
+  "timestamp_utc": "2026-08-26T10:07:30Z",
+  "ci_run_id": 32956168760,
+  "ci_artifact_id": 9602202750,
+  "ci_artifact_sha256": "3f370fa2b040362069042904eaa51742b914d93734ed3318f3d5d388f673e0e4",
+  "source_artifact": "flashbench-gpu-82208634053559bc3b52f040c65e36d602d406c9",
+  "result": "SUCCESS",
+  "protocols": [
+    "FLASHBENCH/5",
+    "FLASHGUARD_FLASH_SWEEP/6",
+    "WCAG_FLASH/5",
+    "FLASHGUARD_REPLAY/6",
+    "NVOF_SMOKE/1",
+    "MOTION_DIAGNOSTICS/2",
+    "MOTION_REALIZATION/1",
+    "RED_FLASH_TRACE/1"
+  ],
+  "environment": {
+    "machine": "CROW",
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "nvidia_driver": "561.09",
+    "replay_width": 640,
+    "replay_height": 360,
+    "replay_fps": 60
+  },
+  "intervention": "Use chromaticity for the final saturated-red clamp while retaining the established motion-aware temporal filter.",
+  "automated_observation": "Automated GPU validation passed. SC 2.3.1 and SC 2.3.2 both passed; small-moving ghost MAE was 0.00020004, pan MAE 0.00716429, smooth/snapped scroll MAE 0.00128856/0.00200454, saturated-red-motion ghost MAE 0.00001522, and moving-flash reduction 0.60489436.",
+  "qualitative_observation": null,
+  "preceded_by": "2026-08-26_0c0aa304_verified-local-transport-veto",
+  "raw_file_sha256": {
+    "summary.json": "0f94e1f70029b1645abd776f5bfeee5317708739d84288bae86a81f1e390b607",
+    "flash-sweep.json": "551ccd6b0e6b90b30f3aa7da0c2dbf8e8c0fa67577686eebc54a8d2031cce613",
+    "synthetic-replay.json": "4e930b8550e7e0e19c5b890d91dd414bd19e508b636dcbbccc58a8ff66aca0f0",
+    "nvof-smoke.json": "f48ae4b0e79c09bee4b605072bac8640496e90750bfd0dbd487639ce4ebad0f1",
+    "motion-diagnostics.json": "001e2b186ff9bcf3999613411ede2a2d074b153bb45c46e11f9b2c1cf027d0dd",
+    "motion-realization.json": "ddb0838b040af1e13e22b65699bd4952c782592f919e181c90de0a57bc8040ae",
+    "red-flash-trace-15hz.json": "bb0c52a3f2c11f77b1e049a2f3ff392e1b0cab2f1773f61cc4d15c3e0c47b2b6"
+  }
+}

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('fast', 'dev', 'release')]
+    [ValidateSet('fast', 'dev', 'release', 'surface')]
     [string]$Mode = 'fast'
 )
 

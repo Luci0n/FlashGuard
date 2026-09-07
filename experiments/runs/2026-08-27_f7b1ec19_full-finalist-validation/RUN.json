@@ -1,0 +1,49 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_f7b1ec19_full-finalist-validation",
+  "source_commit": "f7b1ec19a0a6e7673ad43a7e2599fc7d04f9aa78",
+  "workflow_run_id": 33079691522,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9649782158,
+  "artifact_name": "flashbench-gpu-f7b1ec19a0a6e7673ad43a7e2599fc7d04f9aa78",
+  "artifact_digest": "sha256:e08e5298c3f629e3302d10eb06b4bd0cd4efa07653abeb3f01ccadd532151b66",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/25",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Canonical full-replay validation after Matrix 24 screening hid fast-pan and weak/low-frequency safety failures.",
+  "invariant": "Production architecture 0 remained unchanged. Mode 16 kept mode 14 event-only corrected disocclusion for local motion and blended event interpretation back to raw disocclusion under coherent camera motion.",
+  "result_summary": {
+    "selected": null,
+    "mode16_replay_status": "SUCCESS",
+    "mode16_moving_clear_05_ms": 66.667,
+    "mode16_moving_flash_reduction": 0.46300281,
+    "mode16_pan_mae": 0.00271242,
+    "mode16_fast_pan_mae": 0.00447585,
+    "mode16_extreme_pan_mae": 0.00474447,
+    "mode16_perceptual_min_reduction": -0.01165778,
+    "mode16_wcag_sc_2_3_1_pass": false,
+    "mode16_wcag_sc_2_3_2_pass": false,
+    "mode16_transition_current_event_active": 0.6132921,
+    "mode16_stable_current_event_active": 0.01456163
+  },
+  "interpretation": "Mode 16 solved the camera-motion regression while retaining the moving-flash gate, but the canonical 36-case perceptual sweep exposed two safety gaps hidden by screening: 5 Hz attenuation collapses near 14% across ordinary contrasts because opposition-qualified risk decays between slower half-cycles, and the 4-code stimulus remains below useful sequence authority. WCAG also fails red_full 12 Hz and luminance_quarter 5/7.5 Hz. The next architecture therefore extends risk only on verified stationary repetition and qualifies tiny changes only after an opposing signed reversal; it does not globally lower instantaneous thresholds.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "5e7f5ec091741a1adac610a4e54c34f16c2fd2c6c80cad0a7916517757691c00"
+    },
+    {
+      "path": "mode16-replay.json",
+      "sha256": "4da8401f22c3a8c96088f2e0a54c8cdceb4fb8ff7b280e52f3e5c765f99aaad8"
+    },
+    {
+      "path": "mode16-perceptual-sweep.json",
+      "sha256": "53b79cb147d9918f185b49f03af5122ebcb25fea8e857c7de0210435a199e112"
+    },
+    {
+      "path": "mode16-flash-sweep.json",
+      "sha256": "50ea28faf6ad3e1e64049d14d22676e1dad0157a67319300b675e7829224e54c"
+    }
+  ]
+}

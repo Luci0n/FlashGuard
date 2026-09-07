@@ -1,149 +1,344 @@
-# FlashGuard - general-purpose low-latency screen protection
+<div align="center">
 
-FlashGuard is an experimental general-purpose photosensitivity risk-reduction overlay for Windows. Its default Instant mode performs linear-light detection and protection entirely on the GPU before presenting the current frame. CPU readback is asynchronous and used for diagnostics rather than the display decision.
+# FlashGuard
 
-It is **not medically validated, clinically epilepsy-safe, or Harding FPA/PSE certified**. Validate changes with recorded or synthetic material before live use.
+**Experimental low-latency photosensitivity risk reduction for Windows**
+
+A D3D11 overlay that captures the desktop, detects potentially hazardous flashing,
+and limits displayed temporal modulation while trying to preserve ordinary motion.
+
+[![Build](https://github.com/Luci0n/FlashGuard/actions/workflows/build.yml/badge.svg?branch=test)](https://github.com/Luci0n/FlashGuard/actions/workflows/build.yml)
+[![GPU Smoke](https://github.com/Luci0n/FlashGuard/actions/workflows/gpu-smoke.yml/badge.svg?branch=test)](https://github.com/Luci0n/FlashGuard/actions/workflows/gpu-smoke.yml)
+[![Version](https://img.shields.io/badge/version-0.4.0--alpha.4-orange)](CHANGELOG.md)
+[![Validation](https://img.shields.io/badge/surface%20suite-260%2F260-brightgreen)](docs/SURFACE-FREQUENCY.md)
+
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?logo=windows&logoColor=white)](#build)
+[![Graphics](https://img.shields.io/badge/graphics-D3D11-5C2D91)](docs/ARCHITECTURE.md)
+[![C++](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white)](#build)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE.txt)
+
+</div>
+
+> [!WARNING]
+> **Not medically validated, not clinically epilepsy-safe, not Harding FPA/PSE certified.**
+> Passing FlashBench is an engineering regression result — not a medical guarantee,
+> not formal accessibility certification, and not a promise of seizure prevention for
+> any person or any stimulus. This is experimental software.
+
+---
+
+## Status
+
+| | |
+| --- | --- |
+| **Version** | `0.4.0-alpha.4` |
+| **Active development** | Surface-frequency path — current-frame-only, no NVOFA, no displayed-image feedback |
+| **Release-build default** | Legacy NVOFA path (`--surface-frequency` opts in) |
+| **Surface validation** | **260 / 260 checks pass** on an RTX 3060 |
+| **Unresolved** | The one confirmed real-world artifact — see [live diagnosis](docs/OUTLAST-NOISE-DIAGNOSIS.md) |
+
+As of `0.4.0-alpha.1` the surface-frequency path passes its complete validation for
+the first time, including the moving white/red case at 5 Hz and 144 captured FPS that
+all four preceding candidates failed. It reaches 74.17% against the **unchanged** 70%
+requirement — the threshold was never relaxed to get there.
+
+That is deterministic engineering evidence on one GPU. It does not establish that the
+live speckle artifact recorded in the Outlast diagnosis is gone; that has not been
+revalidated since.
+
+---
 
 ## Processing pipeline
 
-    DXGI Desktop Duplication
-        -> current raw GPU frame
-        -> current/previous 64x36 linear-light analysis textures
-        -> GPU block-motion, coherence, pattern, and red tests
-        -> ping-pong GPU luminance-safety map
-        -> current geometry + regional luminance constraint
-        -> overlay
+```mermaid
+flowchart TD
+    A[DXGI Desktop Duplication] --> B[Freshest captured desktop frame]
+    B --> S{Active path}
 
-Instant GPU mode is the default and adds no intentional frame queue. It compares the current analyzer texture with the preceding raw analyzer texture, updates a 64x36 permitted-luminance map, and applies that map to the current geometry in the same GPU command stream. The prior RGB image is never blended into the output. Optional 25-100 ms Predictive modes retain future-frame classification when a user prefers stronger ambiguity handling over latency. Full-resolution frames remain GPU-only.
+    S -->|surface| F[Half-resolution GPU features<br/>linear RGB + ternary Census]
+    F --> M[Bounded structural matcher<br/>no NVOFA]
+    M --> P[Per-cell transported state<br/>phase, period, extrema, lifetime]
+    P --> C1[Full-resolution compositor<br/>current image only]
 
-For dramatic repeated white/black flashing, the GPU safety map also retains a short packed transition-direction history across duplicated source frames. After the first timely opposite reversal confirms an alternating strobe, both phases are held near the same permitted luminance and drift gradually toward neutral gray. This sequence clamp expires quickly when the reversals stop, and it is restricted to extreme light/dark transitions so ordinary cuts and movement do not receive the same treatment.
+    S -->|legacy| G[128x72 linear-light analysis]
+    G --> H[global / local / red / pattern<br/>translation classification]
+    H --> I[Optional NVIDIA Optical Flow<br/>classification evidence only]
+    I --> C2[Temporal safety shader<br/>PreviousSource + PreviousOutput]
 
-## Normal and protected behavior
+    C1 --> O[Capture-excluded<br/>click-through overlay]
+    C2 --> O
 
-In ordinary Instant-mode frames, output is the current raw geometry plus the selected optional static contrast transform. Near-full-screen rises and falls in frame luminance are subject to a hard screen-wide slew limit. A dramatic partial-screen change covering roughly one fifth of the display bypasses motion suppression: rising cells begin close to their previous darker luminance, hold scalar luminance history briefly, and recover gradually toward the live image. Unchanged areas remain steady and full-resolution RGB history is never retained, preventing motion trails. There is no previous-frame RGB blending, temporal RGB averaging, or always-on red desaturation.
+    style C1 fill:#1f6f3f,color:#fff
+    style C2 fill:#334155,color:#fff
+    style O fill:#0f766e,color:#fff
+```
 
-Localized hazards use a bilinearly sampled 64x36 safety map. Only cells changing coherently in the flash direction are transition-limited; the rest of the screen remains raw. Events affecting at least 65% of the analyzer cells use the global transform instead. Both paths always render current geometry and alter luminance/chroma only. Separate rise and fall rates handle dark-to-bright and bright-to-dark transitions.
+The two paths coexist in one executable and share capture and presentation. The
+surface path composites from the **current image only**; the legacy path constrains
+change against filtered history. Neither ever warps the displayed image with flow.
 
-A second local detector handles small, intense light sources using connected-component size, transition energy, a calibrated 10-degree visual-field window, and future reversal evidence. Translation matching suppresses camera pans and moving hands when a shifted previous analyzer frame explains the change. Local and pattern events remain on the regional safety map; they do not toggle a whole-screen highlight transform. Regional history is discarded when unrelated moving geometry replaces a cell, preventing the safety map from leaving a screen-space trail. Whole-screen limiting is reserved for changes covering the configured broad-screen threshold, and its lifetime is independent from subsequent local events.
+<details>
+<summary><b>Why the legacy path keeps two separate histories</b></summary>
 
-The previous experimental three-frame dramatic gray clamp was removed. Instead, a static low-contrast transform is now enabled for every frame. It lifts the darkest output to `0.08` and limits the brightest output to `0.84`, reducing display contrast without adding temporal history, adaptation, or extra analyzer latency.
+<br/>
 
-One flash is counted only after a pair of opposing transitions completes. Repeated flashes within one second extend protection; alternating pairs increase strength and reduce the permitted transition rate further.
+| History | Contents | Used for |
+| --- | --- | --- |
+| `PreviousSource` | Previous **raw** desktop frame | Deciding whether a changed pixel is explained by motion |
+| `PreviousOutput` | Previous **filtered** frame shown to the user | Constraining displayed change during an active hazard |
 
-## Detector
+This separation is deliberate. Motion matching must not compare against an already
+filtered image, and optical flow must never warp displayed history. Earlier failures
+drove this: coarse masks produced visible shapes, unrestricted RGB history caused
+trails, and flow-warped history produced rubber-sheet geometry deformation.
 
-The analyzer averages nine linear-light samples per cell. Instant mode compares analyzer frame N with N-1 directly on the GPU; Predictive modes additionally use future buffered statistics. The asynchronous CPU diagnostics calculate:
+</details>
 
-- global mean luminance and signed global delta
-- affected, brightening, and darkening cell percentages
-- directional coherence among affected cells
-- largest coherent connected region and transition energy
-- maximum changed area within a calibrated 10-degree visual-field window
-- camera-translation explanation score
-- high-contrast repeating-pattern score
-- saturated-red transitions in either direction using CIE 1976 u-prime/v-prime distance
-- completed flashes and alternating directions over the last second
+---
 
-Large coherent changes are hazardous. Balanced bright/dark changes from fast camera movement normally are not. A sufficiently large signed global mean change can still trigger protection even without the local-area path.
-
-Default tuning is centralized in `SafetySettings` near the top of `src/FlashGuard.cpp`.
-
-## Repository layout
-
-- `src/` — FlashGuard C++ source
-- `scripts/` — Windows build entry points (`build.bat` and `build.ps1`)
-- `tests/replay-corpus/` — replay fixtures (kept out of Git when generated or large)
-- `flashbench/` — FlashBench Windows/NVOFA automation
-
-Build with `scripts\\build.bat release` (or `scripts\\build.ps1 release`). The output is `FlashGuard.exe` at the repository root; compiler intermediates are placed in `build/` and ignored by Git.
-
-    lookaheadMs                  = 0 (Instant GPU)
-    localDeltaThreshold          = 0.10
-    globalDeltaThreshold         = 0.16
-    affectedAreaThreshold        = 0.18
-    strongAffectedArea           = 0.30
-    globalAreaThreshold          = 0.65
-    coherenceThreshold           = 0.70
-    visualFieldAreaThreshold     = 0.25
-    patternScoreThreshold        = 0.24
-    cameraMotionSuppression      = 0.32
-    flashEnergyThreshold         = 0.030
-    smallFlashAreaThreshold      = 0.008
-    smallFlashDeltaThreshold     = 0.25
-    smallFlashCoherenceThreshold = 0.85
-    spillExpansionCells          = 4
-    localGlobalSupportThreshold  = 0.035
-    safeRiseRate                 = 1.35 luma/second
-    safeFallRate                 = 1.60 luma/second
-    minimumProtectionTime        = 0.22 seconds
-    releaseTime                  = 0.45 seconds
-    redThreshold                 = 0.55
-    redDeltaThreshold            = 0.18
-    redAffectedAreaThreshold     = 0.15
-    redDesaturation              = 0.68
-    displayDiagonalInches        = 27
-    viewingDistanceCm            = 70
-    overloadWhiteCeiling         = 0.72
-    subtleToneMap                = true
-    blackFloor                   = 0.08
-    whiteCeiling                 = 0.84
-
-These are engineering defaults, not medical thresholds.
-
-The paired-transition, saturated-red, and visual-field concepts are informed by
-[WCAG 2.2 flash guidance](https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold)
-and [ITU-R BT.1702](https://www.itu.int/rec/R-REC-BT.1702/). FlashGuard is a live
-risk-reduction experiment, not a conformance tester or medical device.
-
-## Controls
-
-- `F8` by default: toggle the persistent manual neutral shield. The binding is editable; a one-second cooldown, no-repeat registration, and modifier-key guard prevent accidental double toggles. Turning the shield off rebuilds monitor capture and restarts the analyzer pipeline.
-- `F9`: toggle the non-flashing diagnostics panel
-- `F10`: open the runtime options menu
-- `Ctrl+Shift+F12`: exit FlashGuard
-
-The F9 panel shows linear luminance, delta, affected area, direction split, coherence, largest region, calibrated visual-field area, transition energy, motion explanation, pattern score, red area, completed flash count, trigger type, future frames, deadline misses, state, strength, buffer depth, and target latency.
-
-At startup, a small non-flashing strip appears in the bottom-left corner for ten seconds and lists the active shortcuts. The diagnostics surface is tall enough to show every metric without clipping.
-
-F10 opens a centered, focusable settings window with a dark frosted navy/violet material and releases any cursor confinement while it is open. The material is cached with the window instead of capturing or filtering the screen behind it, so moving the menu adds no refresh loop, lag, or backdrop flicker. Its presets are Performance (Instant/original contrast), Balanced (Instant/reduced contrast), and Maximum (50 ms Predictive), followed by a continuous contrast-reduction slider, full-screen sensitivity, small-source sensitivity, mode/look-ahead, display size, viewing distance, diagnostics, and hotkeys. F8 is the default editable shield toggle; one binding controls both shield states. Hover any setting or hotkey field for a plain-language explanation of its behavior and safety/performance tradeoffs. Use Tab, arrow keys, Enter, and Escape if mouse capture is inconvenient. Global shortcuts are suspended while this window is open, so existing keys can be captured without activating their old actions. An editable hotkey may be cleared to leave that action unassigned. Conflicting or unavailable hotkeys are rejected and the previous bindings restored. Settings and hotkeys persist in `%LOCALAPPDATA%\OutlastFlashGuard\settings.ini`.
-
-## Capture and overlay behavior
-
-The existing safety-oriented capture architecture remains:
-
-- DXGI Desktop Duplication; no injection or window-capture API
-- click-through `WS_EX_TRANSPARENT` overlay
-- non-activating `WS_EX_NOACTIVATE` behavior
-- `WDA_EXCLUDEFROMCAPTURE` anti-feedback requirement
-- capture watchdog and gradual neutral-shield recovery behavior
-
-The centered message `Automatic shield activated` appears only for the capture-fallback shield, never for the manual F8 shield. Automatic shielding begins when capture remains faulted for at least 750 ms or stops providing a healthy frame/timeout heartbeat for 1.2 seconds. Brief faults retain the last safe output instead. Once the fallback is visible, FlashGuard requires eight real captured frames before returning to live output.
-
-## Build
+## Quick start
 
 Requires Visual Studio 2022 with **Desktop development with C++**.
 
-PowerShell:
+```powershell
+# Legacy-default release build
+.\scripts\build.bat release
 
-    .\build.ps1
-    $process = Start-Process .\FlashGuard.exe -ArgumentList '--validate-shaders' -Wait -PassThru
-    $process.ExitCode  # 0 means all embedded HLSL entry points compiled
+# Or a build that defaults to the surface-frequency path
+.\scripts\build.ps1 -Mode surface
+```
 
-Run without arguments to protect the entire monitor currently under the mouse pointer:
+```powershell
+.\FlashGuard.exe                          # monitor under the mouse pointer
+.\FlashGuard.exe --title "window title"   # monitor containing a window
+.\FlashGuard.exe --validate-shaders       # compile every embedded HLSL entry point
+```
 
-    .\FlashGuard.exe
+| Build mode | Flags | Default path |
+| --- | --- | --- |
+| `fast` / `dev` | `/Od /Ob0` | Legacy |
+| `release` | `/O2` | Legacy (`--surface-frequency` opts in) |
+| `surface` | `/O2 -D FLASHGUARD_SURFACE_DEFAULT=1` | Surface (`--legacy` opts out) |
 
-The filter keeps running independently of whichever application was foreground when it started. To select the monitor containing a particular visible window and retain window-specific startup validation, use:
+### Controls
 
-    .\FlashGuard.exe --title "part of the window title"
+| Key | Action |
+| --- | --- |
+| <kbd>F8</kbd> | Toggle the persistent manual neutral shield |
+| <kbd>F9</kbd> | Toggle diagnostics |
+| <kbd>F10</kbd> | Open / close the settings menu (<kbd>Esc</kbd> also closes) |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F12</kbd> | Exit |
+
+Settings and hotkeys persist in `%LOCALAPPDATA%\OutlastFlashGuard\settings.ini`.
+
+The settings menu is a compact 440×360 dark window with Home, Shortcuts, and Advanced
+tabs. Menu opacity is adjustable from 60% to 100% (default 92%); protection output
+opacity is unaffected. JetBrains Mono is embedded and loaded privately — no font
+installation required. Menu and loading banner are excluded from capture.
+
+Compiled shaders are cached in `%LOCALAPPDATA%\OutlastFlashGuard\shader-cache`, keyed
+by source, entry point, target, flags, and compiler generation. In the recorded check
+an 11-shader cold compile of **143.420 s** became a **0.324 s** cached load with zero
+recompiles. That measures GPU and shader setup only, not full capture startup.
+
+---
+
+## Validation
+
+The surface path is checked by `flashbench/surface-frequency.ps1` under
+[`SURFACE_FREQUENCY_VALIDATION/1`](experiments/protocols/SURFACE-FREQUENCY-VALIDATION-1.md)
+and its [HSV extension](experiments/protocols/HSV-CORRECTION-VALIDATION-1.md).
+
+| Check | Result |
+| --- | --- |
+| Total checks | **260 / 260 pass** |
+| HSV cases (5/10/20/30 Hz × 60/120/144 FPS) | 60 / 60 pass |
+| Min HSV RGB variation reduction — settled | 99.24% |
+| Min HSV RGB variation reduction — early | 99.38% |
+| Moving white/red, 5 Hz @ 144 FPS | 74.17% *(requirement 70%)* |
+| 1080p GPU draw time | p50 0.831 ms · p99 8.575 ms *(uncontrolled load)* |
+
+> [!NOTE]
+> GPU timings cover features, tracking, composite and total passes. Capture, copy,
+> queueing, presentation and physical display delay are **excluded**. These are not
+> end-to-end latency measurements, and no test ran under real game load.
+
+### How it got here
+
+```mermaid
+gitGraph
+    commit id: "0.3.0-a1 architecture"
+    commit id: "0.3.0-a2 noise/color" type: REVERSE
+    commit id: "0.3.0-a3 local noise" type: REVERSE
+    commit id: "diagnosis" type: HIGHLIGHT
+    commit id: "0.3.0-a4 amplitude" type: REVERSE
+    commit id: "0.4.0-a1 HSV 260/260"
+```
+
+| Version | Correction | Result |
+| --- | --- | --- |
+| `0.3.0-alpha.1` | First current-frame-only detector and compositor | 119/119 focused |
+| `0.3.0-alpha.2` | Reject one-code dither; stop history inventing events | ❌ one case |
+| `0.3.0-alpha.3` | Require local source change — 33.1964 → 0.00005 codes | ❌ one case |
+| — | [Live diagnosis](docs/OUTLAST-NOISE-DIAGNOSIS.md): artifact is detector-introduced | ⚠️ unresolved |
+| `0.3.0-alpha.4` | Bound correction by measured source amplitude | ❌ one case |
+| `0.4.0-alpha.1` | Per-channel phase floor replaces grayscale projection | ✅ **260/260** |
+
+Four consecutive candidates reported failure on the *same* case while each fixed a
+real defect. The cause turned out to be a genuine bug — the grayscale projection was
+*amplifying* saturation-only flashing, failing all 12 saturation cases by up to +53%
+RGB variation — not a threshold artifact.
+
+---
+
+## 5–30 Hz flash sweep
+
+24 two-second cases at 60 FPS across full-screen luminance, full-screen saturated red,
+and quarter-screen luminance stimuli.
+
+**Frequencies:** 5 · 7.5 · 10 · 12 · 15 · 20 · 25 · 30 Hz
+
+The gate requires source stimuli above 3 flashes/s to be reduced to at most 3 counted
+output flashes/s. On the self-hosted RTX 3060 run for commit `1802a4e6`, all 24 cases
+produced **0.000** counted output general flashes/s and **0.000** counted red flashes/s.
+
+| Frequency | Full-screen luminance | Quarter-screen luminance |
+| ---: | ---: | ---: |
+| 5 Hz | 77.88% | 69.07% |
+| 10 Hz | 91.86% | 90.25% |
+| 15 Hz | 96.60% | 93.01% |
+| 20 Hz | 98.63% | — |
+| 30 Hz | 98.63% | 95.93% |
+
+The red-flash criterion is based on the red-flash transition counter, not on requiring
+high luminance-modulation reduction — saturated red can be made safer by chromatic
+mitigation even when screen-mean luminance changes less. This is standards-*oriented*
+regression testing, not WCAG/Harding certification; the quarter-screen case uses a
+simple screen-area stimulus, not a calibrated steradian laboratory measurement.
+
+Informed by [WCAG 2.2 Three Flashes or Below Threshold](https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold)
+and [ITU-R BT.1702](https://www.itu.int/rec/R-REC-BT.1702/).
+
+---
+
+## FlashBench
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\flashbench\run.ps1 `
+    -Mode gpu-smoke -OutputDir .\flashbench\manual-results
+```
+
+Performs a release build, HLSL validation, real D3D11/NVOFA execution, deterministic
+synthetic replay through the same safety path, motion/ghosting and camera-pan
+regressions, and the 5–30 Hz sweep.
+
+| Report | Contents |
+| --- | --- |
+| `summary.json` | Overall run result |
+| `nvof-smoke.json` | Real NVOFA execution evidence |
+| `synthetic-replay.json` | Deterministic replay metrics |
+| `flash-sweep.json` | Per-case sweep gates |
+| `flashbench.log` | Full run log |
+
+<details>
+<summary><b>Visual replay</b> — inspect the synthetic cases yourself</summary>
+
+<br/>
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\flashbench\run.ps1 `
+    -Mode gpu-smoke -OutputDir .\flashbench\manual-results -VisualReplay
+
+Start-Process .\flashbench\manual-results\visual\index.html
+```
+
+The viewer shows sampled replay frames as `SOURCE | FILTERED | 6× AMPLIFIED DIFFERENCE`,
+covering the 15 Hz flash, straight and oblique bright motion, small-object motion, and
+camera pan.
+
+</details>
+
+<details>
+<summary><b>Legacy detector defaults</b> — engineering values, not medical thresholds</summary>
+
+<br/>
+
+| Parameter | Value | | Parameter | Value |
+| --- | ---: | --- | --- | ---: |
+| `lookaheadMs` | 0 | | `flashEnergyThreshold` | 0.030 |
+| `localDeltaThreshold` | 0.10 | | `smallFlashAreaThreshold` | 0.008 |
+| `globalDeltaThreshold` | 0.16 | | `smallFlashDeltaThreshold` | 0.25 |
+| `affectedAreaThreshold` | 0.18 | | `smallFlashCoherenceThreshold` | 0.85 |
+| `strongAffectedArea` | 0.30 | | `spillExpansionCells` | 4 |
+| `globalAreaThreshold` | 0.90 | | `localGlobalSupportThreshold` | 0.035 |
+| `coherenceThreshold` | 0.70 | | `safeRiseRate` | 1.35 luma/s |
+| `visualFieldAreaThreshold` | 0.25 | | `safeFallRate` | 1.60 luma/s |
+| `patternScoreThreshold` | 0.24 | | `minimumProtectionTime` | 0.22 s |
+| `cameraMotionSuppression` | 0.32 | | `releaseTime` | 0.45 s |
+| `redThreshold` | 0.55 | | `displayDiagonalInches` | 27 |
+| `redDeltaThreshold` | 0.18 | | `viewingDistanceCm` | 70 |
+| `redAffectedAreaThreshold` | 0.15 | | `overloadWhiteCeiling` | 0.72 |
+| `redDesaturation` | 0.68 | | `subtleToneMap` | true |
+| `blackFloor` | 0.08 | | `whiteCeiling` | 0.84 |
+
+The surface-frequency detector uses **fixed** 5–30 Hz parameters; these legacy
+sensitivity and profile settings do not tune it.
+
+</details>
+
+---
+
+## Documentation
+
+| Document | Covers |
+| --- | --- |
+| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Legacy path — capture, detection, temporal filtering, motion |
+| [`SURFACE-FREQUENCY.md`](docs/SURFACE-FREQUENCY.md) | Current path, correction history, validation |
+| [`SOLUTION-2026-09-05.md`](docs/SOLUTION-2026-09-05.md) | Design review the current path implements |
+| [`TESTING.md`](docs/TESTING.md) | Methodology, protocols, reproducibility, gaps |
+| [`VERSIONING.md`](docs/VERSIONING.md) | Software / protocol / run versioning and immutability |
+| [`OUTLAST-NOISE-DIAGNOSIS.md`](docs/OUTLAST-NOISE-DIAGNOSIS.md) | The unresolved real-world artifact |
+| [`docs/releases/`](docs/releases/) | Notes shipped with each test package — historical, not current |
+| [`experiments/`](experiments/) | Immutable raw records, **including failed runs** |
+| [`CHANGELOG.md`](CHANGELOG.md) | Public version history |
+
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `src/` | C++ and embedded HLSL — `analysis/`, `shaders/`, `render/`, `ui/` |
+| `assets/` | Embedded fonts and licenses |
+| `scripts/` | Windows build entry points |
+| `flashbench/` | GPU smoke, replay, visual viewer, regression automation |
+| `docs/` | Architecture, testing, versioning |
+| `experiments/` | Protocols and archived raw results |
+| `.github/workflows/` | Hosted build and self-hosted GPU CI |
+
+## Automated CI
+
+On pushes to `test`: [`build.yml`](.github/workflows/build.yml) runs a hosted Windows
+release build with HLSL validation, and [`gpu-smoke.yml`](.github/workflows/gpu-smoke.yml)
+runs on the self-hosted runner labeled `flashguard-gpu`. Successful GPU runs publish
+per-commit artifacts containing the machine-readable reports.
+
+---
 
 ## Known limitations
 
-- Instant GPU mode has no intentional frame queue, but Desktop Duplication and Windows composition still impose unavoidable capture/display latency. Predictive values add the selected 25-100 ms on top.
-- Analyzer queries and swap-chain presentation do not block the capture path. When analysis misses its deadline, the frame receives a conservative steady highlight shoulder; this is safer than raw fallback but can briefly alter a non-hazardous image.
-- Luminance transforms preserve geometry and approximate chroma, but extreme lifts/dimming can still compress highlights or shadows.
-- A localized safety mask can soften across neighboring 64x36 cells because it is bilinearly interpolated to avoid hard tile edges.
-- Display-size/viewing-distance calibration is an approximation, not a photometric measurement of the actual monitor or room.
-- Pattern detection is deliberately conservative and is not a Harding FPA/PSE certification implementation.
-- The detector can still misclassify unusual camera cuts or miss stimuli below its spatial, temporal, color, or luminance thresholds.
+- Reduces measured temporal modulation in its regression corpus; **cannot guarantee seizure prevention** for every person or stimulus.
+- The live speckle artifact in [`OUTLAST-NOISE-DIAGNOSIS.md`](docs/OUTLAST-NOISE-DIAGNOSIS.md) was traced to temporal detection but **remains unresolved**, and has not been revalidated since the synthetic suite began passing.
+- Desktop Duplication and Windows composition impose latency even on the waitable low-latency path.
+- Real gameplay can expose motion/content combinations absent from deterministic synthetic cases.
+- On the surface path, provisional attenuation can affect ordinary color changes before a frequency is confirmed.
+- The legacy local motion fallback is deliberately bounded; unusual large or complex local motion can be misclassified.
+- NVOFA availability depends on supported NVIDIA hardware, driver, and runtime.
+- Luminance/chroma limiting can alter colors, highlights, shadows, and perceived contrast.
+- Display-size and viewing-distance calibration is approximate.
+- Pattern detection and the flash sweep are **not** Harding FPA/PSE certification implementations.
+- The detector can miss stimuli below its spatial, temporal, color, or luminance thresholds.
+
+---
+
+<div align="center">
+<sub>MIT licensed · Experimental risk-reduction software · Not a medical device</sub>
+</div>

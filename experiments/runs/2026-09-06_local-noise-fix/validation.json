@@ -1,0 +1,37 @@
+{
+  "schema": "SURFACE_FREQUENCY_VALIDATION/1",
+  "exe_sha256": "AA581627F610093165FF7A930549AFCF7B99275D73D9DEE4BFB5B7F55BE37607",
+  "passed": false,
+  "focused_case_count": 119,
+  "regression_case_count": 69,
+  "failed_regression_cases": 1,
+  "flash_sweep_failed_cases": 0,
+  "perceptual_minimum_reduction": 0.78521727,
+  "steps": [
+    {
+      "name": "shaders",
+      "exit_code": 0,
+      "elapsed_ms": 110453
+    },
+    {
+      "name": "risk-integrator",
+      "exit_code": 0,
+      "elapsed_ms": 272
+    },
+    {
+      "name": "focused",
+      "exit_code": 11,
+      "elapsed_ms": 193438
+    },
+    {
+      "name": "canonical",
+      "exit_code": 0,
+      "elapsed_ms": 189254
+    },
+    {
+      "name": "1080p",
+      "exit_code": 0,
+      "elapsed_ms": 3192
+    }
+  ]
+}

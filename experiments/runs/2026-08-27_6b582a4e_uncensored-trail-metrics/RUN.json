@@ -1,0 +1,18 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_6b582a4e_uncensored-trail-metrics",
+  "source_commit": "6b582a4ed88c509f8fdb026b93f2f5e8a2070dd2",
+  "workflow_run_id": 33037315542,
+  "artifact_id": 9632605633,
+  "artifact_digest": "sha256:6329d06c127cd3017eea7fb726ac4f8084665717ae3770b052001342276f4c9e",
+  "result": "SUCCESS",
+  "purpose": "Calibrate uncensored Trail Metrics v2 on the 33-way shader tuning matrix.",
+  "interpretation": {
+    "legacy_p99_max_saturates": true,
+    "production_clear_05_ms": 600.0,
+    "repeat_later_clear_05_ms": 400.0,
+    "production_recovery_p99_auc": 0.406729,
+    "repeat_later_recovery_p99_auc": 0.262243,
+    "note": "Trail Metrics v2 separates temporal persistence; old max remains diagnostic-only."
+  }
+}

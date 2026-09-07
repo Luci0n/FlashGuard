@@ -1,0 +1,10 @@
+{
+  "schema": "FLASHGUARD_PERCEPTUAL_SWEEP/1",
+  "status": "SUCCESS",
+  "calibration_only": true,
+  "background_code": 96,
+  "cases": [
+    {"delta_code":8,"low_code":92,"high_code":100,"frequency_hz":10.00,"phase_frames":0.50,"reduction":0.88327026,"peak_output_delta":0.03149414},
+    {"delta_code":16,"low_code":88,"high_code":104,"frequency_hz":10.00,"phase_frames":0.50,"reduction":0.88889058,"peak_output_delta":0.06274414}
+  ]
+}

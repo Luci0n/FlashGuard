@@ -1,0 +1,65 @@
+param(
+    [string]$Executable = '.\FlashGuard.exe',
+    [string]$OutputDir = 'flashbench/matrix-results',
+    [switch]$ScreenOnly
+)
+
+$ErrorActionPreference = 'Stop'
+
+# Matrix 29 reuses Matrix 26's canonical reader and hard gates. It compares the
+# strongest current-surface state path against the textureless stationary fallback.
+$sourcePath = Join-Path $PSScriptRoot 'matrix-v26.ps1'
+$source = Get-Content -Raw $sourcePath
+$original = $source
+
+$oldSpecs = @'
+$specs = @(
+    (New-Spec 'camera_aware_event_disocclusion_tau100_gain200' 16 (Merge-Tune $base $tune)),
+    (New-Spec 'stationary_reversal_hold_tau100_gain200' 17 (Merge-Tune $base $tune))
+)
+'@
+$newSpecs = @'
+$specs = @(
+    (New-Spec 'stationary_qualified_state_tau100_gain200' 18 (Merge-Tune $base $tune)),
+    (New-Spec 'textureless_stationary_prime_state_tau100_gain200' 20 (Merge-Tune $base $tune))
+)
+'@
+$source = $source.Replace($oldSpecs, $newSpecs)
+$source = $source.Replace(
+    'Full stationary-repetition matrix failed',
+    'Full textureless-stationary-state matrix failed')
+$source = $source.Replace(
+    'FlashBench stationary-repetition matrix:',
+    'FlashBench textureless-stationary-state matrix:')
+$source = $source.Replace(
+    "schema='FLASHGUARD_MATRIX/26'",
+    "schema='FLASHGUARD_MATRIX/29'")
+$source = $source.Replace(
+    "purpose='canonical full-replay accept/reject of sequence-qualified stationary weak-reversal authority and stationary-only opposition-risk hold after Matrix 25 exposed low-frequency and 4-code gaps'",
+    "purpose='canonical full-replay accept/reject of textureless stationary prime/risk continuity using coherent displacement rather than raw NVOFA motion magnitude after Matrix 28 showed mode 19 self-vetoed'")
+$source = $source.Replace(
+    "invariant='production architecture 0 is unchanged; mode 17 inherits mode 16 camera-aware event disocclusion, extends opposition-qualified risk only when scene-level motion is absent, and admits tiny changes only after an opposing signed reversal'",
+    "invariant='production architecture 0 is unchanged; mode 20 inherits mode 18 current-surface state continuity and adds a textureless fallback only when scene motion is absent and coherent current/global transport is absent; the same fallback preserves signed prime and risk only, while displayed history and moving/camera paths remain conservative raw-disocclusion'")
+$source = $source.Replace(
+    'Stationary-repetition matrix complete',
+    'Textureless-stationary-state matrix complete')
+
+if ($source -eq $original -or $source -notmatch 'FLASHGUARD_MATRIX/29' -or
+    $source -notmatch 'textureless_stationary_prime_state_tau100_gain200') {
+    throw 'Matrix 29 transform did not match Matrix 26 source'
+}
+
+$temp = Join-Path ([IO.Path]::GetTempPath()) (
+    'flashguard-matrix-v29-' + [Guid]::NewGuid().ToString('N') + '.ps1')
+try {
+    [IO.File]::WriteAllText($temp, $source, [Text.UTF8Encoding]::new($false))
+    if ($ScreenOnly) {
+        & $temp -Executable $Executable -OutputDir $OutputDir -ScreenOnly
+    } else {
+        & $temp -Executable $Executable -OutputDir $OutputDir
+    }
+    exit $LASTEXITCODE
+}
+finally {
+    Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+}

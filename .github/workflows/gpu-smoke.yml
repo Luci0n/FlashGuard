@@ -1,0 +1,183 @@
+name: FlashGuard GPU Smoke
+
+on:
+  push:
+    branches: [test]
+  workflow_dispatch:
+    inputs:
+      test_tier:
+        description: Replay scope
+        required: true
+        default: targeted
+        type: choice
+        options:
+          - quick
+          - targeted
+          - full
+
+concurrency:
+  group: flashguard-gpu-test
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  gpu-smoke:
+    runs-on: [self-hosted, Windows, X64, flashguard-gpu]
+    timeout-minutes: 25
+    steps:
+      - name: Recover self-hosted runner workspace
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $workspace = $env:GITHUB_WORKSPACE
+          $workspaceExe = Join-Path $workspace 'FlashGuard.exe'
+
+          # A failed/interactive replay can leave the workspace executable open.
+          # Kill only FlashGuard instances whose executable is this runner copy.
+          Get-CimInstance Win32_Process -Filter "Name='FlashGuard.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.ExecutablePath -and
+              [System.IO.Path]::GetFullPath($_.ExecutablePath) -eq
+              [System.IO.Path]::GetFullPath($workspaceExe) } |
+            ForEach-Object {
+              Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+            }
+          Start-Sleep -Milliseconds 250
+
+          # Persistent runner processes and temp trees consume both disk and
+          # Windows commit. Keep this dedicated GPU runner self-cleaning so the
+          # page file can grow and Git/MSVC do not fail from ERROR_COMMITMENT_LIMIT.
+          foreach ($name in @('cl', 'mspdbsrv', 'vctip', 'NvofSmoke')) {
+            Get-Process -Name $name -ErrorAction SilentlyContinue |
+              Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+          $tempCutoff = (Get-Date).AddMinutes(-30)
+          if (Test-Path $env:RUNNER_TEMP) {
+            Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.LastWriteTime -lt $tempCutoff } |
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          $userTemp = [System.IO.Path]::GetTempPath()
+          if ($userTemp -and (Test-Path $userTemp)) {
+            $userTempCutoff = (Get-Date).AddDays(-1)
+            Get-ChildItem -LiteralPath $userTemp -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.LastWriteTime -lt $userTempCutoff } |
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+          # Checkout can recreate the repository from scratch. Clearing the old
+          # workspace before checkout also removes accumulated build/replay output.
+          if (Test-Path $workspace) {
+            Set-Location $env:RUNNER_TEMP
+            Get-ChildItem -LiteralPath $workspace -Force -ErrorAction SilentlyContinue |
+              Remove-Item -Recurse -Force -ErrorAction Stop
+          }
+
+          $driveName = [System.IO.Path]::GetPathRoot($workspace).TrimEnd('\').TrimEnd(':')
+          $drive = Get-PSDrive -Name $driveName -ErrorAction SilentlyContinue
+          $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+          if ($drive) {
+            Write-Host ("Runner free disk: {0:N2} GB" -f ($drive.Free / 1GB))
+          }
+          if ($os) {
+            Write-Host ("Runner free virtual memory: {0:N0} MB" -f ($os.FreeVirtualMemory / 1KB))
+          }
+
+          # Keep only the most recently staged tested executable. Per-SHA staging
+          # otherwise grows forever on a persistent self-hosted runner.
+          $testedRoot = 'C:\FlashGuard-Tested'
+          if (Test-Path $testedRoot) {
+            $latestFile = Join-Path $testedRoot 'LATEST.txt'
+            $keepDirectory = $null
+            if (Test-Path $latestFile) {
+              $latestExe = (Get-Content -LiteralPath $latestFile -Raw).Trim()
+              if ($latestExe) {
+                $keepDirectory = Split-Path -Parent $latestExe
+              }
+            }
+            Get-ChildItem -LiteralPath $testedRoot -Directory -ErrorAction SilentlyContinue |
+              Where-Object { -not $keepDirectory -or $_.FullName -ne $keepDirectory } |
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - uses: actions/checkout@v6
+      - name: Build and inspect GPU runtime
+        id: gpu
+        continue-on-error: true
+        shell: powershell
+        env:
+          TEST_TIER: ${{ github.event_name == 'workflow_dispatch' && inputs.test_tier || 'targeted' }}
+        run: |
+          & .\flashbench\run.ps1 -Mode gpu-smoke `
+            -TestTier $env:TEST_TIER -OutputDir flashbench/results
+          exit $LASTEXITCODE
+      - name: Print GPU result diagnostics
+        if: always()
+        shell: powershell
+        run: |
+          foreach ($path in @(
+            'flashbench/results/summary.json',
+            'flashbench/results/synthetic-replay.json'
+          )) {
+            if (Test-Path -LiteralPath $path) {
+              Write-Host "===== $path ====="
+              Get-Content -LiteralPath $path -Raw
+            }
+          }
+          $log = 'flashbench/results/flashbench.log'
+          if (Test-Path -LiteralPath $log) {
+            Write-Host "===== tail $log ====="
+            Get-Content -LiteralPath $log -Tail 160
+          }
+      - name: Upload GPU smoke report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: flashbench-gpu-${{ github.sha }}
+          path: flashbench/results/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Stage tested build outside runner workspace
+        if: always() && steps.gpu.outcome == 'success'
+        shell: powershell
+        run: |
+          $root = 'C:\FlashGuard-Tested'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $dest = Join-Path $root '${{ github.sha }}'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -Force .\FlashGuard.exe (Join-Path $dest 'FlashGuard.exe')
+          Set-Content -Path (Join-Path $root 'LATEST.txt') -Value (Join-Path $dest 'FlashGuard.exe')
+      - name: Upload tested FlashGuard executable
+        if: always() && steps.gpu.outcome == 'success'
+        uses: actions/upload-artifact@v6
+        with:
+          name: flashguard-tested-${{ github.sha }}
+          path: FlashGuard.exe
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish GPU smoke status
+        if: always()
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GPU_OUTCOME: ${{ steps.gpu.outcome }}
+        run: |
+          $state = if ($env:GPU_OUTCOME -eq 'success') { 'success' } else { 'failure' }
+          $description = if ($state -eq 'success') { 'FlashBench GPU smoke passed' } else { 'FlashBench GPU smoke failed' }
+          $body = @{
+            state = $state
+            context = 'flashbench/gpu-smoke'
+            description = $description
+            target_url = 'https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          } | ConvertTo-Json
+          Invoke-RestMethod -Method Post `
+            -Uri 'https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }}' `
+            -Headers @{ Authorization = "Bearer $env:GH_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28'; 'User-Agent' = 'FlashBench' } `
+            -ContentType 'application/json' -Body $body | Out-Null
+      - name: Fail workflow when GPU smoke failed
+        if: steps.gpu.outcome != 'success'
+        shell: powershell
+        run: exit 1

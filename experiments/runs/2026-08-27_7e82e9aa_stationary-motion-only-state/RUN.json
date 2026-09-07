@@ -1,0 +1,48 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-08-27_7e82e9aa_stationary-motion-only-state",
+  "source_commit": "7e82e9aa0a021ec78057736e51a780a7ca70ec49",
+  "workflow_run_id": 33090990093,
+  "workflow": "FlashGuard GPU Smoke",
+  "artifact_id": 9654556343,
+  "artifact_name": "flashbench-gpu-7e82e9aa0a021ec78057736e51a780a7ca70ec49",
+  "artifact_digest": "sha256:7948f7be076d782e251fb9609cc108a1fd218f7225a6b7e2c20bd07971b12957",
+  "result": "SUCCESS",
+  "matrix_schema": "FLASHGUARD_MATRIX/28",
+  "authority_schema": "FLASHGUARD_AUTHORITY_DIAGNOSTICS/4",
+  "purpose": "Canonical full-replay test of stationary sequence-state continuity without requiring current-surface confidence.",
+  "invariant": "Production architecture 0 remained unchanged. Mode 19 changed only benchmark risk/prime state continuity; displayed history and moving/camera paths remained conservative.",
+  "result_summary": {
+    "mode18_moving_flash_reduction": 0.83272139,
+    "mode18_perceptual_min_reduction": 0.1361999,
+    "mode19_replay_status": "SUCCESS",
+    "mode19_moving_clear_05_ms": 66.667,
+    "mode19_moving_flash_reduction": 0.46775489,
+    "mode19_perceptual_min_reduction": 0.10195917,
+    "mode19_pan_mae": 0.00271602,
+    "mode19_fast_pan_mae": 0.00450321,
+    "mode19_extreme_pan_mae": 0.0049894,
+    "mode19_wcag_sc_2_3_1_pass": false,
+    "mode19_wcag_sc_2_3_2_pass": false,
+    "remaining_wcag_failures": [
+      "luminance_quarter@5Hz",
+      "luminance_quarter@7.5Hz"
+    ]
+  },
+  "interpretation": "Mode 19 is rejected. Its textureless fallback regressed to essentially mode-17 behavior: weak/perceptual floor 0.102 and moving-flash 0.468. Source inspection shows the fallback is vetoed by max(localMotionGate, hardwareMotionGate), while signed-prime continuity still independently uses the same raw motion evidence. A uniform brightness reversal can therefore classify as hardware motion and erase the exact opposition prime the fallback was meant to preserve. The next test retains mode-18 current-surface continuity and adds a textureless fallback keyed to scene motion plus coherent current/global transport, applying that same continuity to both risk and signed prime.",
+  "evidence_serialization": "Repository copies are UTF-8 LF JSON serializations of the artifact JSON values.",
+  "raw_evidence": [
+    {
+      "path": "matrix.json",
+      "sha256": "545e3c3dc6f56013fa900d495b65069acd795893518265747d24ebc47bd50f91"
+    },
+    {
+      "path": "mode19-perceptual-sweep.json",
+      "sha256": "b558b41b76a7e55a580ebf9a3171845bcbcce57010ba35ca8076e704ad11b09c"
+    },
+    {
+      "path": "mode19-flash-sweep.json",
+      "sha256": "9f2fc315e86b806a37e402c205895e1b88f68c081d051b1762e9ec2f5c409ca5"
+    }
+  ]
+}
