@@ -29,15 +29,10 @@ Public technical documentation:
 - [`experiments/`](experiments/) - immutable raw experiment records, including failed runs
 - [`CHANGELOG.md`](CHANGELOG.md) - public version history
 
-Per-candidate reports for the surface-frequency line, oldest first:
-[noise/color](docs/NOISE-COLOR-CANDIDATE.md),
-[local noise](docs/LOCAL-NOISE-CANDIDATE.md),
-[Outlast diagnosis](docs/OUTLAST-NOISE-DIAGNOSIS.md),
-[source amplitude](docs/AMPLITUDE-BOUND-CANDIDATE.md),
-[HSV correction](docs/HSV-CORRECTION.md),
-[overlay UI](docs/OVERLAY-UI.md),
-[monospace and opacity](docs/MONOSPACE-OPACITY.md),
-[compact menu and shader startup](docs/COMPACT-STARTUP.md).
+Also:
+
+- [`docs/OUTLAST-NOISE-DIAGNOSIS.md`](docs/OUTLAST-NOISE-DIAGNOSIS.md) - live diagnosis of the one confirmed real-world artifact, still unresolved
+- [`docs/releases/`](docs/releases/) - notes that shipped with each test package, kept as a historical record rather than as current documentation
 
 ## Current processing pipeline
 

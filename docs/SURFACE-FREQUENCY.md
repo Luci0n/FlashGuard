@@ -25,12 +25,12 @@ executable and source hashes that identify it.
 | Version | Correction | Result |
 | --- | --- | --- |
 | `0.3.0-alpha.1` | First current-frame-only detector and compositor | Passed its own runner: 119/119 focused, 78.52% perceptual minimum |
-| `0.3.0-alpha.2` | [Noise/color](NOISE-COLOR-CANDIDATE.md): reject one-code dither, stop history inventing events, keep envelopes through color changes | Failed: moving white/red under the 70% gate |
-| `0.3.0-alpha.3` | [Local noise](LOCAL-NOISE-CANDIDATE.md): require a local source change, so animation elsewhere cannot fire events in a held region | Failed on the same case; stationary-region error 33.1964 → 0.00005 codes |
+| `0.3.0-alpha.2` | [Noise/color](releases/NOISE-COLOR-CANDIDATE.md): reject one-code dither, stop history inventing events, keep envelopes through color changes | Failed: moving white/red under the 70% gate |
+| `0.3.0-alpha.3` | [Local noise](releases/LOCAL-NOISE-CANDIDATE.md): require a local source change, so animation elsewhere cannot fire events in a held region | Failed on the same case; stationary-region error 33.1964 → 0.00005 codes |
 | — | [Outlast diagnosis](OUTLAST-NOISE-DIAGNOSIS.md): live probe isolating detector-introduced speckles | Unresolved; two rules reverted, no build released |
-| `0.3.0-alpha.4` | [Source-amplitude bound](AMPLITUDE-BOUND-CANDIDATE.md): bound correction by measured source amplitude | Failed on the same case at 66.566%; grain bounded to 3.986 codes |
-| `0.4.0-alpha.1` | [HSV correction](HSV-CORRECTION.md): per-channel phase floor replacing the grayscale projection | **Passed: 260/260** |
-| `0.4.0-alpha.2` … `alpha.4` | [Overlay UI](OVERLAY-UI.md), [monospace/opacity](MONOSPACE-OPACITY.md), [compact menu and shader cache](COMPACT-STARTUP.md) | Interface and startup only; protection HLSL unchanged by hash |
+| `0.3.0-alpha.4` | [Source-amplitude bound](releases/AMPLITUDE-BOUND-CANDIDATE.md): bound correction by measured source amplitude | Failed on the same case at 66.566%; grain bounded to 3.986 codes |
+| `0.4.0-alpha.1` | [HSV correction](releases/HSV-CORRECTION.md): per-channel phase floor replacing the grayscale projection | **Passed: 260/260** |
+| `0.4.0-alpha.2` … `alpha.4` | [Overlay UI](releases/OVERLAY-UI.md), [monospace/opacity](releases/MONOSPACE-OPACITY.md), [compact menu and shader cache](releases/COMPACT-STARTUP.md) | Interface and startup only; protection HLSL unchanged by hash |
 
 The corrections are cumulative: the local source-change requirement, the
 source-amplitude bound, and the per-channel phase floor are all active in the
@@ -47,20 +47,25 @@ current build. The rejected probes listed under *Known limits* stay rejected.
 
 ## Run and compare
 
-The packaged **surface** build starts the new path when `FlashGuard.exe` is
-double-clicked. `FlashGuard.exe --legacy` selects the previous implementation.
-Close the previous instance before switching.
+Build an executable that defaults to this path, then run it:
 
-F9 displays the active backend, latest completed GPU pass time, desktop image
-age, and presentation counters. F10 opens the settings menu and Escape closes it.
-Ctrl+Shift+F12 exits. F8 retains the manual
-shield. Runtime GPU measurements are saved on exit under
+```powershell
+.\scripts\build.ps1 -Mode surface
+.\FlashGuard.exe
+```
+
+`.\FlashGuard.exe --legacy` selects the previous implementation, so the two paths
+can be compared from one build. A normal `release` build defaults to the legacy
+path instead and accepts `--surface-frequency`. Run only one instance at a time.
+
+While it runs, F9 displays the active backend, latest completed GPU pass time,
+desktop image age, and presentation counters. F10 opens the settings menu and
+Escape closes it. F8 holds the manual shield. Ctrl+Shift+F12 exits. GPU
+measurements are written on exit to
 `%LOCALAPPDATA%\OutlastFlashGuard\surface-frequency-last-run.json`.
 
-The experimental detector uses fixed 5–30 Hz parameters. Static contrast and
-hotkeys remain configurable; legacy detector sensitivity/profile settings do
-not tune this new detector. A normal `release` build still defaults to the
-legacy path and accepts `--surface-frequency` to select this experiment.
+The detector uses fixed 5–30 Hz parameters. Static contrast and hotkeys remain
+configurable; legacy detector sensitivity and profile settings do not tune it.
 
 ## What changed
 
