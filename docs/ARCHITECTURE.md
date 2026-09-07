@@ -2,6 +2,16 @@
 
 FlashGuard is a Windows D3D11 desktop-capture overlay designed to reduce potentially hazardous temporal modulation while preserving ordinary motion as much as possible.
 
+This page describes the **legacy** NVOFA path. The current-frame-only alternative,
+which is the default in `surface`-mode builds and is the line under active
+development, is described in [Surface frequency](SURFACE-FREQUENCY.md). Its design
+rationale is in [the solution review](SOLUTION-2026-09-05.md).
+
+The two paths coexist in one executable. A `release` build defaults to the legacy
+path and accepts `--surface-frequency`; a `surface` build defaults to the new path
+and accepts `--legacy`. Legacy detector sensitivity and profile settings tune only
+the path described here; the surface detector uses fixed 5–30 Hz parameters.
+
 ## Data path
 
 ```text
@@ -58,7 +68,7 @@ The current hierarchy is:
 3. Raw-source local patch matching when NVOFA is unavailable, anchor-only, or locally inconclusive.
 4. CPU whole-frame camera-motion evidence supplied to the final shader.
 
-NVOFA uses D3D11, half-resolution input, the `FAST` preset, forward and backward prediction, preferred output grids 1 -> 2 -> 4, S10.5 vectors, and optional 8-bit cost buffers. Every desktop update refreshes the immediate previous-frame anchor; expensive `NvOFExecute` calls are sparse. Temporal hints are valid only after a consecutive successful execute.
+The legacy default uses D3D11 NVOFA with half-resolution input, `MEDIUM`, forward and backward prediction, preferred output grids 1 -> 2 -> 4, S10.5 vectors, and optional 8-bit cost buffers. It solves flow on every new captured frame. Separate live experiments select `FAST`/grid 2 (`--latency-nvof-lite`) or sparse execution (`--latency-adaptive-protection`). Temporal hints are valid only after a consecutive successful execute.
 
 The portable local matcher verifies structure rather than trusting a center pixel. It includes cardinal, diagonal, oblique, and dense small-offset patch refinement for ambiguous bright/flat objects.
 

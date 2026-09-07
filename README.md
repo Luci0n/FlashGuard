@@ -4,15 +4,40 @@ FlashGuard is a Windows D3D11 overlay that captures the desktop, detects potenti
 
 It is **not medically validated, clinically epilepsy-safe, or Harding FPA/PSE certified**. Passing FlashBench is an engineering regression result, not a medical guarantee or formal accessibility certification.
 
-Current experimental version: **0.1.0-alpha.1**.
+Current experimental version: **0.4.0-alpha.4**.
+
+The [surface-frequency GPU path](docs/SURFACE-FREQUENCY.md) detects 5–30 Hz surface
+changes and composites the current image without NVOFA or displayed-image feedback.
+As of `0.4.0-alpha.1` it passes its complete validation for the first time — 260 of
+260 checks, including the moving white/red case that every earlier candidate failed.
+Build with `scripts/build.ps1 -Mode surface` to make it the default in a test
+executable; `--legacy` selects the previous path. A normal `release` build still
+defaults to the legacy path and accepts `--surface-frequency`.
+
+Passing that suite is deterministic engineering evidence on one GPU. It is not a
+claim of seizure prevention, and the live game artifact recorded in
+[`docs/OUTLAST-NOISE-DIAGNOSIS.md`](docs/OUTLAST-NOISE-DIAGNOSIS.md) has not been
+revalidated since.
 
 Public technical documentation:
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - capture, detection, temporal filtering, and motion handling
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - capture, detection, temporal filtering, and motion handling (legacy path)
+- [`docs/SURFACE-FREQUENCY.md`](docs/SURFACE-FREQUENCY.md) - current surface-frequency path, correction history, and validation
+- [`docs/SOLUTION-2026-09-05.md`](docs/SOLUTION-2026-09-05.md) - the design review that path implements
 - [`docs/TESTING.md`](docs/TESTING.md) - regression methodology, 5-30 Hz sweep, reproducibility, and limitations
 - [`docs/VERSIONING.md`](docs/VERSIONING.md) - software/protocol/run versioning and immutability rules
 - [`experiments/`](experiments/) - immutable raw experiment records, including failed runs
 - [`CHANGELOG.md`](CHANGELOG.md) - public version history
+
+Per-candidate reports for the surface-frequency line, oldest first:
+[noise/color](docs/NOISE-COLOR-CANDIDATE.md),
+[local noise](docs/LOCAL-NOISE-CANDIDATE.md),
+[Outlast diagnosis](docs/OUTLAST-NOISE-DIAGNOSIS.md),
+[source amplitude](docs/AMPLITUDE-BOUND-CANDIDATE.md),
+[HSV correction](docs/HSV-CORRECTION.md),
+[overlay UI](docs/OVERLAY-UI.md),
+[monospace and opacity](docs/MONOSPACE-OPACITY.md),
+[compact menu and shader startup](docs/COMPACT-STARTUP.md).
 
 ## Current processing pipeline
 
@@ -94,9 +119,9 @@ FlashGuard uses several layers of motion evidence:
 
 1. The 128x72 analyzer estimates coherent translation and a whole-frame camera-motion score.
 2. On supported NVIDIA GPUs, NVOFA is dynamically loaded from `nvofapi64.dll`.
-3. NVOFA runs at half desktop resolution with the `FAST` preset, forward/backward prediction, preferred output grid `1` then `2` then `4`, and optional cost buffers.
+3. The legacy default runs NVOFA at half desktop resolution with `MEDIUM`, forward/backward prediction, preferred output grid `1` then `2` then `4`, and optional cost buffers. The `--latency-nvof-lite` experiment uses `FAST` and prefers grid `2`.
 4. NVOFA is classification-only. Flow vectors are used to validate current-surface transport and vacated/disoccluded pixels; `PreviousOutput` always stays at the same screen coordinate.
-5. Expensive `NvOFExecute` calls are sparse. Every desktop update refreshes the NVOFA anchor, but flow is solved only when detector/filter state needs it.
+5. The legacy default solves flow on every new captured frame. Sparse scheduling is available in the separate `--latency-adaptive-protection` experiment.
 6. Temporal hints are enabled only after a consecutive successful `NvOFExecute`. A skip, failure, or reset disables hints on the next solve.
 7. If NVOFA exists but there is no fresh flow field, FlashGuard falls back to raw-source local motion matching instead of leaving the frame unclassified.
 8. The fallback matcher uses patch verification, including dense small-offset search for ambiguous bright/flat objects and oblique movement.
@@ -124,10 +149,30 @@ The centered message `Automatic shield activated` appears only for the automatic
 
 - `F8`: toggle the persistent manual neutral shield
 - `F9`: toggle diagnostics
-- `F10`: open runtime settings
+- `F10`: open or close the settings menu (`Escape` also closes it)
 - `Ctrl+Shift+F12`: exit
 
 Settings and hotkeys persist in `%LOCALAPPDATA%\OutlastFlashGuard\settings.ini`.
+
+The settings menu is a compact 440x360 dark window with Home, Shortcuts, and
+Advanced tabs and a draggable header. Edits apply on Save changes. Menu opacity is
+adjustable from 60% to 100% and defaults to 92%; protection output opacity is
+unaffected. Legacy detector controls that do not tune the surface backend are hidden
+when that backend is active, and profiles have been removed. JetBrains Mono is
+embedded in the executable and loaded privately, so no font installation is needed.
+The menu and the loading banner are excluded from capture.
+
+While shaders compile, a top-left banner shows elapsed time and progress, repainted
+by its own UI thread. Compiled shaders are cached in
+`%LOCALAPPDATA%\OutlastFlashGuard\shader-cache`, keyed by source, entry point,
+target, flags, and compiler generation, and size- and checksum-checked on load. A
+missing, invalid, or unwritable cache falls back to normal compilation. In the
+recorded startup check, an 11-shader cold compile of 143.420 s became a 0.324 s
+cached load with zero recompiles; this measures GPU and shader setup only, not
+complete capture and presentation startup.
+
+`--settings-preview` and `--startup-preview` open those surfaces for development.
+Neither starts capture or protection, and the settings preview does not save edits.
 
 The current diagnostics surface is `560x640` and includes luminance/delta, affected area, coherence, region/visual-field metrics, motion explanation, red/pattern information, state/strength, buffering, and timing-related diagnostics.
 
@@ -140,6 +185,16 @@ From the repository root:
 ```powershell
 .\scripts\build.bat release
 ```
+
+Or build a test executable that defaults to the surface-frequency path:
+
+```powershell
+.\scripts\build.ps1 -Mode surface
+```
+
+`surface` uses `/O2` with `FLASHGUARD_SURFACE_DEFAULT=1`; `release` uses `/O2`
+without changing the default path. Both compile `src/FlashGuard.rc` for the
+embedded font resources.
 
 Output:
 
@@ -279,7 +334,8 @@ On pushes to `test`:
 
 ## Repository layout
 
-- `src/` - FlashGuard C++/embedded HLSL
+- `src/` - FlashGuard C++/embedded HLSL, including `analysis/`, `shaders/`, `render/`, and `ui/`
+- `assets/` - embedded fonts and their licenses
 - `scripts/` - Windows build entry points
 - `flashbench/` - GPU smoke, replay, visual viewer, and regression automation
 - `docs/` - public architecture, testing, and versioning documentation
@@ -292,6 +348,8 @@ On pushes to `test`:
 - This project reduces measured temporal modulation in its regression corpus; it cannot guarantee seizure prevention for every person or every stimulus.
 - Desktop Duplication and Windows composition still impose some latency even with the waitable low-latency path.
 - Real gameplay can expose motion/content combinations not represented by deterministic synthetic cases.
+- The live speckle artifact recorded in `docs/OUTLAST-NOISE-DIAGNOSIS.md` was traced to temporal detection but remains unresolved, and has not been revalidated since the surface path began passing its synthetic suite.
+- On the surface path, provisional attenuation can still affect ordinary color changes before a frequency is confirmed.
 - The local motion fallback is deliberately bounded; unusual large or complex local motion can still be misclassified.
 - NVOFA availability and behavior depend on supported NVIDIA hardware/driver/runtime.
 - Luminance/chroma limiting can alter colors, highlights, shadows, and perceived contrast.

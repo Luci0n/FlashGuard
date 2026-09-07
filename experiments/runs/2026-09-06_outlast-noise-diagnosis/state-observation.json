@@ -1,0 +1,12 @@
+{
+  "pixels_changed_over_2_codes": 38325,
+  "fraction_changed_over_2_codes": 0.01848234953703704,
+  "maximum_channel_change_codes": 156,
+  "active_cells": 15939,
+  "active_confirmed_cells": 2925,
+  "active_unconfirmed_cells": 13014,
+  "active_moving_cells": 10183,
+  "changed_cells": 23739,
+  "changed_unconfirmed_cells": 21531,
+  "changed_confirmed_cells": 2208
+}

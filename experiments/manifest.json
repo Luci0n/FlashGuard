@@ -1,6 +1,6 @@
 {
   "archive_schema": "FLASHGUARD_EXPERIMENT_ARCHIVE/1",
-  "current_software_version": "0.3.0-alpha.1",
+  "current_software_version": "0.4.0-alpha.4",
   "protocols": [
     "FLASHBENCH/1",
     "FLASHGUARD_REPLAY/1",
@@ -74,7 +74,11 @@
     "FLASHGUARD_MATRIX/32",
     "FLASHGUARD_MATRIX/33",
     "FLASHGUARD_MATRIX/34",
-    "FLASHGUARD_MATRIX/35"
+    "FLASHGUARD_MATRIX/35",
+    "SURFACE_FREQUENCY_VALIDATION/1",
+    "HSV_CORRECTION_VALIDATION/1",
+    "FLASHGUARD_UI_VALIDATION/1",
+    "FLASHGUARD_LIVE_PROBE/1"
   ],
   "runs": [
     {
@@ -310,6 +314,76 @@
     {
       "run_id": "2026-08-27_48e4f32c_residual-mode21-factorial",
       "commit": "48e4f32c4c72d3b44ae7b9ca04e91c44e9fcf5ec",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-09-06_surface-frequency-v1",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.3.0-alpha.1",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-09-06_surface-frequency-v1-final",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.3.0-alpha.1",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-09-06_noise-color-candidate",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.3.0-alpha.2",
+      "result": "FAILED"
+    },
+    {
+      "run_id": "2026-09-06_local-noise-fix",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.3.0-alpha.3",
+      "result": "FAILED"
+    },
+    {
+      "run_id": "2026-09-06_outlast-noise-diagnosis",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.3.0-alpha.3",
+      "result": "UNRESOLVED"
+    },
+    {
+      "run_id": "2026-09-07_amplitude-bound",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.3.0-alpha.4",
+      "result": "FAILED"
+    },
+    {
+      "run_id": "2026-09-07_hsv-correction",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.4.0-alpha.1",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-09-07_overlay-ui",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.4.0-alpha.2",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-09-07_monospace-opacity",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.4.0-alpha.3",
+      "result": "SUCCESS"
+    },
+    {
+      "run_id": "2026-09-07_compact-startup",
+      "commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+      "source_is_uncommitted_snapshot": true,
+      "software_version": "0.4.0-alpha.4",
       "result": "SUCCESS"
     }
   ]

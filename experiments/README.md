@@ -4,7 +4,8 @@ This directory preserves reproducible FlashGuard test evidence independently of 
 
 ## Rules
 
-- Every run is tied to an exact Git commit.
+- Every run is tied to an exact Git commit, or, for a working-tree snapshot, to a base commit plus
+  the SHA-256 of every source file and of the tested executable.
 - Raw result JSON is preserved unchanged from the test artifact when available.
 - Each run contains `RUN.json` with environment/protocol metadata and SHA-256 hashes for the raw files.
 - Failed runs are retained.
@@ -12,6 +13,18 @@ This directory preserves reproducible FlashGuard test evidence independently of 
 - Quantitative automated measurements and qualitative observations must be labeled separately.
 
 See `docs/TESTING.md` for methodology and `docs/VERSIONING.md` for version semantics.
+
+## Snapshot-identified runs
+
+Every run from `2026-09-06` onward was produced from an uncommitted working-tree snapshot on the
+`test` branch over base commit `c8a6386`. For those runs the base commit alone does **not** identify
+the tested implementation. Identity comes from the `executable_sha256` and `source_files` hashes in
+each `RUN.json`, and `source_is_uncommitted_snapshot` is set to `true` in both `RUN.json` and
+`manifest.json`.
+
+Two runs may therefore share a commit while testing different code. Compare them by source and
+executable hash, never by commit. Runs on this line are not interchangeable with commit-identified
+runs as before/after evidence unless the hashes are checked.
 
 ## Archived runs
 
@@ -64,5 +77,24 @@ See `docs/TESTING.md` for methodology and `docs/VERSIONING.md` for version seman
 | `2026-08-27_f36fa03a_current-event-camera-guard` | `f36fa03a16ae6a6ffcb0d240fe34b4427328f8d4` | PASS | Matrix 33 rejected mode 24: applying unmasked camera motion only to current-event disocclusion was exactly identical to mode 20 on the decisive metrics (0.06669 extreme-pan, 0.4140 perceptual minimum, 0.9588 moving-flash); the remaining causal candidates are stable repeated authority and stationary current-hold authorization |
 | `2026-08-27_b7f7325a_display-authority-isolation` | `b7f7325aa1b7610fea5d2ba7257e0e5c24d98eb0` | PASS | Matrix 34 rejected the remaining display-authority camera guards: modes 25 and 26 were exactly equal to mode 20, while mode 27 changed extreme-pan MAE only from 0.066691 to 0.066700; perceptual minimum stayed 0.4140 and moving-flash reduction 0.9588, ruling out stable repeated authority and stationary current-hold authorization as the source of mode 21's pan repair |
 | `2026-08-27_48e4f32c_residual-mode21-factorial` | `48e4f32c4c72d3b44ae7b9ca04e91c44e9fcf5ec` | PASS | Matrix 35 isolated factor B as the pan repair: every B-present factorial candidate passed extreme pan at ~0.0134-0.0135, while every B-absent candidate failed at ~0.0656-0.0673; A and C were neither necessary nor sufficient. No candidate met the weak/perceptual gate, and the unchanged mode-20 control's perceptual floor drifted from 0.4140 in Matrix 34 to 0.1605, so Matrix 36 repeats controls and splits B before further architecture work |
+
+## Surface-frequency line (0.3.0 / 0.4.0)
+
+These runs test the current-frame-only surface-frequency backend rather than the legacy NVOFA path,
+and are all snapshot-identified as described above. Their commit column shows the shared base
+commit `c8a6386`; use the hashes in each `RUN.json` to distinguish them.
+
+| Run | Version | Result | Purpose |
+| --- | --- | --- | --- |
+| `2026-09-06_surface-frequency-v1` | `0.3.0-alpha.1` | SUCCESS | First implementation of the current-frame-only architecture: 119/119 focused GPU cases, no failed flash-sweep gates, 78.52% perceptual minimum, p99 0.668 ms. The rejected wraparound/teleport probe is retained as `relocation-self-test.json` |
+| `2026-09-06_surface-frequency-v1-final` | `0.3.0-alpha.1` | SUCCESS | Packaged build of the same architecture after the idle correction and the switch to continuous motion; the retained relocation probe predates it and does not measure this binary |
+| `2026-09-06_noise-color-candidate` | `0.3.0-alpha.2` | FAILED | Untransported-observation comparison fixed one-code dither desaturation, post-motion invented events, and colored-phase envelope loss, but moving white/red at 5 Hz / 144 FPS stayed under the 70% gate (68 of 69 regressions). A live instance was running during the 1080p measurement, so that timing is not isolated |
+| `2026-09-06_local-noise-fix` | `0.3.0-alpha.3` | FAILED | Adding a local source-change requirement cut unwanted stationary-region change from 33.1964 to 0.00005 encoded codes while animation continued elsewhere; the same moving white/red case remained at 65.587% |
+| `2026-09-06_outlast-noise-diagnosis` | `0.3.0-alpha.3` | UNRESOLVED | Live offscreen probe proved the residual Outlast Trials speckles are introduced by temporal detection, not static tone mapping. Two candidate rules were reverted, one failing 4 original and 18 expanded cases. No build released; captures excluded |
+| `2026-09-07_amplitude-bound` | `0.3.0-alpha.4` | FAILED | Bounding correction by measured source amplitude removed history-driven amplification of small fluctuations and bounded grain to 3.986 codes over a four-code source range; 199/200 checks passed, moving white/red reached 66.566% |
+| `2026-09-07_hsv-correction` | `0.4.0-alpha.1` | SUCCESS | Per-channel phase floor replaced the grayscale projection that amplified saturation-only flashing (all 12 saturation cases had failed, up to +53% RGB variation). **First fully passing validation of the architecture:** 260/260 checks, 99.24% settled / 99.38% early minimum HSV reduction, and the long-standing moving white/red case at 74.17% |
+| `2026-09-07_overlay-ui` | `0.4.0-alpha.2` | SUCCESS | UI scope only: settings menu, threaded loading banner, preview commands. Protection sources unchanged by hash; no banner screenshot and no live protection verified |
+| `2026-09-07_monospace-opacity` | `0.4.0-alpha.3` | SUCCESS | UI scope only: monospace text and persisted 60-100% menu opacity at a 92% default. The status-label redraw fix was not revisually verified after correction |
+| `2026-09-07_compact-startup` | `0.4.0-alpha.4` | SUCCESS | UI/startup scope only: 440x360 menu without profiles, embedded fonts, and a checksum-verified shader cache that cut an 11-shader cold compile of 143.420 s to a 0.324 s cached load with zero recompiles |
 
 The archive preserves the recovered evidence described by each run's `RUN.json`. For the full-artifact archives through `09c1343a`, the complete root-level raw JSON recovered from each CI artifact is retained, together with selected nested matrix files where recorded. Later focused calibration/architecture archives may retain only the matrix and representative raw evidence explicitly named by `RUN.json`; they do not claim full-artifact completeness. Earlier historical measurements may be described in changelog/design history, but they are not promoted to raw archived evidence unless the original artifact can be recovered.

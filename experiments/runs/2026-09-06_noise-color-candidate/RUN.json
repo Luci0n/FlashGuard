@@ -1,0 +1,40 @@
+{
+  "run_id": "2026-09-06_noise-color-candidate",
+  "base_commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+  "source_is_uncommitted_snapshot": true,
+  "existing_local_changes_preserved": true,
+  "executable_sha256": "D341539C2156F744D376DE6C4D288504DADFE4FEDC34C5A87DFD1AABA9FA5803",
+  "build_mode": "surface",
+  "validation": "FAILED: one moving white/red case (5 Hz, 144 FPS); experimental partial correction, not a completed protection solution",
+  "passed_original_cases": 119,
+  "passed_regressions": 68,
+  "total_regressions": 69,
+  "benchmark_context": "A live candidate instance was observed running during final validation. The 1080p result is not an isolated latency comparison; p99 5.667 ms, p50 0.690 ms. Capture/copy/presentation/display excluded.",
+  "before_report_note": "Initial added regressions against original shader; moving-color variation in this BEFORE report used screen coordinates. Final tests correctly use object coordinates, so moving-case reductions are not directly comparable. Static/noise/color tests are comparable.",
+  "source_files": [
+    {
+      "path": "src/FlashGuard.cpp",
+      "sha256": "FEB53DABF99B7A634A94816333B12CEDACEDA5C0A7BF2E269D0F3D96A547064A"
+    },
+    {
+      "path": "src/analysis/SurfaceFrequency.h",
+      "sha256": "30578D0FCCEE1FC5B785F517C11CCF3301133250C7C67F3EAB1F30612BA6FF06"
+    },
+    {
+      "path": "src/shaders/SurfaceFrequency.inl",
+      "sha256": "9BD5C6AF398CBDB49AC58C3D25AA3849029B7A0B9EF2DC00D3B239D6BEE035E2"
+    },
+    {
+      "path": "scripts/build.bat",
+      "sha256": "7DE7BC27C033C0E3C510C478BE591F72089D8C2CE00DAABF6583BB068401DC8A"
+    },
+    {
+      "path": "scripts/build.ps1",
+      "sha256": "A940B1C8591F7F725EAC841CE9EFC8A2C5CF90B995CDA81A8F581B4B41E45793"
+    },
+    {
+      "path": "flashbench/surface-frequency.ps1",
+      "sha256": "1BA1A2E7EBD8E42C5FB70C67FA07FD8F2C14BC742D39E80A5C0EE8AEA181E6F1"
+    }
+  ]
+}

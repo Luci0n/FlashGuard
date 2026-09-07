@@ -1,0 +1,39 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-09-07_monospace-opacity",
+  "base_commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+  "branch": "test",
+  "source_is_uncommitted_snapshot": true,
+  "software_version": "0.4.0-alpha.3",
+  "result": "SUCCESS",
+  "record_type": "UI/startup scope; protection behaviour not retested",
+  "protocols": [
+    "FLASHGUARD_UI_VALIDATION/1"
+  ],
+  "executable_sha256": "F45D91FAE9EB27949DF3B4D49956970637D84026F2376EFE42AAE36D027548D7",
+  "build_mode": "surface (/O2, FLASHGUARD_SURFACE_DEFAULT=1)",
+  "intervention": "Consolas monospace menu/banner text and a persisted 60-100% menu opacity slider defaulting to 92%.",
+  "preceded_by": "2026-09-07_overlay-ui",
+  "validation": "SUCCESS within UI scope. The surface executable compiled and linked; monospace rendering, the 92% default, and slider transparency were visually verified in preview before the status-label paint correction.",
+  "caveats": [
+    "final_status_redraw_visual_check is false: the status-label redraw fix was not revisually verified after the correction.",
+    "Protection shader sources match the 0.4.0-alpha.1 260-case build; those tests were not repeated for this appearance change.",
+    "A running preview instance prevented replacing the root executable, so the package carries the executable directly from the build folder."
+  ],
+  "source_files": [
+    {
+      "path": "src/FlashGuard.cpp",
+      "sha256": "95B03BB315C023F095865C3AC6BEF05C11EB2A194315B954B0930D5B0FB82EA5"
+    },
+    {
+      "path": "src/ui/StartupBanner.h",
+      "sha256": "5CB68AD30396A488728B8CE2FC8EDC1A2A864E06D92292A460F753D85CDCAC11"
+    }
+  ],
+  "raw_evidence": [
+    {
+      "path": "validation.json",
+      "sha256": "E0CD507123B9D170BADE3CC544B05C566FCD49AF1A6C5B631D1F0794E577851F"
+    }
+  ]
+}

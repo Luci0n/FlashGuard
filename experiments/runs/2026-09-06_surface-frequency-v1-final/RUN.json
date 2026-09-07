@@ -1,0 +1,74 @@
+{
+  "run_id": "2026-09-06_surface-frequency-v1-final",
+  "base_commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+  "source_is_uncommitted_snapshot": true,
+  "existing_local_changes_preserved": true,
+  "executable_sha256": "BA330933EA494DB6B1297960F3E11A1D37353F33F91429C29DBB879F021BF8D2",
+  "build_mode": "surface (/O2, FLASHGUARD_SURFACE_DEFAULT=1)",
+  "validation": "all required runner checks passed; experimental candidate",
+  "gpu": {
+    "Name": "NVIDIA GeForce RTX 3060",
+    "DriverVersion": "32.0.15.6109"
+  },
+  "relocation_probe_note": "Historical probe predates final idle correction and continuous-motion stimulus; not a measurement of this packaged binary. Added modulation on relocation remains an unresolved design limitation.",
+  "source_files": [
+    {
+      "path": "src/FlashGuard.cpp",
+      "sha256": "FEB53DABF99B7A634A94816333B12CEDACEDA5C0A7BF2E269D0F3D96A547064A"
+    },
+    {
+      "path": "src/analysis/SurfaceFrequency.h",
+      "sha256": "25436DC41193AC28703BAF2664A7B98084C017A4F5480A9308E969531F5F7221"
+    },
+    {
+      "path": "src/shaders/SurfaceFrequency.inl",
+      "sha256": "4971C7564EB3D683B719DEDD217A24BDD1CCD930569D79654BD30591B3EBD7BA"
+    },
+    {
+      "path": "scripts/build.bat",
+      "sha256": "7DE7BC27C033C0E3C510C478BE591F72089D8C2CE00DAABF6583BB068401DC8A"
+    },
+    {
+      "path": "scripts/build.ps1",
+      "sha256": "A940B1C8591F7F725EAC841CE9EFC8A2C5CF90B995CDA81A8F581B4B41E45793"
+    },
+    {
+      "path": "flashbench/surface-frequency.ps1",
+      "sha256": "AAB2D4BD3EBC4BB1A7D940EEE5BE7A050E12E9AE856B27632C568EA6E8C0ED4A"
+    }
+  ],
+  "raw_evidence": [
+    {
+      "path": "1080p-timing.json",
+      "sha256": "A7C4DCB836C38234B90B3C459DF14353A5B71BAC9FA68B658645CD271DCDD5C4"
+    },
+    {
+      "path": "flash-sweep.json",
+      "sha256": "F6626877E8E67B76F2F4127C2F924D756D66BEF2FF421B159BAF7D106352E899"
+    },
+    {
+      "path": "perceptual-sweep.json",
+      "sha256": "45ABD841EEC9AED8D11FDFBC05CF008A218EDEFF35E70C487A70A9DC3B6F3319"
+    },
+    {
+      "path": "relocation-self-test.json",
+      "sha256": "88A8594F2B8350DB4B0D81AFD4A200C3433C0366A459318F626D1FEC11274D80"
+    },
+    {
+      "path": "self-test.json",
+      "sha256": "743E38426A8CDD29A1F431BD9F6C37409FCFC996846E1CDA31489A676276B5ED"
+    },
+    {
+      "path": "synthetic-replay.json",
+      "sha256": "FB3F301527E94B3EF09409682140C2DA2D852F24F5EB56B766B2369193FB1FEF"
+    },
+    {
+      "path": "trail-metrics.json",
+      "sha256": "950FDB918091A8CB582DD00D1283196896F136AE0528BD075039D8AAB18200CE"
+    },
+    {
+      "path": "validation.json",
+      "sha256": "1FD244FB74BE02730BA6CDEA624809805AC33C7F4CC7F63E0A2249DF8758763A"
+    }
+  ]
+}

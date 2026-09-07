@@ -1,0 +1,67 @@
+{
+  "archive_schema": "FLASHGUARD_EXPERIMENT_RUN/1",
+  "run_id": "2026-09-07_compact-startup",
+  "base_commit": "c8a6386f535ac8be059ac2a821768a5c23cf9321",
+  "branch": "test",
+  "source_is_uncommitted_snapshot": true,
+  "software_version": "0.4.0-alpha.4",
+  "result": "SUCCESS",
+  "record_type": "UI/startup scope; protection behaviour not retested",
+  "protocols": [
+    "FLASHGUARD_UI_VALIDATION/1"
+  ],
+  "executable_sha256": "8966579B7682CEECF366E61811C2A51A967070CB51A4D0F79DA6FC659BC625A1",
+  "build_mode": "surface (/O2, FLASHGUARD_SURFACE_DEFAULT=1)",
+  "intervention": "440x360 compact menu without profiles, privately loaded embedded JetBrains Mono resources, and a checksum-verified compiled-shader cache.",
+  "preceded_by": "2026-09-07_monospace-opacity",
+  "validation": "SUCCESS within UI/startup scope. Surface build and embedded font resources verified; the compact Home layout and absent profiles checked in preview. Two shader-startup checks compiled 11 shaders in 143.420 s, then loaded all 11 with zero recompiles in 0.324 s.",
+  "caveats": [
+    "The shader-startup figures measure GPU and shader setup only, not complete capture and presentation startup.",
+    "Automated F10 input was blocked by concurrent user input, so a completed automated menu toggle cycle is not claimed; the hotkey paths were reviewed by inspection.",
+    "The flashing suite was not rerun; the embedded protection HLSL is unchanged from 0.4.0-alpha.1."
+  ],
+  "source_files": [
+    {
+      "path": "src/FlashGuard.cpp",
+      "sha256": "D884EDD83AD576141B0E5036614B2CB57318852946ABF0864CD639DF18C587DF"
+    },
+    {
+      "path": "src/FlashGuard.rc",
+      "sha256": "E9D2214F411049E73BBEE1DB0279FC10D2B4393AB17FCAF4AE2B84A95EC1F743"
+    },
+    {
+      "path": "src/render/ShaderCache.h",
+      "sha256": "8CB234BBDDA80875E929451C57479CD03A83AFD3C7AA6301642BD546915CAC94"
+    },
+    {
+      "path": "src/ui/BundledFonts.h",
+      "sha256": "6987A6BC442F9FB79216347BF6203D2964645522C08F77412CA4B9BF8A20FB83"
+    },
+    {
+      "path": "src/ui/StartupBanner.h",
+      "sha256": "7A61B079EC62F1704E6332F09C34CBBAD42FC9F51D373FBC23CCEDA6C633E2BE"
+    },
+    {
+      "path": "src/analysis/SurfaceFrequency.h",
+      "sha256": "36DE02369BD20DFF5A07FF70ACBF4B3DED6F7DEF030DC1BE1B4D232B096CEAE4"
+    },
+    {
+      "path": "src/shaders/SurfaceFrequency.inl",
+      "sha256": "A5EC3A5A147AA2D602B2530D10084D19D87B552946B72860E1E62919F8FCC2D8"
+    },
+    {
+      "path": "scripts/build.bat",
+      "sha256": "CB01DAA3D400C27727A12F59763A116B2834385148DAAD256F9C8917D16E036D"
+    }
+  ],
+  "raw_evidence": [
+    {
+      "path": "build.json",
+      "sha256": "169AC0D92721C7E0E6091F0FF99DAA20728A9960F3ABD3798850F2BC350C67D4"
+    },
+    {
+      "path": "shader-startup.json",
+      "sha256": "34EF13DEB5E7DB5B387136A0D53C55FB850225D4A925EC5D19D13E34F784B778"
+    }
+  ]
+}

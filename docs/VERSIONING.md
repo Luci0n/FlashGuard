@@ -38,7 +38,13 @@ WCAG_FLASH/5
 NVOF_SMOKE/1
 MOTION_DIAGNOSTICS/2
 MOTION_REALIZATION/1
+SURFACE_FREQUENCY_VALIDATION/1
+HSV_CORRECTION_VALIDATION/1
+FLASHGUARD_UI_VALIDATION/1
+FLASHGUARD_LIVE_PROBE/1
 ```
+
+The last four cover the surface-frequency backend: its validation contract, the HSV extension of that contract, interface/startup verification that makes no protection claim, and the opt-in live application probe.
 
 A protocol identifier is not considered fully documented merely because it appears in generated JSON or `experiments/manifest.json`; the matching protocol document must exist under `experiments/protocols/` before the protocol is treated as a stable comparison baseline.
 
@@ -68,6 +74,14 @@ Archived runs use a directory name containing date, abbreviated commit, and purp
 - relationship to a preceding experiment when relevant
 
 The commit hash, not the directory abbreviation, is authoritative. Runs from different protocol versions are not treated as direct before/after evidence unless the measurement semantics are demonstrated to be comparable.
+
+## Snapshot-identified runs
+
+A run produced from an uncommitted working tree cannot be identified by its commit, because several such runs share one base commit while testing different code. Those runs record `source_is_uncommitted_snapshot: true` together with a base commit, the SHA-256 of the tested executable, and the SHA-256 of every relevant source file, in both `RUN.json` and `experiments/manifest.json`.
+
+For a snapshot run the executable and source hashes are authoritative, and the base commit is context only. Do not compare two snapshot runs, or a snapshot run against a commit-identified run, without checking those hashes.
+
+This is weaker traceability than a committed run and is acceptable only for experimental candidates. Release evidence still requires a GPU run on an exact committed candidate.
 
 ## Immutability
 

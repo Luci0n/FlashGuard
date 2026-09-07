@@ -34,6 +34,22 @@ Reported metrics include static MAE, flash modulation reduction, legacy whole-ba
 
 `FLASHGUARD_PERCEPTUAL_SWEEP/1` measures static lower-contrast flashing separately from normative WCAG evaluation. The current calibration grid uses source-code deltas `4, 8, 12, 16, 24, 32`, frequencies `5, 10, 15 Hz`, and two half-frame phase offsets on a mid-dark background. It records modulation reduction and peak output delta. These cases are not WCAG pass/fail claims; they detect protection discontinuities that can still be visually obvious.
 
+### Surface-frequency validation
+
+`SURFACE_FREQUENCY_VALIDATION/1` is the validation contract for the current-frame-only backend, executed by `flashbench/surface-frequency.ps1` against a `surface`-mode build. It runs five steps with recorded exit codes and elapsed times: shader/build validation, the risk-integrator invariance check, focused GPU cases and expanded regressions, canonical replay with the flash and perceptual sweeps, and the offscreen 1080p GPU timing benchmark.
+
+Focused attenuation is measured in linear luminance after a 0.5-second warmup. A case passes only when reduction exceeds 70% and at least one visible high-phase sample carries a correct confirmed frequency; confirmed and observed sample counts are reported separately, so a pass does not imply continuous confirmation or measured first-event protection. Expanded regressions read actual GPU output in every RGB channel, measure moving-object variation in object coordinates with background contamination measured separately, and require less than one encoded code of unwanted change on static and dither cases.
+
+`HSV_CORRECTION_VALIDATION/1` extends that contract with 60 chromatic cases at 5, 10, 20, and 30 Hz across 60, 120, and 144 captured FPS, covering primary hue swaps, saturation-only changes, a changing foreground hue, and dark blue/green swaps. It adds an early-reduction metric measured from the start of the second full period through the first half second, reported separately from settled reduction. Saturation coverage was added because a grayscale-projected correction can amplify saturation alternation while passing luminance cases.
+
+GPU figures from these protocols cover features, tracking, composite, and total passes. Copy, capture, queueing, presentation, and physical display delay are excluded, so they are not end-to-end latency measurements or evidence of performance under a loaded game.
+
+### Live application probe
+
+`FLASHGUARD_LIVE_PROBE/1` is an opt-in offscreen diagnostic for real application content that synthetic stimuli do not reproduce. `FlashGuard.exe --surface-frequency-live-probe <directory>` captures the default adapter's first output for five seconds without displaying an overlay and writes source, filtered, and tone-only images plus detector state and GPU metrics; `python flashbench/analyze-live-probe.py <directory>` summarizes them.
+
+Comparing the filtered image against the tone-only image, which is the same source frame with cleared detector history and identical static tone mapping, separates a detector-introduced artifact from a tone-mapping one. Two recordings of a live application are separate recordings, not a deterministic before/after pair; numerical comparison between recordings containing different content is invalid as efficacy evidence. Captures contain screen content, stay local in the ignored artifacts folder, and are excluded from archives and packages.
+
 ### Batched parameter screening
 
 `FLASHGUARD_REPLAY_BATCH/1` keeps one replay window, D3D11 device, shader set, and NVOFA session alive while applying multiple runtime configurations. Temporal/filter state is reset between replay cases. A TSV plan supplies `name`, profile, full-screen sensitivity, small-source sensitivity, FPS, and motion scale.
@@ -153,6 +169,16 @@ Two complete GPU artifact sets are preserved:
 - `1802a4e68656d432a10ce2bf6ba11060ed8d9788`: after holding red mitigation through flash-risk memory, all 24 cases reported 0.000 counted output general flashes/s and 0.000 counted output red flashes/s.
 
 The raw JSON is stored unchanged in each run directory. Checksums are recorded in `RUN.json`.
+
+## Current archived surface-frequency sequence
+
+The `0.3.0` and `0.4.0` runs test the surface-frequency backend under `SURFACE_FREQUENCY_VALIDATION/1` and its HSV extension. They were produced from uncommitted working-tree snapshots over base commit `c8a6386`, so the base commit alone does not identify the tested implementation; the `executable_sha256` and `source_files` hashes in each `RUN.json` do, and `source_is_uncommitted_snapshot` is recorded as `true`.
+
+Four consecutive candidates reported `passed: false` for the same moving white/red case at 5 Hz and 144 captured FPS while each fixed a different defect, and the failing case was retained rather than accommodated by lowering the 70% requirement. `2026-09-07_hsv-correction` is the first run in this line to pass in full, at 260 of 260 checks with that case at 74.17%.
+
+`experiments/README.md` lists the sequence with per-run results.
+
+Runs recorded under `FLASHGUARD_UI_VALIDATION/1` cover interface and startup changes only. They verify that protection sources are unchanged by hash instead of retesting protection behavior, and they must not be read as image-quality evidence.
 
 ## Interpretation rules
 

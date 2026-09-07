@@ -1,0 +1,24 @@
+{
+  "compiled": true,
+  "packaged_executable_source": "build/FlashGuard.exe",
+  "executable_sha256": "F45D91FAE9EB27949DF3B4D49956970637D84026F2376EFE42AAE36D027548D7",
+  "default_opacity_percent": 92,
+  "opacity_range_percent": [
+    60,
+    100
+  ],
+  "font": "Consolas",
+  "preview_visual_check": true,
+  "final_status_redraw_visual_check": false,
+  "protection_sources_unchanged": true,
+  "source_files": [
+    {
+      "path": "src/FlashGuard.cpp",
+      "sha256": "95B03BB315C023F095865C3AC6BEF05C11EB2A194315B954B0930D5B0FB82EA5"
+    },
+    {
+      "path": "src/ui/StartupBanner.h",
+      "sha256": "5CB68AD30396A488728B8CE2FC8EDC1A2A864E06D92292A460F753D85CDCAC11"
+    }
+  ]
+}
